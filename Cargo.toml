@@ -1,0 +1,2 @@
+[workspace]
+members=["libwireshark_sys", "foo_dissector"]

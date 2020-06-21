@@ -1,0 +1,34 @@
+{
+    "tasks": [
+          {
+            "type": "shell",
+            "label": "Generate Wireshark Bindings",
+            "command": "bindgen",
+            "args": [
+                "${workspaceFolder}/libwireshark_sys/src/libwireshark.h",
+                "-o",
+                "${workspaceFolder}/libwireshark_sys/src/bindings.rs",
+                "--no-layout-tests",
+                "--",
+                "-I",
+                "${workspaceFolder}/wireshark-src/libs/vcpkg-export-20190318-win64ws/installed/x64-windows/include",
+                "-I",
+                "${workspaceFolder}/wireshark-src/src",
+                "-I",
+                "${workspaceFolder}/wireshark-src/target"
+
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ],
+    "version": "2.0.0"
+}
