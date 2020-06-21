@@ -2,3 +2,4 @@
 /target
 /.vscode/c_cpp_properties.json
 /Cargo.lock
+/foo_dissector/Cargo.lock

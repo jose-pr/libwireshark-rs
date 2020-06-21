@@ -1,0 +1,18 @@
+[package]
+name = "foo_dissector"
+version = "0.1.0"
+authors = ["Jose A <jose-pr@coqui.dev>"]
+edition = "2018"
+
+[lib]
+name = "foo_dissector"
+crate-type = ["staticlib", "cdylib"]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libwireshark_sys = {path="../libwireshark_sys"}
+
+[build-dependencies]
+
