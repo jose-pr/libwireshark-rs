@@ -3,6 +3,8 @@ name = "foo_dissector"
 version = "0.1.0"
 authors = ["Jose A <jose-pr@coqui.dev>"]
 edition = "2018"
+[package.metadata]
+copyright = "test"
 
 [lib]
 name = "foo_dissector"
@@ -12,7 +14,9 @@ crate-type = ["staticlib", "cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libwireshark_sys = {path="../libwireshark_sys"}
+libwireshark = {path="../libwireshark"}
+libwireshark_proc = {path="../libwireshark_proc"}
+once_cell="*"
 
 [build-dependencies]
 

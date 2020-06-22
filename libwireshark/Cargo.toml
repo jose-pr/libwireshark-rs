@@ -1,14 +1,12 @@
 [package]
-name = "libwireshark_sys"
+name = "libwireshark"
 version = "0.1.0"
 authors = ["Jose A <jose-pr@coqui.dev>"]
 edition = "2018"
 [lib]
-name = "libwireshark_sys"
+name = "libwireshark"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cargo_meta = "*"
-[build-dependencies]
-bindgen = "*"
+libwireshark_sys = {path="../libwireshark_sys"}
