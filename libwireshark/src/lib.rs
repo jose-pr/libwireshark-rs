@@ -1,44 +1,9 @@
 #![allow(unused_variables)]
 pub use libwireshark_sys as bindings;
-use std::ffi::CString;
 pub mod utils;
 use utils::get_static_cstring;
-
-pub struct GBool(pub bindings::gboolean);
-impl PartialEq<bool> for GBool {
-    fn eq(&self, other: &bool) -> bool {
-        match other {
-            true => self.0 != bindings::FALSE as i32,
-            false => self.0 == bindings::FALSE as i32,
-        }
-    }
-}
-pub enum PrefsValueType {
-    Boolean(GBool),
-}
-pub struct ModulePref {
-    pub valute_type: PrefsValueType,
-    pub name: &'static str,
-    pub title: &'static str,
-    pub description: &'static str,
-}
-
-impl ModulePref {
-    fn register(&mut self, module: *mut bindings::pref_module) {
-        match &mut self.valute_type {
-            PrefsValueType::Boolean(b) => unsafe {
-                bindings::prefs_register_bool_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    &mut b.0,
-                )
-            },
-        }
-    }
-}
-
+pub mod prefs;
+use prefs::ModulePref;
 pub enum DissectorAdd {
     Uint(&'static str, u32, bool),
 }
