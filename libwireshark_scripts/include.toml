@@ -1,0 +1,35 @@
+#Globs taken from https://gitlab.com/kalilinux/packages/wireshark/blob/kali/master/debian/libwireshark-dev.header-files
+
+header="./src/libwireshark.h"
+output="./src/bindings.rs"
+[includes] 
+
+"../wireshark-src/src/tools/lemon"=[]
+"../wireshark-src/target/epan"=[]
+"../wireshark-src/target/epan/dissectors"=[]
+"../wireshark-src/src/epan"=[]
+"../wireshark-src/src/epan/dissectors"=[]
+"../wireshark-src/src/" = [
+    "color.h",
+    "register.h",
+    "epan/packet.h",
+    "epan/*.h",
+    "epan/crypt/*.h",
+    "epan/dfilter/*.h",
+    "epan/dissectors/packet-dcerpc.h",
+    "epan/dissectors/packet*.h",
+    "epan/ftypes/*.h",
+]
+"../wireshark-src/target/" = [
+    "color.h",
+    "config.h",
+    "register.h",
+#   "epan/*.h",
+#    "epan/crypt/*.h",
+#    "epan/dfilter/*.h",
+#    "epan/dissectors/*.h",
+#    "epan/ftypes/*.h",
+]
+
+"../wireshark-src/**/include" = []
+

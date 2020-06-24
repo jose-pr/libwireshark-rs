@@ -2,6 +2,13 @@
 pub struct cstr(pub *const i8);
 unsafe impl Sync for cstr {}
 
+impl cstr {
+    ///Creates static cstring***
+    pub fn new<S: Into<Vec<u8>>>(string: S) -> Self {
+        cstr(Box::leak(std::ffi::CString::new(string).unwrap().into_boxed_c_str()).as_ptr())
+    }
+}
+
 pub fn get_static_cstring(string: &'static str) -> *const i8 {
     Box::leak(std::ffi::CString::new(string).unwrap().into_boxed_c_str()).as_ptr()
 }
@@ -20,7 +27,7 @@ macro_rules! cstr {
 }
 
 #[macro_export]
-macro_rules! wireshark_plugin {
+macro_rules! register_plugin {
     ($plugin:ident) => {
         #[no_mangle]
         #[used]
@@ -31,22 +38,12 @@ macro_rules! wireshark_plugin {
         #[no_mangle]
         #[used]
         pub static plugin_want_minor: u32 = $crate::bindings::VERSION_MINOR;
-
-        unsafe extern "C" fn register_protoinfo() {
-            $plugin.register();
-        }
-        unsafe extern "C" fn register_handoff() {
-            $plugin.handoff();
-        }
-
-        static __proto_plugin__: $crate::bindings::proto_plugin = $crate::bindings::proto_plugin {
-            register_protoinfo: Some(register_protoinfo),
-            register_handoff: Some(register_handoff),
-        };
-
         #[no_mangle]
         pub unsafe extern "C" fn plugin_register() {
-            $crate::bindings::proto_register_plugin(&__proto_plugin__);
+            match $crate::PROTO_PLUGIN.set(&$plugin) {
+                Ok(proto) => $crate::plugin_register(),
+                Err(..) => {}
+            }
         }
     };
 }

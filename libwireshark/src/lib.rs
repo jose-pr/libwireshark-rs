@@ -1,100 +1,77 @@
 #![allow(unused_variables)]
 pub use libwireshark_sys as bindings;
+pub mod dissector;
 pub mod utils;
-use utils::get_static_cstring;
+use crate::dissector::DissectorAdd;
+use utils::cstr;
 pub mod prefs;
+use once_cell::sync::OnceCell;
 use prefs::ModulePref;
-pub enum DissectorAdd {
-    Uint(&'static str, u32, bool),
-}
-impl DissectorAdd {
-    pub fn register(&self, dissector: *mut bindings::dissector_handle) {
-        match self {
-            DissectorAdd::Uint(name, val, with_pref) => unsafe {
-                if *with_pref {
-                    bindings::dissector_add_uint_with_preference(
-                        get_static_cstring(*name),
-                        *val,
-                        dissector,
-                    );
-                } else {
-                    bindings::dissector_add_uint(get_static_cstring(*name), *val, dissector);
-                }
-            },
-        }
-    }
-}
-
-type Disector = extern "C" fn(
-    tvb: *mut bindings::tvbuff_t,
-    pinfo: *mut bindings::packet_info,
-    proto_tree: *mut bindings::proto_tree,
-    call_back: *mut std::os::raw::c_void,
-) -> std::os::raw::c_int;
-
-pub struct DissectorProtocol {
+pub struct ProtocolId {
     pub name: &'static str,
     pub short_name: &'static str,
     pub filter_name: &'static str,
-    pub proto_handle: Option<i32>,
-    pub prefs_handle: Option<*mut bindings::pref_module>,
-    pub dissector_handle: Option<*mut bindings::dissector_handle>,
-    pub dissector_adds: Vec<DissectorAdd>,
-    pub prefs: Vec<ModulePref>,
-    pub dissector: Disector,
 }
-impl Default for DissectorProtocol {
-    fn default() -> Self {
-        extern "C" fn dissector(
+
+pub trait ProtoPlugin
+where
+    Self: Send + Sync + 'static,
+{
+    fn get_protocol_id(&self) -> ProtocolId;
+    fn get_prefs(&self) -> Vec<ModulePref>;
+    fn get_dissector_adds(&self) -> Vec<DissectorAdd>;
+    fn dissect(
+        &self,
+        prefs: &std::collections::HashMap<&'static str, prefs::PrefValue>,
+        tvb: *mut bindings::tvbuff_t,
+        pinfo: *mut bindings::packet_info,
+        proto_tree: *mut bindings::proto_tree,
+        call_back: *mut std::os::raw::c_void,
+    ) -> std::os::raw::c_int;
+}
+
+pub static PROTO_PLUGIN: OnceCell<&'static dyn ProtoPlugin> = OnceCell::new();
+pub static mut PROTO_HANDLE: i32 = -1;
+pub static mut DISSECTOR_HANDLE: Option<*mut bindings::dissector_handle> = None;
+pub static mut PREFS_HANDLE: Option<*mut bindings::pref_module> = None;
+
+pub unsafe fn plugin_register() {
+    unsafe extern "C" fn register_protoinfo() {
+        let plugin = *PROTO_PLUGIN.get().expect("Not Set");
+        let proto = plugin.get_protocol_id();
+        PROTO_HANDLE = bindings::proto_register_protocol(
+            *cstr::new(proto.name),
+            *cstr::new(proto.short_name),
+            *cstr::new(proto.filter_name),
+        );
+        PREFS_HANDLE = Some(bindings::prefs_register_protocol(PROTO_HANDLE, None));
+
+        for pref in plugin.get_prefs() {
+            pref.register(PREFS_HANDLE.unwrap());
+        }
+    }
+    unsafe extern "C" fn register_handoff() {
+        let plugin = *PROTO_PLUGIN.get().expect("Not Set");
+        pub unsafe extern "C" fn dissector(
             tvb: *mut bindings::tvbuff_t,
             pinfo: *mut bindings::packet_info,
-            _proto_tree: *mut bindings::proto_tree,
-            _arg4: *mut std::os::raw::c_void,
+            proto_tree: *mut bindings::proto_tree,
+            call_back: *mut std::os::raw::c_void,
         ) -> std::os::raw::c_int {
-            0
+            let plugin = *PROTO_PLUGIN.get().expect("Not Set");
+            plugin.dissect(&prefs::PREFS, tvb, pinfo, proto_tree, call_back)
         }
-
-        Self {
-            name: "",
-            short_name: "",
-            filter_name: "",
-            proto_handle: None,
-            prefs_handle: None,
-            dissector_handle: None,
-            dissector_adds: vec![],
-            prefs: vec![],
-            dissector,
+        DISSECTOR_HANDLE = Some(bindings::create_dissector_handle(
+            Some(dissector),
+            PROTO_HANDLE,
+        ));
+        for add in plugin.get_dissector_adds().iter() {
+            add.register(DISSECTOR_HANDLE.unwrap());
         }
     }
-}
-impl DissectorProtocol {
-    pub fn handoff(&mut self) {
-        unsafe {
-            self.dissector_handle = Some(bindings::create_dissector_handle(
-                Some(self.dissector),
-                self.proto_handle.unwrap(),
-            ));
-        }
-        for add in &self.dissector_adds {
-            add.register(self.dissector_handle.unwrap());
-        }
-    }
-    pub fn register(&mut self) {
-        unsafe {
-            self.proto_handle = Some(bindings::proto_register_protocol(
-                get_static_cstring(self.name),
-                get_static_cstring(self.short_name),
-                get_static_cstring(self.filter_name),
-            ));
-            let prefs = bindings::prefs_register_protocol(self.proto_handle.unwrap(), None);
-
-            self.prefs_handle = Some(bindings::prefs_register_protocol(
-                self.proto_handle.unwrap(),
-                None,
-            ));
-            for pref in self.prefs.iter_mut() {
-                pref.register(self.prefs_handle.unwrap());
-            }
-        }
-    }
+    static _PROTO_PLUGIN: bindings::proto_plugin = bindings::proto_plugin {
+        register_protoinfo: Some(register_protoinfo),
+        register_handoff: Some(register_handoff),
+    };
+    bindings::proto_register_plugin(&_PROTO_PLUGIN);
 }

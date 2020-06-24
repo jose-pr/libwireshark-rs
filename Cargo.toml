@@ -1,2 +1,2 @@
 [workspace]
-members=["libwireshark_sys", "foo_dissector", "libwireshark_proc", "libwireshark"]
+members=["libwireshark_sys", "foo_dissector", "libwireshark_proc", "libwireshark", "libwireshark_scripts"]

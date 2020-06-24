@@ -10,3 +10,4 @@ name = "libwireshark"
 
 [dependencies]
 libwireshark_sys = {path="../libwireshark_sys"}
+once_cell = "*"

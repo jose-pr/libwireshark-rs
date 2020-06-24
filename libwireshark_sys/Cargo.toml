@@ -1,8 +1,22 @@
 [package]
-name = "libwireshark_sys"
-version = "0.1.0"
-authors = ["Jose A <jose-pr@coqui.dev>"]
+authors = [ "Jose A <jose-pr@coqui.dev>" ]
 edition = "2018"
+name    = "libwireshark_sys"
+version = "0.1.0"
+
+    [package.metadata]
+    #Taken from https://gitlab.com/kalilinux/packages/wireshark/blob/kali/master/debian/libwireshark-dev.header-files
+    include = [
+        "color.h",
+        "config.h",
+        "register.h",
+        "epan/*.h",
+        "epan/crypt/*.h",
+        "epan/dfilter/*.h",
+        "epan/dissectors/*.h",
+        "epan/ftypes/*.h",
+    ]
+
 [lib]
 name = "libwireshark_sys"
 
