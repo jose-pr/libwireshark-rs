@@ -25,7 +25,13 @@ macro_rules! cstr {
         $crate::utils::cstr(concat!($s, "\0") as *const str as *const [i8] as *const i8)
     };
 }
-
+#[macro_export]
+macro_rules! register_protocol {
+    ($protocol:ident) => {
+        static INSTANCE: $crate::GenericPlugin<$protocol> = $crate::GenericPlugin(std::marker::PhantomData::<$protocol>);     
+        $crate::register_plugin!(INSTANCE);  
+    };
+}
 #[macro_export]
 macro_rules! register_plugin {
     ($plugin:ident) => {

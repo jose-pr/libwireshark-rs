@@ -12,7 +12,6 @@ pub struct ProtocolId {
     pub short_name: &'static str,
     pub filter_name: &'static str,
 }
-
 pub trait ProtoPlugin
 where
     Self: Send + Sync + 'static,
@@ -29,6 +28,52 @@ where
         call_back: *mut std::os::raw::c_void,
     ) -> std::os::raw::c_int;
 }
+
+
+pub trait Protocol where
+Self: Send + Sync + 'static + Sized {
+    const NAME:&'static str;
+    const SHORT_NAME: &'static str;
+    const FILTER_NAME: &'static str;
+    fn prefs() -> Vec<ModulePref>;
+    fn dissect_on() -> Vec<DissectorAdd>;
+    fn dissect(
+        prefs: &std::collections::HashMap<&'static str, prefs::PrefValue>,
+        tvb: *mut bindings::tvbuff_t,
+        pinfo: *mut bindings::packet_info,
+        proto_tree: *mut bindings::proto_tree,
+        call_back: *mut std::os::raw::c_void,
+    ) -> std::os::raw::c_int;
+}
+pub struct GenericPlugin<T:Protocol>(pub std::marker::PhantomData<T>); 
+
+impl<T:Protocol> ProtoPlugin for GenericPlugin<T> {
+    fn get_protocol_id(&self) -> ProtocolId {
+        ProtocolId {
+            name:T::NAME,
+            short_name:T::SHORT_NAME,
+            filter_name:T::FILTER_NAME
+        }
+    }
+    fn get_prefs(&self) -> Vec<ModulePref> {
+        T::prefs()
+    }
+    fn get_dissector_adds(&self) -> Vec<DissectorAdd> {
+        T::dissect_on()
+    }
+    fn dissect(
+        &self,
+        prefs: &std::collections::HashMap<&'static str, prefs::PrefValue>,
+        tvb: *mut bindings::tvbuff_t,
+        pinfo: *mut bindings::packet_info,
+        proto_tree: *mut bindings::proto_tree,
+        call_back: *mut std::os::raw::c_void,
+    ) -> std::os::raw::c_int{
+        T::dissect(prefs, tvb, pinfo, proto_tree, call_back)
+    }
+}
+
+
 
 pub static PROTO_PLUGIN: OnceCell<&'static dyn ProtoPlugin> = OnceCell::new();
 pub static mut PROTO_HANDLE: i32 = -1;

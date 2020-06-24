@@ -1,18 +1,13 @@
 #![allow(unused_variables)]
 use libwireshark::prefs::{GBool, ModulePref, PrefValue};
-use libwireshark::{bindings, register_plugin, ProtocolId, ProtoPlugin};
+use libwireshark::{bindings, register_protocol, Protocol};
+struct FooProtocol {}
+impl Protocol for FooProtocol {
+    const NAME:&'static str = "FOO";
+    const SHORT_NAME: &'static str = "F";
+    const FILTER_NAME: &'static str = "foo";
 
-#[derive(Debug)]
-struct FooProtocol;
-impl ProtoPlugin for FooProtocol {
-    fn get_protocol_id(&self) -> ProtocolId {
-        ProtocolId {
-            name:"FOO PROTOCOL",
-            short_name:"FOO",
-            filter_name:"foo"
-        }
-    }
-    fn get_prefs(&self) -> Vec<ModulePref>{
+    fn prefs() -> Vec<ModulePref>{
         vec![
             ModulePref {
                 value: PrefValue::Boolean(GBool(0)),
@@ -40,11 +35,10 @@ impl ProtoPlugin for FooProtocol {
             },
         ]
     }
-    fn get_dissector_adds(&self) ->Vec<libwireshark::dissector::DissectorAdd> {
+    fn dissect_on() ->Vec<libwireshark::dissector::DissectorAdd> {
         vec![libwireshark::dissector::DissectorAdd::Uint("udp.port", 111, true)]
     }
     fn dissect(
-        &self,
         prefs: &std::collections::HashMap<&'static str, PrefValue>,
         tvb: *mut bindings::tvbuff_t,
         pinfo: *mut bindings::packet_info,
@@ -54,5 +48,4 @@ impl ProtoPlugin for FooProtocol {
         0
     }
 }
-static INSTANCE: FooProtocol = FooProtocol {};
-register_plugin!(INSTANCE);
+register_protocol!(FooProtocol);
