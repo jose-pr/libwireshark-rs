@@ -25,16 +25,10 @@ macro_rules! cstr {
         $crate::utils::cstr(concat!($s, "\0") as *const str as *const [i8] as *const i8)
     };
 }
+
 #[macro_export]
-macro_rules! register_protocol {
-    ($protocol:ident) => {
-        static INSTANCE: $crate::GenericPlugin<$protocol> = $crate::GenericPlugin(std::marker::PhantomData::<$protocol>);     
-        $crate::register_plugin!(INSTANCE);  
-    };
-}
-#[macro_export]
-macro_rules! register_plugin {
-    ($plugin:ident) => {
+macro_rules! create_protocol_plugin {
+    ($proto:expr) => {
         #[no_mangle]
         #[used]
         pub static plugin_version: $crate::utils::cstr = $crate::cstr!(env!("CARGO_PKG_VERSION"));
@@ -44,12 +38,11 @@ macro_rules! register_plugin {
         #[no_mangle]
         #[used]
         pub static plugin_want_minor: u32 = $crate::bindings::VERSION_MINOR;
+
         #[no_mangle]
         pub unsafe extern "C" fn plugin_register() {
-            match $crate::PROTO_PLUGIN.set(&$plugin) {
-                Ok(proto) => $crate::plugin_register(),
-                Err(..) => {}
-            }
+            $crate::PROTO_PLUGIN = Some($crate::ProtocolPlugin::new($proto()));
+            $crate::plugin_register();
         }
     };
 }

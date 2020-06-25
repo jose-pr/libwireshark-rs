@@ -1,5 +1,5 @@
 use crate::bindings;
-use crate::utils::get_static_cstring;
+use crate::utils::{cstr, get_static_cstring};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
@@ -15,60 +15,92 @@ impl PartialEq<bool> for GBool {
         }
     }
 }
+#[derive(Clone)]
 pub struct ModulePref {
-    pub value: PrefValue,
+    pub value_type: PrefValue,
     pub name: &'static str,
     pub title: &'static str,
     pub description: &'static str,
 }
+pub struct Value<T> {
+    pub info: T,
+    ptr: *mut std::ffi::c_void,
+}
+impl<T> Value<T> {
+    pub fn new(info: T) -> Self {
+        Self {
+            ptr: std::ptr::null_mut(),
+            info,
+        }
+    }
+}
 
-impl ModulePref {
-    pub fn register(&self, module: *mut bindings::pref_module) {
+impl Value<ModulePref> {
+    pub fn register(&mut self, module: *mut bindings::pref_module) {
         unsafe {
-            PREFS.insert(self.name, self.value.clone());
-            match PREFS.get_mut(self.name).unwrap() {
-                PrefValue::Boolean(b) => bindings::prefs_register_bool_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    &mut b.0,
-                ),
-                PrefValue::Uint(b, v) => bindings::prefs_register_uint_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    *b,
-                    v,
-                ),
-                PrefValue::String(s) => bindings::prefs_register_string_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    s,
-                ),
-                PrefValue::FileName(s, b) => bindings::prefs_register_filename_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    s,
-                    b.0,
-                ),
-                PrefValue::Directory(s) => bindings::prefs_register_directory_preference(
-                    module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
-                    s,
-                ),
+            match &self.info.value_type {
+                PrefValue::Boolean(b) => {
+                    let ptr = Box::into_raw(Box::new(if false == *b { 0 } else { 1 }));
+                    self.ptr = ptr as *mut std::ffi::c_void;
+                    bindings::prefs_register_bool_preference(
+                        module,
+                        get_static_cstring(self.info.name),
+                        get_static_cstring(self.info.title),
+                        get_static_cstring(self.info.description),
+                        ptr,
+                    )
+                }
+                PrefValue::Uint(b, v) => {
+                    let ptr = Box::into_raw(Box::new(v.clone()));
+                    self.ptr = ptr as *mut std::ffi::c_void;
+                    bindings::prefs_register_uint_preference(
+                        module,
+                        get_static_cstring(self.info.name),
+                        get_static_cstring(self.info.title),
+                        get_static_cstring(self.info.description),
+                        b.clone(),
+                        ptr,
+                    )
+                }
+                PrefValue::String(s) => {
+                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    self.ptr = ptr as *mut std::ffi::c_void;
+                    bindings::prefs_register_string_preference(
+                        module,
+                        get_static_cstring(self.info.name),
+                        get_static_cstring(self.info.title),
+                        get_static_cstring(self.info.description),
+                        ptr,
+                    )
+                }
+                PrefValue::FileName(s, b) => {
+                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    self.ptr = ptr as *mut std::ffi::c_void;
+                    bindings::prefs_register_filename_preference(
+                        module,
+                        get_static_cstring(self.info.name),
+                        get_static_cstring(self.info.title),
+                        get_static_cstring(self.info.description),
+                        ptr,
+                        if *b == false { 0 } else { 1 },
+                    )
+                }
+                PrefValue::Directory(s) => {
+                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    self.ptr = ptr as *mut std::ffi::c_void;
+                    bindings::prefs_register_directory_preference(
+                        module,
+                        get_static_cstring(self.info.name),
+                        get_static_cstring(self.info.title),
+                        get_static_cstring(self.info.description),
+                        ptr,
+                    )
+                }
                 PrefValue::StaticText() => bindings::prefs_register_static_text_preference(
                     module,
-                    get_static_cstring(self.name),
-                    get_static_cstring(self.title),
-                    get_static_cstring(self.description),
+                    get_static_cstring(self.info.name),
+                    get_static_cstring(self.info.title),
+                    get_static_cstring(self.info.description),
                 ),
             }
         };
@@ -77,11 +109,11 @@ impl ModulePref {
 
 #[derive(Clone)]
 pub enum PrefValue {
-    Boolean(GBool),
+    Boolean(bool),
     Uint(bindings::guint, bindings::guint),
-    String(*const ::std::os::raw::c_char),
-    FileName(*const ::std::os::raw::c_char, GBool),
-    Directory(*const ::std::os::raw::c_char),
+    String(String),
+    FileName(String, bool),
+    Directory(String),
     StaticText(),
 }
 

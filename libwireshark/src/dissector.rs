@@ -1,5 +1,6 @@
 use crate::bindings;
 use crate::utils::get_static_cstring;
+#[derive(Debug, Clone)]
 pub enum DissectorAdd {
     Uint(&'static str, u32, bool),
 }
