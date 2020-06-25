@@ -1,7 +1,8 @@
 use crate::bindings;
-use crate::utils::{cstr, get_static_cstring};
+use crate::utils::{cstr, get_static_cstring, raw_ptr};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::ffi::CStr;
 
 pub static mut PREFS: Lazy<HashMap<&'static str, PrefValue>> = Lazy::new(|| HashMap::new());
 
@@ -36,11 +37,42 @@ impl<T> Value<T> {
 }
 
 impl Value<ModulePref> {
+    pub fn get_current_value(&self) -> PrefValue {
+        unsafe {
+            match &self.info.value_type {
+                PrefValue::Boolean(..) => {
+                    let ptr = self.ptr as *const i32;
+                    PrefValue::Boolean(&*ptr != &0i32)
+                }
+                PrefValue::Uint(_, b) => {
+                    let ptr = self.ptr as *const u32;
+                    PrefValue::Uint((&*ptr).clone(), b.clone())
+                }
+                PrefValue::String(_) => {
+                    let ptr = self.ptr as *const *const i8;
+                    PrefValue::String(String::from(CStr::from_ptr(*ptr).to_str().unwrap()))
+                }
+                PrefValue::FileName(_, b) => {
+                    let ptr = self.ptr as *const *const i8;
+                    PrefValue::FileName(
+                        String::from(CStr::from_ptr(*ptr).to_str().unwrap()),
+                        b.clone(),
+                    )
+                }
+                PrefValue::Directory(_) => {
+                    let ptr = self.ptr as *const *const i8;
+                    PrefValue::Directory(String::from(CStr::from_ptr(*ptr).to_str().unwrap()))
+                }
+                PrefValue::StaticText() => PrefValue::StaticText(),
+                _ => todo!(),
+            }
+        }
+    }
     pub fn register(&mut self, module: *mut bindings::pref_module) {
         unsafe {
             match &self.info.value_type {
                 PrefValue::Boolean(b) => {
-                    let ptr = Box::into_raw(Box::new(if false == *b { 0 } else { 1 }));
+                    let ptr = raw_ptr(if false == *b { 0 } else { 1 });
                     self.ptr = ptr as *mut std::ffi::c_void;
                     bindings::prefs_register_bool_preference(
                         module,
@@ -50,8 +82,8 @@ impl Value<ModulePref> {
                         ptr,
                     )
                 }
-                PrefValue::Uint(b, v) => {
-                    let ptr = Box::into_raw(Box::new(v.clone()));
+                PrefValue::Uint(v, b) => {
+                    let ptr = raw_ptr(v.clone());
                     self.ptr = ptr as *mut std::ffi::c_void;
                     bindings::prefs_register_uint_preference(
                         module,
@@ -63,7 +95,7 @@ impl Value<ModulePref> {
                     )
                 }
                 PrefValue::String(s) => {
-                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    let ptr = raw_ptr(*cstr::new(s.clone()));
                     self.ptr = ptr as *mut std::ffi::c_void;
                     bindings::prefs_register_string_preference(
                         module,
@@ -74,7 +106,7 @@ impl Value<ModulePref> {
                     )
                 }
                 PrefValue::FileName(s, b) => {
-                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    let ptr = raw_ptr(*cstr::new(s.clone()));
                     self.ptr = ptr as *mut std::ffi::c_void;
                     bindings::prefs_register_filename_preference(
                         module,
@@ -86,7 +118,7 @@ impl Value<ModulePref> {
                     )
                 }
                 PrefValue::Directory(s) => {
-                    let ptr = Box::into_raw(Box::new(*cstr::new(s.clone())));
+                    let ptr = raw_ptr(*cstr::new(s.clone()));
                     self.ptr = ptr as *mut std::ffi::c_void;
                     bindings::prefs_register_directory_preference(
                         module,

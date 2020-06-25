@@ -1,6 +1,9 @@
 #[repr(C)]
 pub struct cstr(pub *const i8);
 unsafe impl Sync for cstr {}
+pub fn raw_ptr<T>(o: T) -> *mut T {
+    Box::into_raw(Box::new(o))
+}
 
 impl cstr {
     ///Creates static cstring***

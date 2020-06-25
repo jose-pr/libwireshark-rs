@@ -19,25 +19,25 @@ create_protocol_plugin!(|| Protocol {
     filter_name: "foton",
     prefs: vec![
         ModulePref {
-           value_type: PrefValue::Boolean(GBool(0)),
+            value_type: PrefValue::Boolean(false),
             name: "bool_pref",
             title: "Test Boolean Preference",
             description: "bool_pref Description",
         },
-        ModulePref::n {
-           value_type: PrefValue::String(std::ffi::CString::new("stringy").unwrap().as_ptr()),
+        ModulePref {
+            value_type: PrefValue::String("stringy".to_owned()),
             name: "str_pref",
             title: "Test String Preference",
             description: "bool_str Description",
         },
         ModulePref {
-           value_type: PrefValue::Uint(10, 10),
+            value_type: PrefValue::Uint(10, 10),
             name: "uint_pref",
             title: "Test Uint Preference",
             description: "uint_pref Description",
         },
         ModulePref {
-           value_type: PrefValue::StaticText(),
+            value_type: PrefValue::StaticText(),
             name: "static_pref",
             title: "Test Static Text Preference",
             description: "Static Text Description",

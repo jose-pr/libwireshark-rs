@@ -32,6 +32,13 @@ pub struct ProtocolPlugin {
     filter_name: CString,
     header_fields: Vec<(Box<i32>, header::HeaderFieldInfo)>,
     preferences: Vec<prefs::Value<ModulePref>>,
+    dissector: fn(
+        prefs: &std::collections::HashMap<&'static str, prefs::PrefValue>,
+        tvb: *mut bindings::tvbuff_t,
+        pinfo: *mut bindings::packet_info,
+        proto_tree: *mut bindings::proto_tree,
+        call_back: *mut std::os::raw::c_void,
+    ) -> std::os::raw::c_int,
     dissect_on: Vec<DissectorAdd>,
     proto_handle: i32,
     dissector_handle: Option<*mut bindings::dissector_handle>,
@@ -44,18 +51,25 @@ impl ProtocolPlugin {
             short_name: CString::new(proto.short_name).unwrap(),
             filter_name: CString::new(proto.filter_name).unwrap(),
             dissect_on: proto.dissect_on,
-            preferences: proto.prefs.iter().cloned().map(|p| prefs::Value::new(p)).collect(),
+            preferences: proto
+                .prefs
+                .iter()
+                .cloned()
+                .map(|p| prefs::Value::new(p))
+                .collect(),
             header_fields: proto
                 .header_fields
                 .iter()
                 .cloned()
                 .map(|f| (Box::new(-1i32), f))
                 .collect(),
+            dissector: proto.dissect,
             proto_handle: -1i32,
             prefs_handle: None,
             dissector_handle: None,
         }
     }
+    #[inline(always)]
     fn dissect(
         &self,
         tvb: *mut bindings::tvbuff_t,
@@ -63,7 +77,14 @@ impl ProtocolPlugin {
         proto_tree: *mut bindings::proto_tree,
         call_back: *mut std::os::raw::c_void,
     ) -> i32 {
-        0
+        let prefs = self
+            .preferences
+            .iter()
+            .fold(std::collections::HashMap::new(), |mut map, v| {
+                map.insert(v.info.name, v.get_current_value());
+                map
+            });
+        (self.dissector)(&prefs, tvb, pinfo, proto_tree, call_back)
     }
     fn register_handoff(&mut self) {
         pub unsafe extern "C" fn dissector(
@@ -83,9 +104,9 @@ impl ProtocolPlugin {
                 self.proto_handle.clone(),
             ));
         }
-        //    for add in &self.dissect_on {
-        //        add.register(self.dissector_handler.unwrap());
-        //    }
+        for add in &self.dissect_on {
+            add.register(self.dissector_handle.unwrap());
+        }
     }
     fn register_protoinfo(&mut self) {
         unsafe {
