@@ -21221,7 +21221,7 @@ pub struct _header_field_info {
     #[doc = "< [FIELDABBREV] abbreviated name of this field"]
     pub abbrev: *const ::std::os::raw::c_char,
     #[doc = "< [FIELDTYPE] field type, one of FT_ (from ftypes.h)"]
-    pub type_: ftenum,
+    pub r#type: ftenum,
     #[doc = "< [FIELDDISPLAY] one of BASE_, or field bit-width if FT_BOOLEAN and non-zero bitmask"]
     pub display: ::std::os::raw::c_int,
     #[doc = "< [FIELDCONVERT] value_string, val64_string, range_string or true_false_string,"]

@@ -3,9 +3,9 @@ use libwireshark::prefs::{GBool, ModulePref, PrefValue};
 use libwireshark::{bindings, register_protocol, Protocol};
 struct FooProtocol {}
 impl Protocol for FooProtocol {
-    const NAME:&'static str = "FOO";
-    const SHORT_NAME: &'static str = "F";
-    const FILTER_NAME: &'static str = "foo";
+    const NAME:&'static str = "FOO2";
+    const SHORT_NAME: &'static str = "foos";
+    const FILTER_NAME: &'static str = "foton";
 
     fn prefs() -> Vec<ModulePref>{
         vec![
