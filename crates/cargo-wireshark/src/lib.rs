@@ -1,8 +1,22 @@
+#![doc = include_str!("../README.md")]
+#![forbid(unsafe_code)]
+#![warn(missing_docs, missing_debug_implementations)]
+
+extern crate alloc;
+
 use core::fmt;
 use sha2::Digest;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod bundle;
+mod releases;
+pub use bundle::{dependency_bundle_name, wireshark_bundle_name};
+pub use releases::{
+    BUNDLE_BRANCH, ReleaseBundlesConfig, ReleaseLine, WIRESHARK_REMOTE, fetch_bundles,
+    generate_release_lines, publish_bundles, release_lines,
+};
 
 /// Paths and an optional version supplied to Wireshark SDK discovery.
 #[derive(Clone, Debug, Default)]
@@ -76,7 +90,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 /// Inputs for configuring Wireshark's generated C headers.
 #[derive(Clone, Debug)]
@@ -102,8 +116,8 @@ pub struct PublicHeaderConfig {
     pub target_os: String,
     /// Directories containing available GLib and Gcrypt development headers.
     pub dependency_include_dirs: Vec<PathBuf>,
-    /// Destination for the generated C umbrella header.
-    pub output: PathBuf,
+    /// Directory receiving `wireshark-<major>-<minor>.h` and `deps-<os>-<arch>.h`.
+    pub output_dir: PathBuf,
     /// Optional Wireshark DLL whose exports should be compared with declarations.
     pub dll: Option<PathBuf>,
     /// Optional destination for an umbrella limited to headers mentioning exported symbols.
@@ -118,8 +132,10 @@ pub struct PublicHeaderConfig {
 pub struct GeneratedPublicHeader {
     /// Wireshark source version, when available.
     pub version: Option<String>,
-    /// Generated umbrella over all public headers.
-    pub output: PathBuf,
+    /// Generated release-line bundle, the same for every target.
+    pub wireshark_header: PathBuf,
+    /// Generated GLib/Gcrypt bundle for the selected target.
+    pub dependency_header: PathBuf,
     /// Number of source-declared public headers included.
     pub header_count: usize,
     /// Generated optional umbrella containing only headers with exported symbol declarations.
@@ -200,6 +216,8 @@ pub enum GenerateError {
     BindgenFailed(String),
     /// Generated bindings could not be written.
     WriteFailed(String),
+    /// A git command failed.
+    Git(String),
 }
 
 impl fmt::Display for GenerateError {
@@ -216,12 +234,13 @@ impl fmt::Display for GenerateError {
             Self::MissingGeneratedHeaders(path) => write!(f, "generated config.h and ws_version.h were not found in {}", path.display()),
             Self::InvalidHeader(path) => write!(f, "bindgen input header is missing: {}", path.display()),
             Self::BindgenFailed(error) => write!(f, "bindgen failed: {error}"),
-            Self::WriteFailed(error) => write!(f, "could not write generated bindings: {error}"),
+            Self::WriteFailed(error) => write!(f, "could not write generated output: {error}"),
+            Self::Git(error) => write!(f, "git failed: {error}"),
         }
     }
 }
 
-impl std::error::Error for GenerateError {}
+impl core::error::Error for GenerateError {}
 
 /// Generates an umbrella header from Wireshark's own public-header lists without running CMake.
 ///
@@ -279,6 +298,24 @@ pub fn generate_public_header(
     // their owning header directly.
     let mut seen_headers = std::collections::HashSet::new();
     headers.retain(|(relative, _)| seen_headers.insert(relative.clone()));
+    headers.retain(|(relative, _)| {
+        !relative.starts_with("epan/dissectors")
+            || relative
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| bundle::DISSECTOR_HEADERS.contains(&name))
+    });
+    // Before 4.6, several public headers use packet types without including
+    // their headers; emitting these first declares them for the rest.
+    for first in bundle::LEADING_HEADERS.iter().rev() {
+        if let Some(index) = headers
+            .iter()
+            .position(|(relative, _)| relative == Path::new(first))
+        {
+            let header = headers.remove(index);
+            headers.insert(0, header);
+        }
+    }
 
     let dependency_roots = dependency_header_roots(
         &source.root,
@@ -286,15 +323,30 @@ pub fn generate_public_header(
         &config.architecture,
         &config.dependency_include_dirs,
     )?;
-    write_umbrella(
+    let (major, minor, _) = version_components(source.version.as_deref());
+    let wireshark_header = config
+        .output_dir
+        .join(bundle::wireshark_bundle_name(major, minor));
+    let dependency_header = config.output_dir.join(bundle::dependency_bundle_name(
+        &config.target_os,
+        &config.architecture,
+    ));
+    let required = bundle::write_wireshark_bundle(
         &source.root,
-        &config.output,
+        &wireshark_header,
         &headers
             .iter()
             .map(|(relative, _)| relative)
             .collect::<Vec<_>>(),
         &dependency_roots,
         source.version.as_deref(),
+    )?;
+    bundle::write_dependency_bundle(
+        &dependency_header,
+        &dependency_roots,
+        &required,
+        &config.target_os,
+        &config.architecture,
     )?;
 
     let (
@@ -353,7 +405,7 @@ pub fn generate_public_header(
                 .collect::<Vec<_>>();
             let filtered_count = filtered.len();
             if let Some(filtered_output) = filtered_output {
-                write_umbrella(
+                bundle::write_wireshark_bundle(
                     &source.root,
                     filtered_output,
                     &filtered,
@@ -401,7 +453,8 @@ pub fn generate_public_header(
 
     Ok(GeneratedPublicHeader {
         version: source.version,
-        output: config.output.clone(),
+        wireshark_header,
+        dependency_header,
         header_count: headers.len(),
         filtered_output,
         filtered_header_count,
@@ -456,7 +509,7 @@ fn find_export_header_mentions(
         };
         let mut token = String::new();
         let mut found = std::collections::HashSet::new();
-        for character in contents.chars().chain(std::iter::once(' ')) {
+        for character in contents.chars().chain(core::iter::once(' ')) {
             if character.is_ascii_alphanumeric() || character == '_' {
                 token.push(character);
             } else if !token.is_empty() {
@@ -516,12 +569,12 @@ fn public_function_declarations(source: &str) -> std::collections::HashSet<Strin
 fn c_tokens(source: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut identifier = String::new();
-    for character in source.chars().chain(std::iter::once(' ')) {
+    for character in source.chars().chain(core::iter::once(' ')) {
         if character.is_ascii_alphanumeric() || character == '_' {
             identifier.push(character);
         } else {
             if !identifier.is_empty() {
-                tokens.push(std::mem::take(&mut identifier));
+                tokens.push(core::mem::take(&mut identifier));
             }
             if !character.is_whitespace() {
                 tokens.push(character.to_string());
@@ -658,157 +711,6 @@ fn debian_public_headers(source_root: &Path) -> Result<Vec<(PathBuf, PathBuf)>, 
     Ok(headers)
 }
 
-fn write_umbrella(
-    source_root: &Path,
-    output: &Path,
-    headers: &[&PathBuf],
-    dependency_roots: &[PathBuf],
-    version: Option<&str>,
-) -> Result<(), GenerateError> {
-    let source_root =
-        std::fs::canonicalize(source_root).map_err(|_| GenerateError::InvalidSource)?;
-    let (major, minor, patch) = version_components(version);
-    let mut contents = format!(
-        r#"/* Generated by embedding Wireshark public headers and dependency headers. */
-#ifndef LIBWIRESHARK_RS_GENERATED_PUBLIC_H
-#define LIBWIRESHARK_RS_GENERATED_PUBLIC_H
-#define __GLIB_H_INSIDE__
-#define __GLIB_GOBJECT_H_INSIDE__
-#define __GIO_GIO_H_INSIDE__
-/* Wireshark has X-macro headers that are included with caller-provided
- * expansions from implementation files. In an API umbrella they contribute
- * no declarations, so define their expansion hooks as empty. */
-#define DEF_COND_ACE_TOKEN(VAL, VAR, STR)
-#define DEF_COND_ACE_TOKEN_WITH_DATA(VAL, VAR, STR)
-/* Some public dissector declarations use this opaque type before the header
- * that owns its forward declaration appears in Wireshark's public list. */
-typedef struct _dcerpc_info dcerpc_info;
-#ifndef __CONFIG_H__
-#define __CONFIG_H__
-#define PACKAGE "wireshark"
-#define VERSION "{}"
-#define VERSION_MAJOR {major}
-#define VERSION_MINOR {minor}
-#define VERSION_MICRO {patch}
-#define HAVE_PLUGINS 1
-#define HAVE_LIBGCRYPT 1
-#define PCRE2_CODE_UNIT_WIDTH 8
-#if defined(_WIN32)
-#define YY_NO_UNISTD_H
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0A00
-#endif
-#endif
-#endif
-#ifndef __WS_VERSION_H__
-#define __WS_VERSION_H__
-#define WIRESHARK_VERSION_MAJOR {major}
-#define WIRESHARK_VERSION_MINOR {minor}
-#define WIRESHARK_VERSION_MICRO {patch}
-#endif
-"#,
-        version.unwrap_or("0.0.0")
-    );
-    let mut include_stack = Vec::new();
-    let mut included = std::collections::HashSet::new();
-    let mut ordered_headers = Vec::new();
-    for header in headers {
-        collect_source_headers(
-            &source_root,
-            &source_root.join(header),
-            dependency_roots,
-            &mut include_stack,
-            &mut included,
-            &mut ordered_headers,
-        )?;
-    }
-    for header in ordered_headers {
-        let source = std::fs::read_to_string(&header)
-            .map_err(|_| GenerateError::SourceHeaderRead(header.clone()))?;
-        contents.push_str(&format!(
-            "\n/* Begin {} */\n",
-            header
-                .strip_prefix(&source_root)
-                .unwrap_or(&header)
-                .to_string_lossy()
-                .replace('\\', "/")
-        ));
-        for line in source.lines() {
-            if c_include_target(line).is_some_and(|name| {
-                name == "config.h"
-                    || name == "ws_version.h"
-                    || resolve_embedded_include(&source_root, dependency_roots, &header, name)
-                        .is_some()
-            }) {
-                continue;
-            }
-            contents.push_str(line);
-            contents.push('\n');
-        }
-        contents.push_str("/* End embedded header */\n");
-    }
-    contents.push_str("#endif /* LIBWIRESHARK_RS_GENERATED_PUBLIC_H */\n");
-    if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| GenerateError::WriteFailed(error.to_string()))?;
-    }
-    std::fs::write(output, contents).map_err(|error| GenerateError::WriteFailed(error.to_string()))
-}
-
-fn collect_source_headers(
-    source_root: &Path,
-    header: &Path,
-    dependency_roots: &[PathBuf],
-    include_stack: &mut Vec<PathBuf>,
-    included: &mut std::collections::HashSet<PathBuf>,
-    ordered_headers: &mut Vec<PathBuf>,
-) -> Result<(), GenerateError> {
-    let canonical = std::fs::canonicalize(header)
-        .map_err(|_| GenerateError::SourceHeaderRead(header.to_owned()))?;
-    if include_stack.contains(&canonical) || included.contains(&canonical) {
-        return Ok(());
-    }
-    let source = std::fs::read_to_string(&canonical)
-        .map_err(|_| GenerateError::SourceHeaderRead(canonical.clone()))?;
-    include_stack.push(canonical.clone());
-    for line in source.lines() {
-        if let Some(include) = c_include_target(line)
-            && let Some(path) =
-                resolve_embedded_include(source_root, dependency_roots, &canonical, include)
-        {
-            collect_source_headers(
-                source_root,
-                &path,
-                dependency_roots,
-                include_stack,
-                included,
-                ordered_headers,
-            )?;
-        }
-    }
-    include_stack.pop();
-    included.insert(canonical.clone());
-    ordered_headers.push(canonical);
-    Ok(())
-}
-
-fn resolve_embedded_include(
-    source_root: &Path,
-    dependency_roots: &[PathBuf],
-    including: &Path,
-    name: &str,
-) -> Option<PathBuf> {
-    resolve_source_include(source_root, including, name).or_else(|| {
-        let name = Path::new(name);
-        dependency_roots.iter().find_map(|root| {
-            [root.join(name), including.parent()?.join(name)]
-                .into_iter()
-                .find(|path| path.is_file())
-                .and_then(|path| std::fs::canonicalize(path).ok())
-        })
-    })
-}
-
 fn version_components(version: Option<&str>) -> (&str, &str, &str) {
     let mut parts = version.unwrap_or("0.0.0").split('.');
     (
@@ -859,7 +761,7 @@ fn dependency_header_roots(
     let mut normalized = Vec::new();
     for root in &roots {
         for name in ["glib.h", "glibconfig.h", "gcrypt.h", "gpg-error.h"] {
-            if let Some(header_root) = find_nested_header(std::slice::from_ref(root), name) {
+            if let Some(header_root) = find_nested_header(core::slice::from_ref(root), name) {
                 normalized.push(header_root);
             }
         }
@@ -919,6 +821,11 @@ fn dependency_header_roots(
             .ok_or_else(|| {
                 GenerateError::DependencyHeaders("invalid dependency archive name".to_owned())
             })?;
+        if checksum.len() != 64 || !checksum.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(GenerateError::DependencyHeaders(format!(
+                "the {package} archive declaration has no SHA-256 checksum"
+            )));
+        }
         let archive = cache.join(&checksum).join(archive_name);
         let extraction = archive.with_extension("headers");
         let extraction_complete = extraction.join(".cargo-wireshark-extracted");
@@ -961,7 +868,7 @@ fn dependency_header_roots(
             ["gcrypt.h", "gpg-error.h"]
         };
         for header_name in names {
-            let root = find_nested_header(std::slice::from_ref(&extraction), header_name)
+            let root = find_nested_header(core::slice::from_ref(&extraction), header_name)
                 .ok_or_else(|| {
                     GenerateError::DependencyHeaders(format!(
                         "{archive_name} was extracted but did not contain {header_name}"
@@ -985,7 +892,7 @@ fn dependency_header_roots(
 }
 
 fn system_dependency_include_dirs(target_os: &str, architecture: &str) -> Vec<PathBuf> {
-    let candidates = match target_os {
+    match target_os {
         "windows" => vec![
             if architecture == "x86_64" {
                 PathBuf::from(r"C:\msys64\mingw64\include\glib-2.0")
@@ -1023,8 +930,7 @@ fn system_dependency_include_dirs(target_os: &str, architecture: &str) -> Vec<Pa
             PathBuf::from("/usr/include"),
         ],
         _ => Vec::new(),
-    };
-    candidates
+    }
 }
 
 fn find_nested_header(roots: &[PathBuf], filename: &str) -> Option<PathBuf> {
@@ -1127,20 +1033,13 @@ fn extract_dependency_archive(archive: &Path, destination: &Path) -> Result<(), 
             }
         }
         Some("xz") => {
-            let output = Command::new("tar")
-                .arg("-xJf")
-                .arg(archive)
-                .arg("-C")
-                .arg(destination)
-                .output()
-                .map_err(|error| {
-                    GenerateError::DependencyHeaders(format!("could not start tar: {error}"))
-                })?;
-            if !output.status.success() {
-                return Err(GenerateError::DependencyHeaders(
-                    String::from_utf8_lossy(&output.stderr).into_owned(),
-                ));
-            }
+            let file = std::fs::File::open(archive)
+                .map_err(|error| GenerateError::DependencyHeaders(error.to_string()))?;
+            let decoder = lzma_rust2::XzReader::new(std::io::BufReader::new(file), true);
+            // `unpack` refuses entries that would land outside `destination`.
+            tar::Archive::new(decoder)
+                .unpack(destination)
+                .map_err(|error| GenerateError::DependencyHeaders(error.to_string()))?;
         }
         Some(extension) => {
             return Err(GenerateError::DependencyHeaders(format!(
@@ -1644,14 +1543,14 @@ mod tests {
             "set(DISSECTOR_PUBLIC_HEADERS\n proto.h\n)\n",
         );
         scratch.write("epan/dissectors/proto.h", "/* dissector API */\n");
-        let output = scratch.0.join("generated/libwireshark.h");
+        let output_dir = scratch.0.join("generated");
 
         let generated = generate_public_header(&PublicHeaderConfig {
             source_dir: scratch.0.clone(),
             architecture: "aarch64".to_owned(),
             target_os: "windows".to_owned(),
             dependency_include_dirs: vec![scratch.0.join("deps")],
-            output: output.clone(),
+            output_dir: output_dir.clone(),
             dll: None,
             filtered_output: None,
             llvm_readobj: OsString::from("llvm-readobj"),
@@ -1659,19 +1558,51 @@ mod tests {
         .expect("generate public umbrella");
 
         assert_eq!(generated.version.as_deref(), Some("4.6.9"));
-        assert_eq!(generated.header_count, 4);
-        let umbrella = fs::read_to_string(output).expect("read generated umbrella");
+        assert_eq!(generated.header_count, 3);
+        assert_eq!(
+            generated.wireshark_header,
+            output_dir.join("wireshark-4-6.h")
+        );
+        assert_eq!(
+            generated.dependency_header,
+            output_dir.join("deps-windows-aarch64.h")
+        );
+        let umbrella = fs::read_to_string(&generated.wireshark_header).expect("read bundle");
+        let deps = fs::read_to_string(&generated.dependency_header).expect("read deps");
         assert!(umbrella.contains("#define VERSION \"4.6.9\""));
         assert!(umbrella.contains("#define WIRESHARK_VERSION_MAJOR 4"));
         assert!(!umbrella.contains("#include \"config.h\""));
         assert!(umbrella.contains("/* packet API */"));
         assert!(umbrella.contains("typedef int nested_type;"));
-        assert!(umbrella.contains("typedef unsigned long gsize;"));
-        assert!(umbrella.contains("typedef unsigned int gpg_error_t;"));
+        assert!(
+            !umbrella.contains("gsize"),
+            "dependencies stay out of the release-line bundle"
+        );
+        assert!(deps.contains("typedef unsigned long gsize;"));
+        assert!(deps.contains("typedef unsigned int gpg_error_t;"));
+        assert!(!deps.contains("#include <glib/gtypes.h>"));
         assert!(!umbrella.contains("#include <glib.h>"));
         assert!(!umbrella.contains("#include <gcrypt.h>"));
-        assert!(umbrella.contains("/* dissector API */"));
+        assert!(
+            !umbrella.contains("/* dissector API */"),
+            "unlisted dissector headers are dropped"
+        );
         assert!(!umbrella.contains("#include \"epan/packet.h\""));
+        let root = fs::canonicalize(&scratch.0).expect("canonical scratch");
+        let root = root.to_string_lossy().replace('\\', "/");
+        for marker in umbrella
+            .lines()
+            .chain(deps.lines())
+            .filter(|line| line.starts_with("/* Begin "))
+        {
+            assert!(
+                !marker.contains(':') && !marker.contains(&*root),
+                "{marker} names the build machine"
+            );
+        }
+        assert!(deps.contains("/* Begin glib.h */"));
+        assert!(deps.contains("/* Begin glib/gtypes.h */"));
+        assert!(umbrella.contains("/* Begin epan/packet.h */"));
     }
 
     #[test]

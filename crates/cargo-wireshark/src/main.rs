@@ -1,17 +1,20 @@
+extern crate alloc;
+
 use cargo_wireshark::{
-    BindingsConfig, HeaderConfig, PublicHeaderConfig, Runtime, Sdk, SdkConfig, SourceTree,
-    generate_bindings, generate_headers, generate_public_header,
+    BUNDLE_BRANCH, BindingsConfig, HeaderConfig, PublicHeaderConfig, ReleaseBundlesConfig, Runtime,
+    Sdk, SdkConfig, SourceTree, fetch_bundles, generate_bindings, generate_headers,
+    generate_public_header, generate_release_lines, publish_bundles,
 };
 use clap::{Args, Parser, Subcommand};
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "cargo-wireshark",
     about = "Wireshark plugin development tools",
-    after_help = "Environment: WIRESHARK_VERSION, WIRESHARK_DIR, WIRESHARK_SOURCE_DIR, WIRESHARK_INCLUDE_DIR, WIRESHARK_GENERATED_INCLUDE_DIR, WIRESHARK_BUILD_DIR, WIRESHARK_LIB_DIR, WIRESHARK_TSHARK, WIRESHARK_CMAKE, WIRESHARK_BINDGEN_TARGET, WIRESHARK_BINDGEN_HEADER"
+    after_help = "Environment: WIRESHARK_VERSION, WIRESHARK_DIR, WIRESHARK_SOURCE_DIR, WIRESHARK_INCLUDE_DIR, WIRESHARK_GENERATED_INCLUDE_DIR, WIRESHARK_BUILD_DIR, WIRESHARK_LIB_DIR, WIRESHARK_TSHARK, WIRESHARK_CMAKE, WIRESHARK_BINDGEN_TARGET, WIRESHARK_DEPENDENCY_INCLUDE_DIRS"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -24,9 +27,9 @@ enum WiresharkCommand {
     Doctor,
     /// Print the installed Wireshark version.
     Version,
-    /// Generate a single header containing Wireshark's source-declared public headers.
-    #[command(aliases = ["header", "generate-header", "generate-headers"])]
-    Headers(HeaderArgs),
+    /// Generate, fetch or publish the header bundles libwireshark-sys reads.
+    #[command(subcommand)]
+    Headers(HeadersCommand),
     /// Configure Wireshark's CMake project to produce generated configuration headers.
     Configure(ConfigureArgs),
     /// Generate Rust FFI bindings from a Wireshark header tree.
@@ -34,36 +37,80 @@ enum WiresharkCommand {
     Bindings(BindingsArgs),
 }
 
+#[derive(Debug, Subcommand)]
+enum HeadersCommand {
+    /// Generate bundles from Wireshark's stable release tags (vX.Y.0, even Y, from 3.0),
+    /// or from one source tree with --source-dir.
+    Generate(Box<GenerateArgs>),
+    /// Copy the bundles from the `headers` branch into the bundle directory.
+    Fetch(FetchArgs),
+    /// Commit the bundle directory to the local `headers` branch (does not push).
+    Publish(PublishArgs),
+}
+
 #[derive(Debug, Args)]
-struct HeaderArgs {
-    /// Wireshark source root; defaults to WIRESHARK_SOURCE_DIR or WIRESHARK_DIR.
-    #[arg(long, env = "WIRESHARK_SOURCE_DIR")]
+struct GenerateArgs {
+    /// One Wireshark source tree to generate from, instead of the release tags.
+    #[arg(long, conflicts_with_all = ["repository", "versions"])]
     source_dir: Option<PathBuf>,
-    /// Output path; defaults to the versioned header for --target-os and --arch.
-    #[arg(long)]
-    output: Option<PathBuf>,
-    /// Rust target architecture suffix; defaults to the host architecture.
-    #[arg(long, default_value_t = std::env::consts::ARCH.to_owned())]
-    arch: String,
-    /// Rust target operating system; defaults to the host operating system.
+    /// Wireshark clone; created from the upstream repository when absent.
+    #[arg(long, default_value = "wireshark-src")]
+    repository: PathBuf,
+    /// Bundle directory.
+    #[arg(long, default_value = DEFAULT_BUNDLE_DIR)]
+    output_dir: PathBuf,
+    /// Rust target operating system; defaults to the host's.
     #[arg(long, default_value_t = std::env::consts::OS.to_owned())]
     target_os: String,
-    /// Additional GLib/Gcrypt include directory; may be repeated.
-    #[arg(long = "dependency-include-dir", action = clap::ArgAction::Append)]
+    /// Rust target architecture; defaults to the host's.
+    #[arg(long, default_value_t = std::env::consts::ARCH.to_owned())]
+    arch: String,
+    /// Only this release line, such as 4.6; may be repeated.
+    #[arg(long = "version", value_name = "MAJOR.MINOR")]
+    versions: Vec<String>,
+    /// GLib/Gcrypt include directory for the target; may be repeated.
+    #[arg(long = "dependency-include-dir")]
     dependency_include_dirs: Vec<PathBuf>,
-    /// Optional Wireshark DLL to compare against source declarations.
-    #[arg(long)]
+    /// Wireshark DLL whose exports are compared with the source declarations.
+    #[arg(long, requires = "source_dir")]
     dll: Option<PathBuf>,
-    /// Output a smaller generated header containing only public headers mentioning DLL exports.
+    /// Also write a release-line bundle limited to headers mentioning DLL exports.
     #[arg(long, requires = "dll")]
     filtered_output: Option<PathBuf>,
-    /// Optional comparison report path; defaults under .wireshark/generated when --dll is used.
-    #[arg(long, requires = "dll")]
-    report_output: Option<PathBuf>,
-    /// LLVM object reader executable used for DLL export inspection.
+    /// Where the export comparison report goes.
+    #[arg(
+        long,
+        requires = "dll",
+        default_value = "libwireshark-export-comparison.md"
+    )]
+    report_output: PathBuf,
+    /// LLVM object reader used to read DLL exports.
     #[arg(long, default_value = "llvm-readobj")]
     llvm_readobj: OsString,
 }
+
+#[derive(Debug, Args)]
+struct FetchArgs {
+    /// Remote holding the `headers` branch.
+    #[arg(long, default_value = "origin")]
+    remote: String,
+    /// Bundle directory.
+    #[arg(long, default_value = DEFAULT_BUNDLE_DIR)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct PublishArgs {
+    /// Bundle directory.
+    #[arg(long, default_value = DEFAULT_BUNDLE_DIR)]
+    output_dir: PathBuf,
+    /// Commit message.
+    #[arg(short, long, default_value = "chore: regenerate header bundles")]
+    message: String,
+}
+
+/// Where libwireshark-sys looks for bundles, relative to the repository root.
+const DEFAULT_BUNDLE_DIR: &str = "crates/libwireshark-sys/headers";
 
 #[derive(Debug, Args)]
 struct ConfigureArgs {
@@ -89,21 +136,15 @@ struct BindingsArgs {
     /// CMake build directory containing config.h.
     #[arg(long, env = "WIRESHARK_GENERATED_INCLUDE_DIR")]
     generated_include_dir: Option<PathBuf>,
-    /// C header passed to bindgen; defaults to the checked-in header for the source version.
+    /// C header passed to bindgen.
     #[arg(long)]
-    header: Option<PathBuf>,
+    header: PathBuf,
     /// Output Rust file; defaults to .wireshark/generated/bindings.rs.
     #[arg(long, default_value = ".wireshark/generated/bindings.rs")]
     output: PathBuf,
     /// clang target triple; defaults to WIRESHARK_BINDGEN_TARGET when set.
     #[arg(long, env = "WIRESHARK_BINDGEN_TARGET")]
     target: Option<String>,
-    /// Rust target architecture used to select the versioned header; defaults to --target or host.
-    #[arg(long)]
-    arch: Option<String>,
-    /// Rust target operating system used to select the versioned header; defaults to --target or host.
-    #[arg(long)]
-    target_os: Option<String>,
     /// Additional clang argument; may be repeated for dependency include paths or defines.
     #[arg(long = "clang-arg", value_name = "ARG")]
     clang_args: Vec<OsString>,
@@ -114,9 +155,53 @@ fn main() -> ExitCode {
     match cli.command {
         WiresharkCommand::Doctor => diagnostics(false),
         WiresharkCommand::Version => diagnostics(true),
-        WiresharkCommand::Headers(args) => run_headers(args),
+        WiresharkCommand::Headers(command) => run_headers(command),
         WiresharkCommand::Configure(args) => run_configure(args),
         WiresharkCommand::Bindings(args) => run_bindings(args),
+    }
+}
+
+fn run_headers(command: HeadersCommand) -> ExitCode {
+    let result = match command {
+        HeadersCommand::Generate(args) if args.source_dir.is_some() => {
+            return run_source_headers(args);
+        }
+        HeadersCommand::Generate(args) => {
+            let mut config = ReleaseBundlesConfig::new(
+                args.repository,
+                args.output_dir.clone(),
+                args.target_os,
+                args.arch,
+            );
+            config.versions = args.versions;
+            config.dependency_include_dirs = args.dependency_include_dirs;
+            generate_release_lines(&config).map(|lines| {
+                for line in lines {
+                    println!("Generated Wireshark {}.{} from {}.", line.major, line.minor, line.tag);
+                }
+            })
+        }
+        HeadersCommand::Fetch(args) => {
+            fetch_bundles(Path::new("."), &args.remote, &args.output_dir).map(|count| {
+                println!("Copied {count} bundles from {}/{BUNDLE_BRANCH} into {}.", args.remote, args.output_dir.display());
+            })
+        }
+        HeadersCommand::Publish(args) => {
+            publish_bundles(Path::new("."), &args.output_dir, &args.message).map(|committed| {
+                if committed {
+                    println!("Committed the bundles to {BUNDLE_BRANCH}; push with `git push origin {BUNDLE_BRANCH}`.");
+                } else {
+                    println!("{BUNDLE_BRANCH} already matches {}.", args.output_dir.display());
+                }
+            })
+        }
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("cargo-wireshark: {error}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -184,43 +269,21 @@ fn diagnostics(version_only: bool) -> ExitCode {
     }
 }
 
-fn run_headers(args: HeaderArgs) -> ExitCode {
-    let Some(source_dir) = args.source_dir.or_else(source_dir_from_env) else {
-        eprintln!(
-            "cargo-wireshark: set --source-dir or WIRESHARK_SOURCE_DIR to a Wireshark source checkout"
-        );
-        return ExitCode::FAILURE;
-    };
-    let Some(output) = args.output.or_else(|| {
-        SourceTree::inspect(source_dir.clone())
-            .and_then(|tree| tree.version)
-            .as_deref()
-            .and_then(|version| version_header_path(version, &args.target_os, &args.arch))
-    }) else {
-        eprintln!(
-            "cargo-wireshark: could not determine a valid versioned output path; pass --output"
-        );
-        return ExitCode::FAILURE;
-    };
+fn run_source_headers(args: Box<GenerateArgs>) -> ExitCode {
+    let source_dir = args.source_dir.expect("called with --source-dir");
     let config = PublicHeaderConfig {
         source_dir,
         architecture: args.arch,
         target_os: args.target_os,
         dependency_include_dirs: args.dependency_include_dirs,
-        output,
+        output_dir: args.output_dir,
         dll: args.dll,
         filtered_output: args.filtered_output,
         llvm_readobj: args.llvm_readobj,
     };
     match generate_public_header(&config) {
         Ok(header) => {
-            let report_output = if header.export_count.is_some() {
-                Some(args.report_output.unwrap_or_else(|| {
-                    PathBuf::from(".wireshark/generated/libwireshark-export-comparison.md")
-                }))
-            } else {
-                None
-            };
+            let report_output = header.export_count.is_some().then_some(args.report_output);
             if let Some(report_path) = &report_output
                 && let Err(error) = write_export_report(report_path, &header)
             {
@@ -228,10 +291,11 @@ fn run_headers(args: HeaderArgs) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!(
-                "Generated a public-header umbrella for Wireshark {} ({} headers) at {}.",
+                "Generated Wireshark {} headers ({} public headers) at {} and {}.",
                 header.version.as_deref().unwrap_or("unknown-version"),
                 header.header_count,
-                header.output.display()
+                header.wireshark_header.display(),
+                header.dependency_header.display()
             );
             if let Some(filtered) = &header.filtered_output {
                 println!(
@@ -296,7 +360,7 @@ fn write_export_report(
         header.matched_exports,
         header.unmatched_exports,
     );
-    let mut non_public_headers = std::collections::BTreeMap::<PathBuf, Vec<&str>>::new();
+    let mut non_public_headers = alloc::collections::BTreeMap::<PathBuf, Vec<&str>>::new();
     for (symbol, files) in &header.missing_public_headers {
         for file in files {
             non_public_headers
@@ -430,47 +494,7 @@ fn run_bindings(args: BindingsArgs) -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
-    let header = match args.header {
-        Some(header) => header,
-        None => {
-            let Some(version) =
-                SourceTree::inspect(source_dir.clone()).and_then(|tree| tree.version)
-            else {
-                eprintln!(
-                    "cargo-wireshark: could not determine the source tree version; pass --header explicitly"
-                );
-                return ExitCode::FAILURE;
-            };
-            let architecture = args
-                .arch
-                .as_deref()
-                .or_else(|| {
-                    args.target
-                        .as_deref()
-                        .and_then(|target| target.split('-').next())
-                })
-                .unwrap_or(std::env::consts::ARCH);
-            let target_os = args
-                .target_os
-                .as_deref()
-                .or_else(|| args.target.as_deref().and_then(target_os_from_triple))
-                .unwrap_or(std::env::consts::OS);
-            let Some(header) = version_header_path(&version, target_os, architecture) else {
-                eprintln!(
-                    "cargo-wireshark: invalid source version {version}; pass --header explicitly"
-                );
-                return ExitCode::FAILURE;
-            };
-            if !header.is_file() {
-                eprintln!(
-                    "cargo-wireshark: no checked-in public-header umbrella for {version}: {}; generate it with scripts/generate-version-headers.ps1 or pass --header",
-                    header.display()
-                );
-                return ExitCode::FAILURE;
-            }
-            header
-        }
-    };
+    let header = args.header;
     let config = BindingsConfig {
         source_dir,
         generated_include_dir,
@@ -510,39 +534,6 @@ fn source_dir_from_env() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn version_header_path(version: &str, target_os: &str, architecture: &str) -> Option<PathBuf> {
-    let mut parts = version.split('.');
-    let major = parts.next()?;
-    let minor = parts.next()?;
-    if !major.bytes().all(|byte| byte.is_ascii_digit())
-        || !minor.bytes().all(|byte| byte.is_ascii_digit())
-        || !matches!(target_os, "windows" | "linux" | "macos")
-        || architecture.is_empty()
-        || !architecture
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-    {
-        return None;
-    }
-    Some(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../libwireshark-sys/headers")
-            .join(format!("{major}-{minor}-{target_os}-{architecture}.h")),
-    )
-}
-
-fn target_os_from_triple(target: &str) -> Option<&'static str> {
-    if target.contains("windows") {
-        Some("windows")
-    } else if target.contains("linux") {
-        Some("linux")
-    } else if target.contains("apple-darwin") {
-        Some("macos")
-    } else {
-        None
-    }
-}
-
 fn cargo_args() -> Vec<OsString> {
     let mut args = std::env::args_os();
     let program = args
@@ -560,44 +551,11 @@ fn cargo_args() -> Vec<OsString> {
 
 #[cfg(test)]
 mod tests {
-    use super::version_header_path;
+    use super::Cli;
+    use clap::CommandFactory;
 
     #[test]
-    fn versioned_header_path_contains_version_os_and_target_architecture() {
-        let path = version_header_path("4.6.9", "windows", "aarch64").expect("valid header path");
-        assert_eq!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some("4-6-windows-aarch64.h")
-        );
-    }
-
-    #[test]
-    fn versioned_header_path_rejects_path_components_in_architecture() {
-        assert!(version_header_path("4.6.9", "windows", "../x86_64").is_none());
-    }
-
-    #[test]
-    fn operating_system_and_architecture_select_distinct_bundles() {
-        let windows = version_header_path("4.6.9", "windows", "x86_64").unwrap();
-        let linux = version_header_path("4.6.9", "linux", "x86_64").unwrap();
-        assert_ne!(windows, linux);
-        assert_eq!(windows.file_name().unwrap(), "4-6-windows-x86_64.h");
-        assert_eq!(linux.file_name().unwrap(), "4-6-linux-x86_64.h");
-    }
-
-    #[test]
-    fn target_triples_select_supported_operating_systems() {
-        assert_eq!(
-            super::target_os_from_triple("x86_64-unknown-linux-gnu"),
-            Some("linux")
-        );
-        assert_eq!(
-            super::target_os_from_triple("x86_64-pc-windows-msvc"),
-            Some("windows")
-        );
-        assert_eq!(
-            super::target_os_from_triple("aarch64-apple-darwin"),
-            Some("macos")
-        );
+    fn the_command_line_definition_is_consistent() {
+        Cli::command().debug_assert();
     }
 }
