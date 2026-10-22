@@ -70,6 +70,8 @@ fn main() {
     let (major, minor) = version_pair(&version).unwrap_or_else(|| {
         panic!("invalid Wireshark version '{version}'; expected major.minor[.patch]")
     });
+    // `DEP_WIRESHARK_VERSION` for dependents' build scripts.
+    println!("cargo:version={major}.{minor}");
 
     let header = match env::var_os("WIRESHARK_BINDGEN_HEADER") {
         Some(header) => {
