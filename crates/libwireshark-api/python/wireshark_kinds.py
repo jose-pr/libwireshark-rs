@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from guatiao import Map
-from guatiao.kinds import I64, U64, KindProtocol, Lent, MapAnswer, fallible, required
+from guatiao.kinds import I64, U64, KindProtocol, Lent, ListAnswer, MapAnswer, fallible, required
 
 
 class Packet(KindProtocol, Protocol, kind="wireshark_packet", floor_hash=2387250941, is_object=True):
@@ -60,13 +60,16 @@ class Packet(KindProtocol, Protocol, kind="wireshark_packet", floor_hash=2387250
     def dst_port(self) -> I64: ...
 
 
-class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=3883230505):
+class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1003939949):
     """`wireshark_dissector_vtable`: a protocol and its dissection.
 
     `describe` answers the protocol as a map (the crate's `Description`);
-    `dissect` answers the bytes it took, 0 to decline; `message_len`, for a
-    protocol framed over TCP, a message's whole length from its header, or
-    -1 when the header is not this protocol's.
+    `dissect_on` the bindings for these preference values, a list of
+    `Binding` maps; `dissect` the bytes it took, 0 to decline, given the
+    header the host decoded and the preference values; `message_len`, for
+    a protocol framed over TCP, a message's whole length from its header, or
+    -1 when the header is not this protocol's. `ProtocolDissector` in
+    `wireshark_dissector` writes all of it from typed classes.
     """
 
     @required
@@ -75,6 +78,12 @@ class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=3
 
     @required
     @fallible
-    def dissect(self, data: bytes, packet: Lent[Packet], conversation: Lent[Map]) -> I64: ...
+    def dissect_on(self, preferences: Map) -> ListAnswer: ...
+
+    @required
+    @fallible
+    def dissect(
+        self, data: bytes, header: Map, preferences: Map, packet: Lent[Packet], conversation: Lent[Map]
+    ) -> I64: ...
 
     def message_len(self, header: bytes) -> I64: ...

@@ -8,29 +8,60 @@ extern crate alloc;
 /// through this path so both sides use one copy.
 pub use guatiao;
 
-use alloc::string::String;
-use alloc::vec::Vec;
+mod model;
+mod typed;
+
+pub use model::{
+    Base, Binding, Description, Expert, ExpertGroup, Field, FieldType, NamedValue, Preference,
+    PreferenceType, Severity,
+};
+pub use typed::{
+    ExpertInfo, NoHeader, NoPreferences, PacketExt, ProtocolDissector, header_fields,
+    preference_list,
+};
+
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::typed::read;
+}
+
 use guatiao::library::ProviderError;
-use guatiao::{FromValue, Map, Schema, ToValue};
+use guatiao::{List, Map};
 
 /// A protocol a provider dissects: `wireshark_dissector`.
 ///
-/// The host asks for [`describe`](Self::describe) once, registers the
-/// protocol it answers, and calls [`dissect`](Self::dissect) for every
-/// packet that reaches it, on Wireshark's dissection thread.
+/// The host asks for [`describe`](Self::describe) once and registers the
+/// protocol, its header fields and its preferences. Each time Wireshark
+/// applies preferences it asks [`dissect_on`](Self::dissect_on) where the
+/// protocol gets packets, and for every packet that reaches it calls
+/// [`dissect`](Self::dissect), on Wireshark's dissection thread.
+///
+/// A Rust provider usually implements [`ProtocolDissector`] instead, whose
+/// header and preferences are typed structs, and writes
+/// [`dissector!`](crate::dissector) to implement this kind from it.
 #[guatiao::kind(name = "wireshark_dissector")]
 pub trait Dissector: Send + Sync {
     /// The protocol, as a map in the shape of [`Description`].
     fn describe(&self) -> Result<Map, ProviderError>;
 
-    /// Dissects one packet (or one framed message): `data` is its captured
-    /// bytes, `packet` where fields and columns go, and `conversation` the
-    /// state this protocol keeps for the packet's conversation, empty the
-    /// first time and kept as left. Answers the bytes taken; 0 declines,
-    /// and a declining dissector adds nothing to `packet` first.
+    /// Where the protocol gets packets for these preference values (a map
+    /// keyed by preference name): a list of [`Binding`] maps.
+    fn dissect_on(&self, preferences: &Map) -> Result<List, ProviderError>;
+
+    /// Dissects one packet (or one framed message).
+    ///
+    /// `data` is its captured bytes; `header` the description's header
+    /// fields decoded from them (those `data` holds whole), by abbreviation;
+    /// `preferences` the current values; `packet` where fields and columns
+    /// go; `conversation` the state this protocol keeps for the packet's
+    /// conversation, empty the first time and kept as left. Answers the
+    /// bytes taken: 0 declines, and a declining dissector adds nothing to
+    /// `packet` first. On accepting, the host adds the header fields.
     fn dissect(
         &self,
         data: &[u8],
+        header: &Map,
+        preferences: &Map,
         packet: &mut dyn Packet,
         conversation: &mut Map,
     ) -> Result<i64, ProviderError>;
@@ -96,205 +127,4 @@ pub trait Packet: Send {
 
     /// The destination port of the packet's transport, 0 when it has none.
     fn dst_port(&self) -> i64;
-}
-
-/// What [`Dissector::describe`] answers: a protocol, its fields, expert
-/// findings and where it gets packets.
-#[derive(Clone, Debug, Default, PartialEq, ToValue, FromValue, Schema)]
-pub struct Description {
-    /// The tree label, such as "Foo Protocol".
-    pub name: String,
-    /// The Protocol column, such as "FOO".
-    pub short_name: String,
-    /// The display filter name, such as "foo": the prefix of every field
-    /// and finding.
-    pub filter_name: String,
-    /// Registered fields.
-    #[map(default)]
-    pub fields: Vec<Field>,
-    /// Expert findings.
-    #[map(default)]
-    pub experts: Vec<Expert>,
-    /// Where the protocol gets packets.
-    #[map(default)]
-    pub bindings: Vec<Binding>,
-    /// For messages framed over TCP: the fixed header length
-    /// [`Dissector::message_len`] reads a message's length from.
-    pub tcp_header_len: Option<u32>,
-}
-
-/// One registered field.
-#[derive(Clone, Debug, PartialEq, ToValue, FromValue, Schema)]
-pub struct Field {
-    /// The abbreviation below the protocol's filter name, such as "version".
-    pub abbrev: String,
-    /// The label in the tree.
-    pub name: String,
-    /// What the field holds.
-    #[map(rename = "type")]
-    pub kind: FieldType,
-    /// How an integer is shown.
-    pub base: Option<Base>,
-    /// The bits of the integer this field covers.
-    pub bitmask: Option<u64>,
-    /// A sentence describing the field.
-    pub blurb: Option<String>,
-    /// Names for an integer field's values (up to 32 bits).
-    #[map(default)]
-    pub values: Vec<NamedValue>,
-}
-
-/// What a field holds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ToValue, FromValue, Schema)]
-#[map(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum FieldType {
-    U8,
-    U16,
-    U24,
-    U32,
-    U64,
-    I8,
-    I16,
-    I24,
-    I32,
-    I64,
-    Bool,
-    Bytes,
-    String,
-    Ipv4,
-    Ipv6,
-    Ether,
-    /// A label with no value.
-    None,
-}
-
-/// How an integer field is shown.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ToValue, FromValue, Schema)]
-#[map(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum Base {
-    Dec,
-    Hex,
-    Oct,
-    DecHex,
-    HexDec,
-}
-
-/// A name for one value of an integer field.
-#[derive(Clone, Debug, PartialEq, ToValue, FromValue, Schema)]
-pub struct NamedValue {
-    /// The value.
-    pub value: u32,
-    /// Its name.
-    pub name: String,
-}
-
-/// An expert finding the protocol may report.
-#[derive(Clone, Debug, PartialEq, ToValue, FromValue, Schema)]
-pub struct Expert {
-    /// The abbreviation below the protocol's filter name.
-    pub abbrev: String,
-    /// What it is about.
-    pub group: ExpertGroup,
-    /// How bad it is.
-    pub severity: Severity,
-    /// The text reported unless the dissector gives its own.
-    pub summary: String,
-}
-
-/// What an expert finding is about.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ToValue, FromValue, Schema)]
-#[map(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum ExpertGroup {
-    Checksum,
-    Sequence,
-    ResponseCode,
-    RequestCode,
-    Undecoded,
-    Reassemble,
-    Malformed,
-    Debug,
-    Protocol,
-    Security,
-    Comments,
-    Decryption,
-    Assumption,
-    Deprecated,
-}
-
-/// How bad an expert finding is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ToValue, FromValue, Schema)]
-#[map(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum Severity {
-    Comment,
-    Chat,
-    Note,
-    Warn,
-    Error,
-}
-
-/// One way the protocol gets packets.
-#[derive(Clone, Debug, PartialEq, ToValue, FromValue, Schema)]
-#[map(tag = "on")]
-#[map(rename_all = "snake_case")]
-pub enum Binding {
-    /// Packets where the integer table `table` (such as "udp.port") has `value`.
-    Table {
-        /// The table's name.
-        table: String,
-        /// The value.
-        value: u32,
-    },
-    /// Every packet of the heuristic list `list` (such as "udp") no table claimed.
-    Heuristic {
-        /// The list's name.
-        list: String,
-    },
-    /// Every frame, after all other dissection.
-    Postdissector,
-}
-
-impl Field {
-    /// A field with no base, bitmask, blurb or named values.
-    pub fn new(abbrev: impl Into<String>, name: impl Into<String>, kind: FieldType) -> Self {
-        Self {
-            abbrev: abbrev.into(),
-            name: name.into(),
-            kind,
-            base: None,
-            bitmask: None,
-            blurb: None,
-            values: Vec::new(),
-        }
-    }
-}
-
-impl Description {
-    /// The description as the map [`Dissector::describe`] answers.
-    ///
-    /// # Errors
-    ///
-    /// When the value cannot be built (an allocation failed).
-    pub fn to_map(&self) -> Result<Map, ProviderError> {
-        Map::from_value(&self.to_value()?).map_err(refused)
-    }
-
-    /// The description a [`Dissector::describe`] map holds.
-    ///
-    /// # Errors
-    ///
-    /// When the map is not in this shape; the error names the key.
-    pub fn from_map(map: &Map) -> Result<Self, ProviderError> {
-        Self::from_value(&map.to_value()?).map_err(refused)
-    }
-}
-
-fn refused(error: guatiao::MapError) -> ProviderError {
-    ProviderError::new(
-        guatiao::Status::GUATIAO_ERR_BAD_VALUE,
-        &alloc::format!("{error}"),
-    )
 }

@@ -49,11 +49,17 @@
 typedef struct wireshark_dissector_vtable {
   guatiao_kind_header header;
   guatiao_status (*describe)(void *ctx, guatiao_map *out, guatiao_provider_error *err);
+  guatiao_status (*dissect_on)(void *ctx,
+                               const guatiao_map *preferences,
+                               guatiao_list *out,
+                               guatiao_provider_error *err);
   /*
    Lent for the call, not handed over: `conversation`.
    */
   guatiao_status (*dissect)(void *ctx,
                             guatiao_bytes data,
+                            const guatiao_map *header,
+                            const guatiao_map *preferences,
                             const guatiao_object *packet,
                             guatiao_map *conversation,
                             int64_t *out,
@@ -65,7 +71,7 @@ typedef struct wireshark_dissector_vtable {
  literal, so a C header generator can render it: what a C
  implementation writes into the table's header.
  */
-#define wireshark_dissector_vtable_FLOOR_HASH 3883230505
+#define wireshark_dissector_vtable_FLOOR_HASH 1003939949
 
 /*
  The kind's function table: a header, then one slot per method,
