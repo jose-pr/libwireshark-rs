@@ -72,13 +72,18 @@ jobs:
         run: brew install wireshark
       - name: Install Wireshark (Windows)
         if: runner.os == 'Windows'
-        run: choco install wireshark --no-progress -y
+        run: |
+          choco install wireshark --no-progress -y
+          # The engine's tests load libwireshark into their own process.
+          "C:\Program Files\Wireshark" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Fetch the header bundles
         run: cargo run -p cargo-wireshark -- wireshark headers fetch
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-features
       - name: Load the example plugins in tshark
         run: cargo test -p libwireshark --all-features --test tshark -- --ignored
+      - name: Dissect in this process with the engine
+        run: cargo test -p libwireshark-engine --all-features --test engine -- --ignored
       # The guatiao host's providers: Rust, C (compiled by the test) and
       # Python, through guatiao's Python bridge, built from the revision the
       # workspace pins, against this job's Python.
@@ -98,11 +103,25 @@ jobs:
           git clone --filter=blob:none https://github.com/Boriken-Dev/guatiao "$RUNNER_TEMP/guatiao"
           git -C "$RUNNER_TEMP/guatiao" checkout "$rev"
           PYO3_PYTHON="$(python -c "import sys; print(sys.executable)")" cargo build --manifest-path "$RUNNER_TEMP/guatiao/crates/guatiao-py/Cargo.toml"
+          cargo build --manifest-path "$RUNNER_TEMP/guatiao/Cargo.toml" -p guatiao --features load
           echo "LIBWIRESHARK_TEST_GUATIAO=$RUNNER_TEMP/guatiao" >> "$GITHUB_ENV"
+          echo "GUATIAO_LIBRARY=$RUNNER_TEMP/guatiao/target/debug" >> "$GITHUB_ENV"
       - name: Load dissectors from Rust, C and Python through the guatiao host
         env:
           LIBWIRESHARK_TEST_REQUIRE_ALL: "1"
         run: cargo test -p libwireshark-guatiao --test tshark -- --ignored
+      # The engine as a guatiao provider, driven by the Python package with
+      # the example plugins and the guatiao host loaded.
+      - name: Run Wireshark from Python
+        shell: bash
+        run: |
+          cargo build -p libwireshark-engine --features provider -p libwireshark-guatiao -p guatiao-rust-provider -p basic-dissector
+          case "$RUNNER_OS" in
+            Windows) engine="$(cygpath -w "$PWD/target/debug/libwireshark_engine.dll")" ;;
+            macOS) engine="$PWD/target/debug/liblibwireshark_engine.dylib" ;;
+            *) engine="$PWD/target/debug/liblibwireshark_engine.so" ;;
+          esac
+          LIBWIRESHARK_ENGINE="$engine" python -m pytest -q -rs bindings/python/tests/test_engine.py
 
   # The runtime type-checks against every release line's bindings.
   release-lines:
@@ -123,6 +142,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
       - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec -p runtime-protocol -p libwireshark-guatiao
+      - run: cargo check -p libwireshark-engine --all-features --all-targets
 
   docs:
     name: Docs
