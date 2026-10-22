@@ -24,7 +24,8 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 The [examples](examples) are plugins: `basic-dissector` (one protocol with
 fields and a port preference), `multi-protocol` (two protocols in one
 library) and `stream-protocol` (TCP reassembly, conversation state, named
-values and expert findings; a heuristic dissector; a post-dissector).
+values and expert findings; a heuristic dissector; a post-dissector; two
+`tshark -z` statistics).
 
 ## Installation
 

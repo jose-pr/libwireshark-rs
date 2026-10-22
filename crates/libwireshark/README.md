@@ -25,8 +25,10 @@ the [API documentation](https://docs.rs/libwireshark).
   for you, plus a generated `decode(&[u8])`.
 - `#[derive(Preferences)]`: protocol preferences from a struct; the dissector
   receives the current values as that struct.
+- `Tap`: statistics over Wireshark's taps or values your protocols
+  publish, run by `tshark -z <name>[,<filter>]`.
 - `plugin!`: exports what Wireshark's loader reads, for one or more
-  protocols.
+  protocols and taps.
 - The runtime sets the Protocol column and adds the protocol's own tree item,
   so `-Y <protocol>` filters work.
 
@@ -147,6 +149,7 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 | `PacketView`, `Encoding`, `PacketFieldError` | one packet during dissection |
 | `Header`, `FieldInfo`, `FieldType`, `Base`, `NoHeader` | registered fields |
 | `prefs` (`Preferences`, `PreferenceValue`, `Declaration`, `Value`) | protocol preferences |
+| `Tap`, `TapPacket` | tap listeners (`tshark -z`) |
 | `plugin!` | the plugin's exported entry points |
 | `sys` | the raw `libwireshark-sys` bindings |
 

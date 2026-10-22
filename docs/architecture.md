@@ -33,8 +33,15 @@ an umbrella that includes the deps bundle first.
 
 `plugin!(A, B)` expands, in the plugin crate, to a `static` `Plugin` built
 from `Protocol::of::<A>()` and `Protocol::of::<B>()` (each a table of
-functions monomorphised for that `Dissector`), three `extern "C"` callbacks
-that forward to it, and the exports Wireshark's loader reads.
+functions monomorphised for that `Dissector`) and `TapSpec::of::<T>()` for
+each tap, the `extern "C"` callbacks C cannot give a data pointer to
+(registration, preference apply, cleanup, the heuristic entry point, tap
+registration) forwarding to it, and the exports Wireshark's loader reads.
+Callbacks that do carry a data pointer (dissection, TCP framing, taps) are
+shared by every plugin and find their state through it. Where a callback's
+C signature differs between release lines (heuristic and tap results, the
+tap packet callback's flags), the runtime picks its function from the
+binding's function-pointer type.
 
 ```mermaid
 flowchart TD

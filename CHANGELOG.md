@@ -32,6 +32,9 @@ First release of the crates under these names.
   (`Dissector::EXPERTS`, `PacketView::add_expert`), named values
   (`FieldInfo::with_values`, `#[header(values = ...)]`) and `bool`,
   byte-array, MAC and IP address fields in `#[derive(Header)]`.
+- Tap listeners (`Tap`, `TapPacket`) offered as `tshark -z <name>[,<filter>]`,
+  over Wireshark's taps or values a protocol publishes with
+  `PacketView::tap`.
 - A protocol whose names Wireshark already has is skipped instead of
   aborting Wireshark.
 - Three example plugins, and tests that load them in tshark.

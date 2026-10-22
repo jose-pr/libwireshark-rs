@@ -24,12 +24,14 @@ with this crate needs none.
 
 ```rust
 libwireshark::plugin!(DissectorA, DissectorB);
-libwireshark::plugin!(version = "1.2.0", dissectors = [DissectorA, DissectorB]);
+libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA, TapB]);
+libwireshark::plugin!(version = "1.2.0", dissectors = [DissectorA, DissectorB], taps = [TapA]);
 ```
 
 Write it once, at the root of a `cdylib` crate. It defines `#[no_mangle]`
 `plugin_version` (the crate's `CARGO_PKG_VERSION` unless given),
-`plugin_want_major`, `plugin_want_minor`, `plugin_describe` (dissector) and
+`plugin_want_major`, `plugin_want_minor`, `plugin_describe` (dissector, plus
+tap listener when there are taps) and
 `plugin_register`, and a static holding the plugin's registration state. A
 plugin crate can be `#![forbid(unsafe_code)]`.
 
@@ -131,6 +133,7 @@ fn is_first_pass(&self) -> bool;                  // false when Wireshark dissec
 fn is_postdissector(&self) -> bool;
 fn with_conversation<T: Default + Send + 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R)
     -> Option<R>;                                 // per conversation, protocol and type
+fn tap<T: Any + Send>(&mut self, value: T);     // to the tap named FILTER_NAME
 fn add_expert(&mut self, name: &str) -> Result<(), PacketFieldError>;
 fn add_expert_text(&mut self, name: &str, text: &str) -> Result<(), PacketFieldError>;
 fn add_item(&mut self, field: &str, offset: usize, length: usize, encoding: Encoding)
@@ -156,6 +159,35 @@ fn add_header<H: Header>(&mut self, header: &H) -> Result<(), PacketFieldError>;
 - `add_expert(name)` reports a finding declared in `Dissector::EXPERTS`
   (`name` with or without the `<FILTER_NAME>.` prefix) on the protocol's
   item; `add_expert_text` replaces its summary.
+
+## Taps
+
+```rust
+pub trait Tap: Default + Send + 'static {
+    const NAME: &'static str;   // tshark -z NAME   or   -z NAME,FILTER
+    const TAP: &'static str;    // "frame", "udp", "ip", ... or a FILTER_NAME of this plugin
+    fn packet(&mut self, packet: &TapPacket<'_>);
+    fn draw(&self) -> String;   // printed when the capture ends
+    fn reset(&mut self) { *self = Self::default(); }
+}
+
+impl TapPacket<'_> {
+    fn frame_number(&self) -> u32;
+    fn len(&self) -> u32;                    // frame length on the wire
+    fn is_empty(&self) -> bool;
+    fn time(&self) -> core::time::Duration;  // since the Unix epoch
+    fn src_port(&self) -> u32; fn dst_port(&self) -> u32;
+    fn source(&self) -> String; fn destination(&self) -> String; // addresses as shown
+    fn data<T: 'static>(&self) -> Option<&T>; // what PacketView::tap published
+}
+```
+
+- Each `-z` invocation starts a listener with `T::default()`; an invalid
+  filter or tap name is reported on stderr and the listener is not started.
+- `data` is `Some` only on a tap named like a protocol of the same plugin,
+  for values of type `T` that protocol published with `PacketView::tap` in
+  the same frame.
+- `draw` output goes to stdout after C's buffered stdout is flushed.
 
 ## Expert info
 
