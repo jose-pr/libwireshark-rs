@@ -211,7 +211,11 @@ pub(crate) unsafe extern "C" fn postdissector(
 }
 
 /// `tcp_dissect_pdus`' length callback: the length of the message starting
-/// at `offset`, from its fixed header; 0 when it cannot be read.
+/// at `offset`, from its fixed header. When the protocol cannot say (or
+/// says less than the header), the rest of the segment: answering 0 would
+/// wait for more data forever, and less than the header makes Wireshark
+/// throw. The dissector then sees that rest as one message, and may
+/// decline it.
 unsafe extern "C" fn message_len(
     _pinfo: *mut sys::packet_info,
     tvb: *mut sys::tvbuff_t,
@@ -232,11 +236,19 @@ unsafe extern "C" fn message_len(
             }
             core::slice::from_raw_parts(bytes, header_size)
         };
-        c_uint::try_from(shared.imp.message_len(header)?).ok()
+        let len = shared
+            .imp
+            .message_len(header)
+            .filter(|&len| len >= header_size)?;
+        c_uint::try_from(len).ok()
     }))
     .ok()
     .flatten()
-    .unwrap_or(0)
+    .unwrap_or_else(|| {
+        // SAFETY: `tvb` is the segment `tcp_dissect_pdus` is splitting.
+        let rest = unsafe { sys::tvb_reported_length_remaining(tvb, offset) };
+        c_uint::try_from(rest).unwrap_or(0)
+    })
 }
 
 /// `tcp_dissect_pdus`' message callback: one whole message in its own buffer.

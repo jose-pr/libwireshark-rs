@@ -522,7 +522,11 @@ impl<'packet> PacketView<'packet> {
         length: usize,
         encoding: Encoding,
     ) -> Result<(), PacketFieldError> {
-        let id = self.protocol.field(field)?.id;
+        let registered = self.protocol.field(field)?;
+        let id = registered.id;
+        if !length_fits(registered.kind, length) {
+            return Err(PacketFieldError::WrongLength);
+        }
         let (offset, length) = self.range(offset, length)?;
         let tree = self.tree()?;
         // SAFETY: the field is registered, the range is captured, and the
@@ -683,6 +687,20 @@ impl<'packet> PacketView<'packet> {
     }
 }
 
+/// Whether Wireshark takes `length` bytes for a field of `kind`; it throws
+/// on one it does not.
+fn length_fits(kind: FieldType, length: usize) -> bool {
+    match kind {
+        FieldType::Ipv4 => length == 4,
+        FieldType::Ipv6 => length == 16,
+        FieldType::Ether => length == 6,
+        FieldType::Bool => (1..=8).contains(&length),
+        kind => kind
+            .width()
+            .is_none_or(|width| (1..=width).contains(&length)),
+    }
+}
+
 /// How Wireshark decodes a field's bytes, its `ENC_*` flags.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Encoding(u32);
@@ -732,6 +750,9 @@ pub enum PacketFieldError {
     OutOfBounds,
     /// The value does not fit the field's width.
     ValueOutOfRange,
+    /// The length does not fit the field's type (an integer wider than its
+    /// width or empty, an address not of its size).
+    WrongLength,
 }
 
 impl fmt::Display for PacketFieldError {
@@ -742,6 +763,7 @@ impl fmt::Display for PacketFieldError {
             Self::UnsupportedFieldType => "the field's type does not fit the operation",
             Self::OutOfBounds => "the range is outside the captured packet",
             Self::ValueOutOfRange => "the value does not fit the field's width",
+            Self::WrongLength => "the length does not fit the field's type",
         })
     }
 }

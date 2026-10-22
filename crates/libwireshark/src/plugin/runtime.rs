@@ -81,6 +81,10 @@ impl Runtime {
             cstring(spec.filter_name),
         ];
         if names_taken(&names) {
+            eprintln!(
+                "libwireshark: protocol {:?} ({}) not registered: Wireshark has one of its names",
+                spec.name, spec.filter_name
+            );
             return None;
         }
         // SAFETY: the names are retained by this runtime for the process.
@@ -286,9 +290,18 @@ impl Runtime {
         let proto = self.shared.registered.proto;
         match binding.0 {
             Target::Uint { table, value } => {
-                let table = self.retain(table);
-                // SAFETY: `handle` is live and `table` is retained.
-                unsafe { sys::dissector_add_uint(table, value, handle.as_ptr()) };
+                let name = self.retain(table);
+                // Wireshark aborts on an integer entry in a table keyed by
+                // something else.
+                if !integer_table(name) {
+                    eprintln!(
+                        "libwireshark: {}: {table:?} is not a dissector table keyed by integers",
+                        self.spec.filter_name
+                    );
+                    return;
+                }
+                // SAFETY: `handle` is live and `name` is retained.
+                unsafe { sys::dissector_add_uint(name, value, handle.as_ptr()) };
             }
             Target::Heuristic { list } => {
                 let internal = self.retain(&alloc::format!("{}_{list}", self.spec.filter_name));
@@ -383,6 +396,26 @@ impl Runtime {
 
 /// Whether Wireshark already has a protocol with one of `[name, short_name,
 /// filter_name]`, or a preference module named like the filter.
+/// Whether `name` is a dissector table keyed by an unsigned integer.
+// bindgen types C enums as i32 on Windows and u32 elsewhere.
+#[allow(clippy::unnecessary_cast)]
+fn integer_table(name: *const c_char) -> bool {
+    // SAFETY: `name` is NUL-terminated; these only look the table up.
+    unsafe {
+        if sys::find_dissector_table(name).is_null() {
+            return false;
+        }
+        let kind = sys::get_dissector_table_selector_type(name) as u32;
+        [
+            sys::ftenum_FT_UINT8 as u32,
+            sys::ftenum_FT_UINT16 as u32,
+            sys::ftenum_FT_UINT24 as u32,
+            sys::ftenum_FT_UINT32 as u32,
+        ]
+        .contains(&kind)
+    }
+}
+
 fn names_taken([name, short_name, filter_name]: &[CString; 3]) -> bool {
     // SAFETY: the names are NUL-terminated; these only look names up.
     unsafe {

@@ -179,8 +179,9 @@ pub struct TcpFraming {
 impl TcpFraming {
     /// Messages that start with `header_len` bytes, from which
     /// `message_len` reads the whole message's length, header included.
-    /// `message_len` returning `None`, or less than `header_len`, marks the
-    /// rest of the segment as not this protocol's.
+    /// When `message_len` returns `None`, or less than `header_len`, the rest
+    /// of the segment is handed to `dissect` as one message, which may
+    /// decline it.
     pub const fn new(header_len: usize, message_len: fn(&[u8]) -> Option<usize>) -> Self {
         Self {
             header_len,
