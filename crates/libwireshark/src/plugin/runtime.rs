@@ -5,11 +5,11 @@
 use super::Callbacks;
 use super::callbacks::{self, heuristic_pointer, trampoline};
 use super::preferences::{Glib, Slot};
-use super::protocol::{Erased, Protocol};
-use crate::dissector::{Binding, Target, TcpFraming};
+use super::protocol::{Erased, Implementation, Protocol};
+use crate::dissector::{Binding, Target};
 use crate::expert::Expert;
 use crate::header::{Base, FieldInfo, FieldType};
-use crate::packet::{PacketView, Registered, RegisteredExpert, RegisteredField};
+use crate::packet::{Registered, RegisteredExpert, RegisteredField};
 use crate::prefs::PreferenceMap;
 use crate::sys;
 use alloc::boxed::Box;
@@ -28,8 +28,9 @@ use std::sync::{Mutex, PoisonError};
 pub(crate) struct Shared {
     pub(crate) registered: Registered,
     pub(crate) preferences: Mutex<Option<Arc<Erased>>>,
-    pub(crate) framing: Option<TcpFraming>,
-    pub(crate) dissect: fn(&Erased, &mut PacketView<'_>) -> Option<usize>,
+    /// The header length of messages framed over TCP, if framed.
+    pub(crate) framing_header: Option<usize>,
+    pub(crate) imp: &'static dyn Implementation,
     /// Whether [`Dissector::dissect_on`](crate::Dissector::dissect_on)
     /// currently asks for the post-dissector. Wireshark cannot remove a
     /// plugin's post-dissector, so turning it off is this flag.
@@ -87,7 +88,7 @@ impl Runtime {
             sys::proto_register_protocol(names[0].as_ptr(), names[1].as_ptr(), names[2].as_ptr())
         };
 
-        let infos = (spec.fields)();
+        let infos = spec.imp.fields();
         let abbrevs = infos
             .iter()
             .map(|field| full_abbrev(spec.filter_name, field.abbrev()))
@@ -136,7 +137,9 @@ impl Runtime {
         // SAFETY: `proto` was just registered; `apply` is a static function.
         let module =
             unsafe { sys::prefs_register_protocol(proto, Some(trampoline(callbacks.apply))) };
-        let slots = (spec.declarations)()
+        let slots = spec
+            .imp
+            .declarations()
             .into_iter()
             .filter_map(|declaration| Slot::register(module, declaration, glib))
             .collect();
@@ -164,8 +167,8 @@ impl Runtime {
                 tapped: Mutex::new((0, Vec::new())),
             },
             preferences: Mutex::new(None),
-            framing: (spec.framing)(),
-            dissect: spec.dissect,
+            framing_header: spec.imp.framing_header(),
+            imp: spec.imp,
             post_active: AtomicBool::new(false),
         });
         let mut runtime = Self {
@@ -195,7 +198,7 @@ impl Runtime {
             .iter()
             .map(|slot| (slot.declaration.name(), slot.read()))
             .collect::<PreferenceMap>();
-        let loaded = (self.spec.load)(&values);
+        let loaded = self.spec.imp.load(&values);
         let mut preferences = self
             .shared
             .preferences
@@ -258,7 +261,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
         {
-            Some(preferences) => (self.spec.dissect_on)(&**preferences),
+            Some(preferences) => self.spec.imp.dissect_on(&**preferences),
             None => Vec::new(),
         };
         let stale = self

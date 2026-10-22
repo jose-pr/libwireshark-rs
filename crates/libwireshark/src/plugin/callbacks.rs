@@ -87,9 +87,8 @@ pub(crate) fn heuristic_pointer(callback: HeuristicFn) -> sys::heur_dissector_t 
     Some(callback)
 }
 
-/// Dissects one packet for the protocol `shared` belongs to: through
-/// [`TcpFraming`](crate::TcpFraming) for a framed protocol over TCP, else
-/// directly. Returns the bytes consumed.
+/// Dissects one packet for the protocol `shared` belongs to: message by
+/// message for a protocol framed over TCP, else directly. Returns the bytes consumed.
 ///
 /// # Safety
 ///
@@ -117,7 +116,7 @@ unsafe fn dissect_as(
     tree: *mut sys::proto_tree,
     post: bool,
 ) -> Option<usize> {
-    if let Some(framing) = &shared.framing
+    if let Some(header_len) = shared.framing_header
         && !post
         // SAFETY: the caller's contract.
         && unsafe { pinfo.as_ref() }.is_some_and(|pinfo| pinfo.ptype == sys::port_type_PT_TCP)
@@ -131,7 +130,7 @@ unsafe fn dissect_as(
                 pinfo,
                 tree,
                 flag(true),
-                c_uint::try_from(framing.header_len()).ok()?,
+                c_uint::try_from(header_len).ok()?,
                 Some(message_len),
                 Some(message),
                 data,
@@ -160,7 +159,7 @@ unsafe fn dissect_whole(
         .clone()?;
     // SAFETY: the caller's contract.
     let mut packet = unsafe { PacketView::from_raw(tvb, pinfo, tree, &shared.registered, post) }?;
-    (shared.dissect)(&*preferences, &mut packet)
+    shared.imp.dissect(&*preferences, &mut packet)
 }
 
 /// The dissector registered for each protocol's handle; `callback_data` is
@@ -222,8 +221,8 @@ unsafe extern "C" fn message_len(
     catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: `data` is the `Shared` passed to `tcp_dissect_pdus`.
         let shared = unsafe { NonNull::new(data.cast::<Shared>())?.as_ref() };
-        let framing = shared.framing.as_ref()?;
-        let header_len = c_int::try_from(framing.header_len()).ok()?;
+        let header_size = shared.framing_header?;
+        let header_len = c_int::try_from(header_size).ok()?;
         // SAFETY: `tcp_dissect_pdus` calls this only with `header_len`
         // captured bytes at `offset`.
         let header = unsafe {
@@ -231,9 +230,9 @@ unsafe extern "C" fn message_len(
             if bytes.is_null() {
                 return None;
             }
-            core::slice::from_raw_parts(bytes, framing.header_len())
+            core::slice::from_raw_parts(bytes, header_size)
         };
-        c_uint::try_from(framing.message_len(header)?).ok()
+        c_uint::try_from(shared.imp.message_len(header)?).ok()
     }))
     .ok()
     .flatten()

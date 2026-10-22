@@ -16,6 +16,7 @@
 /// libwireshark::plugin!(dissectors = [FooDissector], filters = [FooFunction]);
 /// libwireshark::plugin!(file_types = [FooCapture], dissectors = [FooDissector]);
 /// libwireshark::plugin!(codecs = [FooCodec]);
+/// libwireshark::plugin!(dynamic = protocols); // fn protocols() -> Vec<Protocol>
 /// libwireshark::plugin!(version = "1.2.0", dissectors = [FooDissector, BarDissector]);
 /// ```
 ///
@@ -26,6 +27,7 @@
 /// | `filters` | [`FilterFunction`](crate::FilterFunction) | `epan/` |
 /// | `file_types` | [`FileType`](crate::FileType) | `wiretap/`, for the whole library |
 /// | `codecs` | [`Codec`](crate::Codec) | `codecs/`, alone in their library |
+/// | `dynamic` | a `fn() -> Vec<`[`Protocol`](crate::dynamic::Protocol)`>`, called once when Wireshark loads the plugin | `epan/` |
 ///
 /// Wireshark loads the `wiretap/` libraries before it registers protocols,
 /// so a library with file formats can hold anything but codecs; it loads
@@ -36,38 +38,44 @@
 /// `libwireshark-sys` was built against; Wireshark refuses it under another.
 #[macro_export]
 macro_rules! plugin {
-    (@parse { $version:tt $dissectors:tt $taps:tt $filters:tt $file_types:tt $codecs:tt }) => {
+    (@parse { $version:tt $dissectors:tt $taps:tt $filters:tt $file_types:tt $codecs:tt $dynamic:tt }) => {
         $crate::plugin!(@expand
             version = $version,
             dissectors = $dissectors,
             taps = $taps,
             filters = $filters,
             file_types = $file_types,
-            codecs = $codecs
+            codecs = $codecs,
+            dynamic = $dynamic
         );
     };
-    (@parse { $_v:tt $d:tt $t:tt $f:tt $ft:tt $c:tt } version = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { ($value) $d $t $f $ft $c } $($($rest)*)?);
+    (@parse { $_v:tt $d:tt $t:tt $f:tt $ft:tt $c:tt $dy:tt } version = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { ($value) $d $t $f $ft $c $dy } $($($rest)*)?);
     };
-    (@parse { $v:tt $_d:tt $t:tt $f:tt $ft:tt $c:tt } dissectors = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { $v $value $t $f $ft $c } $($($rest)*)?);
+    (@parse { $v:tt $_d:tt $t:tt $f:tt $ft:tt $c:tt $dy:tt } dissectors = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $value $t $f $ft $c $dy } $($($rest)*)?);
     };
-    (@parse { $v:tt $d:tt $_t:tt $f:tt $ft:tt $c:tt } taps = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { $v $d $value $f $ft $c } $($($rest)*)?);
+    (@parse { $v:tt $d:tt $_t:tt $f:tt $ft:tt $c:tt $dy:tt } taps = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $value $f $ft $c $dy } $($($rest)*)?);
     };
-    (@parse { $v:tt $d:tt $t:tt $_f:tt $ft:tt $c:tt } filters = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { $v $d $t $value $ft $c } $($($rest)*)?);
+    (@parse { $v:tt $d:tt $t:tt $_f:tt $ft:tt $c:tt $dy:tt } filters = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $value $ft $c $dy } $($($rest)*)?);
     };
-    (@parse { $v:tt $d:tt $t:tt $f:tt $_ft:tt $c:tt } file_types = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { $v $d $t $f $value $c } $($($rest)*)?);
+    (@parse { $v:tt $d:tt $t:tt $f:tt $_ft:tt $c:tt $dy:tt } file_types = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $f $value $c $dy } $($($rest)*)?);
     };
-    (@parse { $v:tt $d:tt $t:tt $f:tt $ft:tt $_c:tt } codecs = $value:tt $(, $($rest:tt)*)?) => {
-        $crate::plugin!(@parse { $v $d $t $f $ft $value } $($($rest)*)?);
+    (@parse { $v:tt $d:tt $t:tt $f:tt $ft:tt $_c:tt $dy:tt } codecs = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $f $ft $value $dy } $($($rest)*)?);
+    };
+    (@parse { $v:tt $d:tt $t:tt $f:tt $ft:tt $c:tt $_dy:tt } dynamic = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse {
+            $v $d $t $f $ft $c (::core::option::Option::Some($value as fn() -> $crate::__private::Vec<$crate::dynamic::Protocol>))
+        } $($($rest)*)?);
     };
     (@parse { $($state:tt)* } $key:ident = $($rest:tt)*) => {
         ::core::compile_error!(::core::concat!(
             "plugin!: unknown key `", ::core::stringify!($key),
-            "`; expected version, dissectors, taps, filters, file_types or codecs"
+            "`; expected version, dissectors, taps, filters, file_types, codecs or dynamic"
         ));
     };
     (@expand
@@ -76,7 +84,8 @@ macro_rules! plugin {
         taps = [$($tap:ty),* $(,)?],
         filters = [$($filter:ty),* $(,)?],
         file_types = [$($file_type:ty),* $(,)?],
-        codecs = [$($codec:ty),* $(,)?]
+        codecs = [$($codec:ty),* $(,)?],
+        dynamic = $dynamic:expr
     ) => {
         const _: () = {
             struct ThisPlugin;
@@ -89,6 +98,7 @@ macro_rules! plugin {
 
             static PLUGIN: $crate::__private::Plugin = $crate::__private::Plugin::new(
                 &[$($crate::__private::Protocol::of::<$dissector>()),*],
+                $dynamic,
                 &[$($crate::__private::TapSpec::of::<$tap>()),*],
                 &[$($crate::__private::FilterSpec::of::<$filter, ThisPlugin>()),*],
                 &[$($crate::__private::FileTypeSpec::of::<$file_type, ThisPlugin>()),*],
@@ -103,8 +113,9 @@ macro_rules! plugin {
                     $(::core::stringify!($filter),)*
                     $(::core::stringify!($file_type),)*
                 ];
+                let dynamic: ::core::option::Option<fn() -> $crate::__private::Vec<$crate::dynamic::Protocol>> = $dynamic;
                 ::core::assert!(
-                    codecs.is_empty() || others.is_empty(),
+                    codecs.is_empty() || (others.is_empty() && dynamic.is_none()),
                     "a plugin with codecs holds nothing else: Wireshark loads it after registering protocols"
                 );
             };
@@ -203,7 +214,7 @@ macro_rules! plugin {
     };
     ($($key:ident = $value:tt),+ $(,)?) => {
         $crate::plugin!(@parse {
-            (::core::env!("CARGO_PKG_VERSION")) [] [] [] [] []
+            (::core::env!("CARGO_PKG_VERSION")) [] [] [] [] [] (::core::option::Option::None)
         } $($key = $value),+);
     };
     ($($dissector:ty),+ $(,)?) => {

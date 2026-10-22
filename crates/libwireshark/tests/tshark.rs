@@ -13,10 +13,11 @@ use std::process::{Command, Output, Stdio};
 
 /// Each example plugin, the directory Wireshark loads it from, and what
 /// `-G plugins` reports it as.
-const PLUGINS: [(&str, &str, &str); 5] = [
+const PLUGINS: [(&str, &str, &str); 6] = [
     ("basic_dissector", "epan", "dissector"),
     ("multi_protocol", "epan", "dissector"),
     ("stream_protocol", "epan", "dissector"),
+    ("runtime_protocol", "epan", "dissector"),
     ("capture_file", "wiretap", "file type"),
     ("audio_codec", "codecs", "codec"),
 ];
@@ -690,4 +691,25 @@ fn the_second_pass_is_not_a_first_pass() {
             "6\tmessage 4: hellomessage 4: unknown",
         ],
     );
+}
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn a_protocol_described_at_run_time_dissects_like_a_static_one() {
+    let profile = Profile::new("runtime");
+    let capture = profile.write(
+        "rfoo.pcap",
+        &pcap(&[frame(&Segment::Udp(112, &[7, 1, 2, 3]))]),
+    );
+    let rows = profile.fields_of(
+        &capture,
+        &["-Y", "rfoo"],
+        &[
+            "_ws.col.Protocol",
+            "rfoo.version",
+            "rfoo.length",
+            "_ws.col.Info",
+        ],
+    );
+    assert_eq!(rows, ["RFOO	7	515	RFOO version 7, length 515"]);
 }

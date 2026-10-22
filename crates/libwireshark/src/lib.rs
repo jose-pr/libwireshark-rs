@@ -19,6 +19,7 @@ extern crate self as libwireshark;
 pub mod __private;
 mod codec;
 mod dissector;
+pub mod dynamic;
 mod expert;
 #[allow(unsafe_code)]
 mod file_type;

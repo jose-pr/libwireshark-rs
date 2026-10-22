@@ -476,6 +476,7 @@ dependencies = [
  "libwireshark-derive",
  "libwireshark-sys",
  "multi-protocol",
+ "runtime-protocol",
  "stream-protocol",
 ]
 
@@ -643,6 +644,13 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys",
+]
+
+[[package]]
+name = "runtime-protocol"
+version = "0.1.0"
+dependencies = [
+ "libwireshark",
 ]
 
 [[package]]

@@ -114,6 +114,8 @@ pub struct Callbacks {
 /// A plugin's protocols and their registration state.
 pub struct Plugin {
     protocols: &'static [Protocol],
+    dynamic: Option<fn() -> Vec<Protocol>>,
+    dynamic_protocols: Mutex<&'static [Protocol]>,
     taps: &'static [TapSpec],
     filters: &'static [FilterSpec],
     file_types: &'static [FileTypeSpec],
@@ -127,6 +129,7 @@ impl core::fmt::Debug for Plugin {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Plugin")
             .field("protocols", &self.protocols)
+            .field("dynamic_protocols", &self.dynamic_protocols)
             .field("taps", &self.taps)
             .field("filters", &self.filters)
             .field("file_types", &self.file_types)
@@ -136,10 +139,11 @@ impl core::fmt::Debug for Plugin {
 }
 
 impl Plugin {
-    /// A plugin of `protocols`, `taps`, `filters`, `file_types` and
-    /// `codecs`, registered when Wireshark loads it.
+    /// A plugin of `protocols`, those `dynamic` builds when Wireshark loads
+    /// it, `taps`, `filters`, `file_types` and `codecs`.
     pub const fn new(
         protocols: &'static [Protocol],
+        dynamic: Option<fn() -> Vec<Protocol>>,
         taps: &'static [TapSpec],
         filters: &'static [FilterSpec],
         file_types: &'static [FileTypeSpec],
@@ -147,6 +151,8 @@ impl Plugin {
     ) -> Self {
         Self {
             protocols,
+            dynamic,
+            dynamic_protocols: Mutex::new(&[]),
             taps,
             filters,
             file_types,
@@ -159,14 +165,17 @@ impl Plugin {
 
     /// `plugin_describe`'s answer: what the plugin provides
     /// (`WS_PLUGIN_DESC_*`).
-    pub fn describe(&self) -> u32 {
+    pub fn describe(&'static self) -> u32 {
         const DISSECTOR: u32 = 1 << 0;
         const FILE_TYPE: u32 = 1 << 1;
         const CODEC: u32 = 1 << 2;
         const TAP_LISTENER: u32 = 1 << 4;
         const DFILTER: u32 = 1 << 5;
         [
-            (self.protocols.len(), DISSECTOR),
+            (
+                self.protocols.len() + usize::from(self.dynamic.is_some()),
+                DISSECTOR,
+            ),
             (self.file_types.len(), FILE_TYPE),
             (self.codecs.len(), CODEC),
             (self.taps.len(), TAP_LISTENER),
@@ -181,10 +190,23 @@ impl Plugin {
     /// plugin uses.
     pub fn register(&'static self, tables: &'static Tables) {
         let _ = catch_unwind(AssertUnwindSafe(|| {
+            if let Some(build) = self.dynamic {
+                let mut built = self
+                    .dynamic_protocols
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                // A panicking builder means no run-time protocols, not none
+                // of the plugin's other tables.
+                if built.is_empty()
+                    && let Ok(protocols) = catch_unwind(build)
+                {
+                    *built = protocols.leak();
+                }
+            }
             // SAFETY: the tables and their callbacks are statics of the
             // plugin library.
             unsafe {
-                if !self.protocols.is_empty() {
+                if self.protocols().next().is_some() {
                     sys::proto_register_plugin(&tables.protocols);
                 }
                 if !self.taps.is_empty() {
@@ -268,6 +290,15 @@ impl Plugin {
         }));
     }
 
+    /// The static protocols, then those built when the plugin registered.
+    fn protocols(&'static self) -> impl Iterator<Item = &'static Protocol> {
+        let dynamic: &'static [Protocol] = *self
+            .dynamic_protocols
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.protocols.iter().chain(dynamic)
+    }
+
     fn state(&self) -> MutexGuard<'_, Vec<Runtime>> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -282,8 +313,7 @@ impl Plugin {
                 return;
             }
             state.extend(
-                self.protocols
-                    .iter()
+                self.protocols()
                     .filter_map(|spec| Runtime::register(spec, callbacks, glib.as_ref())),
             );
             // SAFETY: `cleanup` is a static function of the plugin library.

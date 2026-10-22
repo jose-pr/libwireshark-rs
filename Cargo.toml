@@ -9,6 +9,7 @@ members = [
     "examples/basic-dissector",
     "examples/capture-file",
     "examples/multi-protocol",
+    "examples/runtime-protocol",
     "examples/stream-protocol",
 ]
 

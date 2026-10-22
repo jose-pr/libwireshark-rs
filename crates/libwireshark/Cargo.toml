@@ -35,4 +35,5 @@ audio-codec = { path = "../../examples/audio-codec" }
 basic-dissector = { path = "../../examples/basic-dissector" }
 capture-file = { path = "../../examples/capture-file" }
 multi-protocol = { path = "../../examples/multi-protocol" }
+runtime-protocol = { path = "../../examples/runtime-protocol" }
 stream-protocol = { path = "../../examples/stream-protocol" }
