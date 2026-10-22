@@ -1,4 +1,4 @@
-/// Makes this library a Wireshark plugin holding the listed dissectors.
+/// Makes this library a Wireshark plugin holding the listed dissectors and taps.
 ///
 /// Write it once, in the root of a `cdylib` crate. It exports the symbols
 /// Wireshark's loader reads (`plugin_version`, `plugin_want_major`,
@@ -10,6 +10,7 @@
 /// ```ignore (needs a cdylib crate whose dissectors are defined)
 /// libwireshark::plugin!(FooDissector);
 /// libwireshark::plugin!(FooDissector, BarDissector);
+/// libwireshark::plugin!(dissectors = [FooDissector], taps = [FooStats]);
 /// libwireshark::plugin!(version = "1.2.0", dissectors = [FooDissector, BarDissector]);
 /// ```
 ///
@@ -17,17 +18,20 @@
 /// `libwireshark-sys` was built against; Wireshark refuses it under another.
 #[macro_export]
 macro_rules! plugin {
-    ($($dissector:ty),+ $(,)?) => {
-        $crate::plugin!(
-            version = ::core::env!("CARGO_PKG_VERSION"),
-            dissectors = [$($dissector),+]
-        );
-    };
-    (version = $version:expr, dissectors = [$($dissector:ty),+ $(,)?] $(,)?) => {
+    (
+        version = $version:expr,
+        dissectors = [$($dissector:ty),* $(,)?]
+        $(, taps = [$($tap:ty),* $(,)?])? $(,)?
+    ) => {
         const _: () = {
-            static PLUGIN: $crate::__private::Plugin = $crate::__private::Plugin::new(&[
-                $($crate::__private::Protocol::of::<$dissector>()),+
-            ]);
+            static PLUGIN: $crate::__private::Plugin = $crate::__private::Plugin::new(
+                &[$($crate::__private::Protocol::of::<$dissector>()),*],
+                &[$($($crate::__private::TapSpec::of::<$tap>()),*)?],
+            );
+            const TAPS: usize = {
+                let taps: &[&str] = &[$($(::core::stringify!($tap)),*)?];
+                taps.len()
+            };
 
             extern "C" fn register_protoinfo() {
                 PLUGIN.register_protoinfo($crate::__private::Callbacks {
@@ -61,8 +65,14 @@ macro_rules! plugin {
                 $crate::__private::heuristic_result(accepted)
             }
 
+            extern "C" fn register_taps() {
+                PLUGIN.register_taps();
+            }
+
             static PROTO_PLUGIN: $crate::sys::proto_plugin =
                 $crate::__private::proto_plugin(register_protoinfo, register_handoff);
+
+            static TAP_PLUGIN: $crate::sys::tap_plugin = $crate::__private::tap_plugin(register_taps);
 
             const VERSION: &str = $version;
 
@@ -84,13 +94,26 @@ macro_rules! plugin {
 
             #[unsafe(no_mangle)]
             extern "C" fn plugin_describe() -> u32 {
-                $crate::__private::DESCRIBE_DISSECTOR
+                $crate::__private::describe(TAPS)
             }
 
             #[unsafe(no_mangle)]
             extern "C" fn plugin_register() {
-                $crate::__private::register(&PROTO_PLUGIN);
+                $crate::__private::register(&PROTO_PLUGIN, &TAP_PLUGIN, TAPS > 0);
             }
         };
+    };
+    (dissectors = [$($dissector:ty),* $(,)?] $(, taps = [$($tap:ty),* $(,)?])? $(,)?) => {
+        $crate::plugin!(
+            version = ::core::env!("CARGO_PKG_VERSION"),
+            dissectors = [$($dissector),*]
+            $(, taps = [$($tap),*])?
+        );
+    };
+    ($($dissector:ty),+ $(,)?) => {
+        $crate::plugin!(
+            version = ::core::env!("CARGO_PKG_VERSION"),
+            dissectors = [$($dissector),+]
+        );
     };
 }

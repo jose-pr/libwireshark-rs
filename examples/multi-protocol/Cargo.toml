@@ -12,5 +12,3 @@ crate-type = ["cdylib"]
 [dependencies]
 libwireshark = { workspace = true, features = ["derive"] }
 
-[lints]
-workspace = true

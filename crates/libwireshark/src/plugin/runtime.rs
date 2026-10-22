@@ -126,6 +126,10 @@ impl Runtime {
         // SAFETY: Wireshark writes the subtree id through the pointer during the call.
         unsafe { sys::proto_register_subtree_array(indices.as_ptr(), 1) };
 
+        // SAFETY: the filter name is retained for the process; Wireshark
+        // keeps the pointer as the tap's name.
+        let tap = unsafe { sys::register_tap(names[2].as_ptr()) };
+
         let (experts, expert_registrations, registered_experts) =
             register_experts(proto, spec.filter_name, spec.experts, &mut strings);
 
@@ -156,6 +160,8 @@ impl Runtime {
                 fields,
                 experts: registered_experts,
                 conversations: Mutex::new(HashMap::new()),
+                tap,
+                tapped: Mutex::new((0, Vec::new())),
             },
             preferences: Mutex::new(None),
             framing: (spec.framing)(),

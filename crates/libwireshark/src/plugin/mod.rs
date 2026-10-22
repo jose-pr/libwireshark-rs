@@ -7,9 +7,11 @@ mod callbacks;
 mod preferences;
 mod protocol;
 mod runtime;
+mod taps;
 
 pub use callbacks::{HeuristicFn, HeuristicResult, heuristic_result};
 pub use protocol::Protocol;
+pub use taps::TapSpec;
 
 use crate::sys;
 use core::ffi::c_int;
@@ -21,8 +23,17 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 /// For derive expansions, which cannot assume `extern crate alloc`.
 pub use alloc::vec::Vec;
 
-/// `plugin_describe`'s answer: this library holds dissectors.
-pub const DESCRIBE_DISSECTOR: u32 = 1;
+/// `plugin_describe`'s answer for a plugin with `taps` taps: dissectors,
+/// and tap listeners when it has any (`WS_PLUGIN_DESC_*`).
+pub const fn describe(taps: usize) -> u32 {
+    const DISSECTOR: u32 = 1 << 0;
+    const TAP_LISTENER: u32 = 1 << 4;
+    if taps == 0 {
+        DISSECTOR
+    } else {
+        DISSECTOR | TAP_LISTENER
+    }
+}
 
 /// The release line the plugin is built for, checked by Wireshark's loader.
 pub const WANT_MAJOR: c_int = sys::VERSION_MAJOR as c_int;
@@ -57,10 +68,27 @@ pub const fn proto_plugin(
     }
 }
 
-/// Registers the plugin's table with Wireshark.
-pub fn register(plugin: &'static sys::proto_plugin) {
-    // SAFETY: the table and its callbacks are statics of the plugin library.
-    unsafe { sys::proto_register_plugin(plugin) };
+/// The tap registration table `plugin_register` hands to Wireshark.
+pub const fn tap_plugin(register_tap_listener: extern "C" fn()) -> sys::tap_plugin {
+    sys::tap_plugin {
+        register_tap_listener: Some(register_tap_listener),
+    }
+}
+
+/// Registers the plugin's tables with Wireshark; the tap table only when
+/// the plugin has taps.
+pub fn register(
+    plugin: &'static sys::proto_plugin,
+    taps: &'static sys::tap_plugin,
+    has_taps: bool,
+) {
+    // SAFETY: the tables and their callbacks are statics of the plugin library.
+    unsafe {
+        sys::proto_register_plugin(plugin);
+        if has_taps {
+            sys::tap_register_plugin(taps);
+        }
+    }
 }
 
 /// The plugin's own C callbacks, which reach its [`Plugin`] static: C
@@ -78,6 +106,7 @@ pub struct Callbacks {
 /// A plugin's protocols and their registration state.
 pub struct Plugin {
     protocols: &'static [Protocol],
+    taps: &'static [TapSpec],
     state: Mutex<Vec<Runtime>>,
 }
 
@@ -85,17 +114,28 @@ impl core::fmt::Debug for Plugin {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Plugin")
             .field("protocols", &self.protocols)
+            .field("taps", &self.taps)
             .finish_non_exhaustive()
     }
 }
 
 impl Plugin {
-    /// A plugin of `protocols`, registered when Wireshark loads it.
-    pub const fn new(protocols: &'static [Protocol]) -> Self {
+    /// A plugin of `protocols` and `taps`, registered when Wireshark loads it.
+    pub const fn new(protocols: &'static [Protocol], taps: &'static [TapSpec]) -> Self {
         Self {
             protocols,
+            taps,
             state: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Wireshark's tap registration: offers each tap as `-z <name>`.
+    pub fn register_taps(&'static self) {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            for spec in self.taps {
+                taps::register(spec, self);
+            }
+        }));
     }
 
     fn state(&self) -> MutexGuard<'_, Vec<Runtime>> {

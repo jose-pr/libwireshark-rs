@@ -17,6 +17,10 @@ use std::sync::{Mutex, PoisonError};
 /// value's type.
 pub(crate) type Conversations = Mutex<HashMap<(u32, TypeId), Box<dyn Any + Send>>>;
 
+/// Values published to the protocol's tap for one frame: tap listeners read
+/// them when the frame's dissection ends, so they are kept until the next.
+pub(crate) type Tapped = Mutex<(u32, Vec<Box<Box<dyn Any + Send>>>)>;
+
 /// A protocol's registered state the packet view reads: its ids, fields,
 /// expert entries and conversation values.
 pub(crate) struct Registered {
@@ -27,6 +31,9 @@ pub(crate) struct Registered {
     pub(crate) fields: Box<[RegisteredField]>,
     pub(crate) experts: Box<[RegisteredExpert]>,
     pub(crate) conversations: Conversations,
+    /// The tap named like the protocol's filter.
+    pub(crate) tap: c_int,
+    pub(crate) tapped: Tapped,
 }
 
 impl fmt::Debug for Registered {
@@ -365,6 +372,33 @@ impl<'packet> PacketView<'packet> {
         let result = f(&mut value);
         lock().insert(key, value);
         Some(result)
+    }
+
+    /// Publishes `value` to the protocol's tap, named like its
+    /// [`FILTER_NAME`](crate::Dissector::FILTER_NAME), for the plugin's
+    /// [`Tap`](crate::Tap)s to read with
+    /// [`TapPacket::data`](crate::TapPacket::data).
+    pub fn tap<T: Any + Send>(&mut self, value: T) {
+        let Some(pinfo) = self.pinfo else {
+            return;
+        };
+        let frame = self.frame_number();
+        let mut tapped = self
+            .protocol
+            .tapped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if tapped.0 != frame {
+            // Listeners consumed the previous frame's values when its
+            // dissection ended.
+            *tapped = (frame, Vec::new());
+        }
+        let value: Box<Box<dyn Any + Send>> = Box::new(Box::new(value));
+        let data = core::ptr::from_ref::<Box<dyn Any + Send>>(&value).cast::<core::ffi::c_void>();
+        tapped.1.push(value);
+        // SAFETY: the value stays boxed in `tapped` until the next frame,
+        // after the listeners have read it.
+        unsafe { sys::tap_queue_packet(self.protocol.tap, pinfo.as_ptr(), data) };
     }
 
     /// Reports the expert finding `name` (registered in

@@ -24,6 +24,8 @@ mod macros;
 #[allow(unsafe_code)]
 mod packet;
 pub mod prefs;
+#[allow(unsafe_code)]
+mod tap;
 
 /// The raw `libwireshark-sys` bindings, for what this crate does not wrap.
 pub use libwireshark_sys as sys;
@@ -33,6 +35,7 @@ pub use expert::{Expert, ExpertGroup, Severity};
 pub use header::{Base, FieldInfo, FieldType, Header, NoHeader};
 pub use packet::{Encoding, PacketFieldError, PacketView};
 pub use prefs::{NoPreferences, Preferences};
+pub use tap::{Tap, TapPacket};
 
 /// `#[derive(Header)]`: registered fields from a struct, and `Self::decode`
 /// reading them from packet bytes.

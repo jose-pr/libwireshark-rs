@@ -55,6 +55,8 @@ fn unsafe_code_stays_in_the_ffi_modules() {
             "plugin/mod.rs",
             "plugin/preferences.rs",
             "plugin/runtime.rs",
+            "plugin/taps.rs",
+            "tap.rs",
         ]
     );
 }

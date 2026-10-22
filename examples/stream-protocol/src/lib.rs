@@ -1,13 +1,16 @@
 //! Three protocols that show the other ways Wireshark hands a plugin packets:
 //! LPM, length-prefixed messages reassembled from TCP; HBEAT, found by
 //! heuristics in UDP; and FSIZE, a post-dissector that sees every frame.
+//! Two taps report statistics: `tshark -z lpmstats` over what LPM
+//! publishes, and `tshark -z udpbytes[,FILTER]` over Wireshark's UDP tap.
 
 #![forbid(unsafe_code)]
 
 use libwireshark::{
     Binding, DissectResult, Dissector, Expert, ExpertGroup, Header, NoPreferences, PacketView,
-    Severity, TcpFraming,
+    Severity, Tap, TapPacket, TcpFraming,
 };
+use std::collections::BTreeMap;
 
 /// LPM message kinds, shown by name in the tree and in filters.
 const KINDS: &[(u32, &str)] = &[(1, "hello"), (2, "data"), (3, "bye")];
@@ -72,9 +75,61 @@ impl Dissector for Lpm {
                 )
                 .ok();
         }
+        packet.tap(Published {
+            kind: kind.unwrap_or("unknown"),
+        });
         let info = format!("message {number}: {}", kind.unwrap_or("unknown"));
         let size = usize::from(message.length);
         Some(DissectResult::new(message, size).with_info(info))
+    }
+}
+
+/// What LPM publishes to its tap for each message.
+struct Published {
+    kind: &'static str,
+}
+
+/// LPM messages counted by kind.
+#[derive(Default)]
+struct LpmStats(BTreeMap<&'static str, u32>);
+
+impl Tap for LpmStats {
+    const NAME: &'static str = "lpmstats";
+    const TAP: &'static str = "lpm";
+
+    fn packet(&mut self, packet: &TapPacket<'_>) {
+        if let Some(message) = packet.data::<Published>() {
+            *self.0.entry(message.kind).or_default() += 1;
+        }
+    }
+
+    fn draw(&self) -> String {
+        let mut report = String::from("LPM messages by kind\n");
+        for (kind, count) in &self.0 {
+            report.push_str(&format!("  {kind}: {count}\n"));
+        }
+        report
+    }
+}
+
+/// UDP packets and bytes, from Wireshark's own `udp` tap.
+#[derive(Default)]
+struct UdpBytes {
+    packets: u32,
+    bytes: u64,
+}
+
+impl Tap for UdpBytes {
+    const NAME: &'static str = "udpbytes";
+    const TAP: &'static str = "udp";
+
+    fn packet(&mut self, packet: &TapPacket<'_>) {
+        self.packets += 1;
+        self.bytes += u64::from(packet.len());
+    }
+
+    fn draw(&self) -> String {
+        format!("UDP: {} packets, {} bytes\n", self.packets, self.bytes)
     }
 }
 
@@ -141,4 +196,7 @@ impl Dissector for Fsize {
     }
 }
 
-libwireshark::plugin!(Lpm, Hbeat, Fsize);
+libwireshark::plugin!(
+    dissectors = [Lpm, Hbeat, Fsize],
+    taps = [LpmStats, UdpBytes]
+);

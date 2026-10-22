@@ -338,3 +338,27 @@ fn a_postdissector_sees_every_frame_and_leaves_the_columns() {
         assert_ne!(row[2], "FSIZE", "the Protocol column is left alone");
     }
 }
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn taps_report_statistics_over_a_plugins_own_and_wiresharks_taps() {
+    let profile = Profile::new("taps");
+    let capture = profile.capture();
+    let lpm = profile.run(&["-r", capture.as_str(), "-q", "-z", "lpmstats"]);
+    for line in ["LPM messages by kind", "data: 1", "hello: 2", "unknown: 1"] {
+        assert!(lpm.contains(line), "{line:?} in:\n{lpm}");
+    }
+    let udp = profile.run(&["-r", capture.as_str(), "-q", "-z", "udpbytes"]);
+    assert!(udp.contains("UDP: 3 packets"), "{udp}");
+    let filtered = profile.run(&[
+        "-r",
+        capture.as_str(),
+        "-q",
+        "-z",
+        "udpbytes,udp.port==4242",
+    ]);
+    assert!(
+        filtered.contains("UDP: 1 packets"),
+        "the -z filter applies: {filtered}"
+    );
+}
