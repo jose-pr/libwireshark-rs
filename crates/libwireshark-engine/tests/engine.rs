@@ -45,15 +45,30 @@ fn the_engine_dissects_frames_and_captures_with_the_plugins_it_loads() {
         config_dir: Some(profile.root().to_string_lossy().into_owned()),
         ..EngineConfig::default()
     };
-    let mut engine = match Engine::open(&config) {
+    let engine = match Engine::open(&config) {
         Err(EngineError::Unsupported) => {
             eprintln!("skipped: no engine before Wireshark 4.6");
             return;
         }
         result => result.expect("the engine starts"),
     };
+    session(engine, &config, &frames, &profile);
     assert_eq!(
-        Engine::open(&config).err(),
+        Engine::open(&EngineConfig::default()).err(),
+        Some(EngineError::Configured),
+        "Wireshark starts once per process"
+    );
+    let mut again = Engine::open(&config).expect("the same configuration opens again");
+    let first = again
+        .dissect(&frames[0], Encapsulation::ETHERNET, Duration::ZERO)
+        .expect("a frame dissects");
+    assert_eq!(first.frame, 1, "a new session counts from 1");
+}
+
+/// The first session: it closes when `engine` drops, at the end.
+fn session(mut engine: Engine, config: &EngineConfig, frames: &[Vec<u8>], profile: &Profile) {
+    assert_eq!(
+        Engine::open(config).err(),
         Some(EngineError::AlreadyOpen),
         "one session at a time"
     );
@@ -71,10 +86,13 @@ fn the_engine_dissects_frames_and_captures_with_the_plugins_it_loads() {
     assert_eq!(value(&first, "ip.dst"), Some("192.0.2.2"));
     assert_eq!(column(&first, "Protocol"), "FOO");
     assert_eq!(column(&first, "Info"), "FOO version 7, length 515");
-    let foo = first.get("foo").expect("the protocol's own item");
+    let protocol = first.get("foo").expect("the protocol's own item");
     assert!(
-        foo.children.iter().any(|child| child.abbrev == "foo.flags"),
-        "fields nest under their protocol: {foo:?}"
+        protocol
+            .children
+            .iter()
+            .any(|child| child.abbrev == "foo.flags"),
+        "fields nest under their protocol: {protocol:?}"
     );
 
     let second = engine
@@ -108,16 +126,4 @@ fn the_engine_dissects_frames_and_captures_with_the_plugins_it_loads() {
         engine.read(profile.root().join("missing.pcap").as_ref(), None),
         Err(EngineError::File(_))
     ));
-
-    drop(engine);
-    assert_eq!(
-        Engine::open(&EngineConfig::default()).err(),
-        Some(EngineError::Configured),
-        "Wireshark starts once per process"
-    );
-    let mut again = Engine::open(&config).expect("the same configuration opens again");
-    let first = again
-        .dissect(&frames[0], Encapsulation::ETHERNET, Duration::ZERO)
-        .expect("a frame dissects");
-    assert_eq!(first.frame, 1, "a new session counts from 1");
 }
