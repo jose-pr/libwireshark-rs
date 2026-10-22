@@ -1,2 +1,36 @@
 [workspace]
-members=["libwireshark_sys", "foo_dissector", "libwireshark_proc", "libwireshark", "libwireshark_scripts"]
+resolver = "2"
+members = [
+    "crates/libwireshark-sys",
+    "crates/libwireshark",
+    "crates/libwireshark-macros",
+    "crates/cargo-wireshark",
+    "examples/basic-dissector",
+    "examples/tcp-dissector",
+    "examples/udp-dissector",
+    "examples/multi-protocol",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.89"
+
+[workspace.dependencies]
+# Generates Rust FFI declarations from the selected Wireshark SDK headers.
+bindgen = { version = "0.72", default-features = false, features = ["runtime"] }
+# Reads Wireshark's system pkg-config metadata during native discovery.
+pkg-config = "0.3"
+# Supplies the derive-based command-line parser for cargo-wireshark.
+clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "derive", "env"] }
+# Synchronization primitives for the plugin registration state.
+once_cell = "1"
+libloading = "0.8"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+# Resolves renamed runtime-crate dependencies in attribute macro expansions.
+proc-macro-crate = { version = "3.5", default-features = false }
+sha2 = "0.10"
+sevenz-rust2 = { version = "0.20.2", default-features = false, features = ["util"] }
+ureq = { version = "3.4", default-features = true }
+zip = { version = "6", default-features = false, features = ["deflate"] }

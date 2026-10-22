@@ -1,0 +1,22 @@
+[package]
+name = "libwireshark"
+version = "0.1.0"
+authors = ["Jose A <jose-pr@coqui.dev>"]
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+readme = "README.md"
+[lib]
+name = "libwireshark"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libwireshark_sys = { package = "libwireshark-sys", path = "../libwireshark-sys" }
+once_cell.workspace = true
+libloading.workspace = true
+libwireshark-macros = { path = "../libwireshark-macros", optional = true }
+
+[features]
+default = []
+macros = ["dep:libwireshark-macros"]
