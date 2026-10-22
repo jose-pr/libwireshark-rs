@@ -675,3 +675,19 @@ fn a_codec_plugin_decodes_rtp_for_sharkd() {
         "each byte less 128, scaled to 16 bits"
     );
 }
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn the_second_pass_is_not_a_first_pass() {
+    let profile = Profile::new("twopass");
+    // LPM counts messages only on the first pass, so the second shows each
+    // conversation's final count.
+    let rows = profile.fields(&["-2", "-Y", "lpm"], &["frame.number", "_ws.col.Info"]);
+    assert_eq!(
+        rows,
+        [
+            "5\tmessage 4: data",
+            "6\tmessage 4: hellomessage 4: unknown",
+        ],
+    );
+}

@@ -334,7 +334,7 @@ impl<'packet> PacketView<'packet> {
             // SAFETY: `pinfo` and its frame data belong to the running callback.
             unsafe {
                 let frame = pinfo.as_ref().fd;
-                frame.is_null() || (*frame).visited() == 0
+                frame.is_null() || frame_flags(&*frame).visited() == 0
             }
         })
     }
@@ -747,3 +747,31 @@ impl fmt::Display for PacketFieldError {
 }
 
 impl core::error::Error for PacketFieldError {}
+
+/// `frame` with its bitfields where the binding's accessors read them.
+///
+/// bindgen packs `frame_data`'s `unsigned int` bitfields right after the
+/// narrower field before them, as GCC does; MSVC starts them at the next
+/// `unsigned int` boundary, so on MSVC targets the unit is copied from there.
+#[cfg(target_env = "msvc")]
+fn frame_flags(frame: &sys::frame_data) -> sys::frame_data {
+    let packed = core::mem::offset_of!(sys::frame_data, _bitfield_1);
+    let msvc = packed.next_multiple_of(core::mem::align_of::<core::ffi::c_uint>());
+    // SAFETY: a plain C struct, copied whole; the unit's bytes lie inside it
+    // (the next field is 8-aligned in both layouts).
+    unsafe {
+        let mut copy = core::ptr::read(frame);
+        core::ptr::copy_nonoverlapping(
+            core::ptr::from_ref(frame).cast::<u8>().add(msvc),
+            core::ptr::from_mut(&mut copy._bitfield_1).cast::<u8>(),
+            core::mem::size_of_val(&copy._bitfield_1),
+        );
+        copy
+    }
+}
+
+/// `frame`: the binding's layout is the compiler's.
+#[cfg(not(target_env = "msvc"))]
+fn frame_flags(frame: &sys::frame_data) -> &sys::frame_data {
+    frame
+}
