@@ -645,6 +645,17 @@ struct Glib {
 
 impl Glib {
     fn load() -> Option<Self> {
+        // The process's own symbols first: Wireshark is linked against GLib,
+        // which a name lookup can miss when it lives outside the loader's
+        // default paths (Homebrew's /opt/homebrew/lib).
+        #[cfg(unix)]
+        {
+            let library: libloading::Library = libloading::os::unix::Library::this().into();
+            // SAFETY: only checks that the symbol exists.
+            if unsafe { library.get::<unsafe extern "C" fn()>(b"g_strdup ") }.is_ok() {
+                return Some(Self { library });
+            }
+        }
         #[cfg(target_os = "windows")]
         const NAME: &str = "glib-2.0-0.dll";
         #[cfg(target_os = "macos")]
