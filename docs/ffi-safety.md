@@ -24,6 +24,9 @@ and the `src/plugin/` module; a test fails if any other file gains some.
   operation, the value fits its width, and the byte range is captured,
   before calling EPAN.
 - Column text is copied by Wireshark; interior NULs end it.
+- `frame_data`'s flags are read where the compiler put them: bindgen lays
+  bitfields out as GCC does, so on MSVC targets the flag unit is copied from
+  its `unsigned int` boundary before the binding's accessor reads it.
 - Display-filter symbols are looked up by name in the already loaded
   libwireshark and GLib, each with the signature its 4.4 header declares; a
   missing one disables the plugin's filter functions. A `FieldValue` is read

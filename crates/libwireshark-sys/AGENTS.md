@@ -58,4 +58,5 @@ depend on this one directly: `DEP_WIRESHARK_VERSION=<major>.<minor>`.
   architecture; an x64 Wireshark cannot link an aarch64 plugin.
 - bindgen lays out C bitfields as GCC does; on `*-windows-msvc` a bitfield
   unit that follows a narrower field sits at a different offset than its
-  accessors read (`_frame_data`'s flags, for one).
+  accessors read (`_frame_data`'s flags, for one); `libwireshark` reads
+  those from where MSVC puts them.
