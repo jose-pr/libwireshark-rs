@@ -13,6 +13,11 @@
  * each dissect call: call its slots during the call, never keep it, never
  * call its destroy. dissect's conversation map is lent too.
  *
+ * wireshark_tap, wireshark_filter_function, wireshark_file_type and
+ * wireshark_codec are offered the same way; the objects they answer
+ * (listener, reader, decoder) are the host's to destroy, and the
+ * wireshark_capture_source it lends to open and read is not.
+ *
  * wireshark_engine and wireshark_session go the other way: the
  * libwireshark-engine library provides them, and a host opens a session
  * to dissect frames and read captures with Wireshark itself.
@@ -171,5 +176,197 @@ typedef struct wireshark_session_vtable {
  implementation writes into the table's header.
  */
 #define wireshark_session_vtable_FLOOR_HASH 1680421174
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+
+ A slot answering a value, a map or a list finds its out
+ slot holding a carrier, which owns nothing: an empty map
+ or list, or an ABSENT value, whose `alloc` (the map
+ arm's, for a value) names the allocator the caller wants
+ the answer in, or is null. Build the answer through it
+ and the caller keeps it as it is; built anywhere else,
+ the caller copies it. Either way, write the answer over
+ the carrier without freeing it.
+ */
+typedef struct wireshark_tap_vtable {
+  guatiao_kind_header header;
+  guatiao_status (*describe)(void *ctx, guatiao_map *out, guatiao_provider_error *err);
+  guatiao_status (*open)(void *ctx, guatiao_object *out, guatiao_provider_error *err);
+} wireshark_tap_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_tap_vtable_FLOOR_HASH 2408697858
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+ */
+typedef struct wireshark_tap_listener_vtable {
+  guatiao_kind_header header;
+  void (*destroy)(void *ctx);
+  guatiao_status (*packet)(void *ctx, const guatiao_map *packet, guatiao_provider_error *err);
+  guatiao_status (*draw)(void *ctx, guatiao_string *out, guatiao_provider_error *err);
+  guatiao_status (*reset)(void *ctx, guatiao_provider_error *err);
+} wireshark_tap_listener_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_tap_listener_vtable_FLOOR_HASH 1080358107
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+
+ A slot answering a value, a map or a list finds its out
+ slot holding a carrier, which owns nothing: an empty map
+ or list, or an ABSENT value, whose `alloc` (the map
+ arm's, for a value) names the allocator the caller wants
+ the answer in, or is null. Build the answer through it
+ and the caller keeps it as it is; built anywhere else,
+ the caller copies it. Either way, write the answer over
+ the carrier without freeing it.
+ */
+typedef struct wireshark_filter_function_vtable {
+  guatiao_kind_header header;
+  guatiao_status (*describe)(void *ctx, guatiao_map *out, guatiao_provider_error *err);
+  guatiao_status (*call)(void *ctx,
+                         const guatiao_value *value,
+                         guatiao_value *out,
+                         guatiao_provider_error *err);
+} wireshark_filter_function_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_filter_function_vtable_FLOOR_HASH 3420581637
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+
+ A slot answering a value, a map or a list finds its out
+ slot holding a carrier, which owns nothing: an empty map
+ or list, or an ABSENT value, whose `alloc` (the map
+ arm's, for a value) names the allocator the caller wants
+ the answer in, or is null. Build the answer through it
+ and the caller keeps it as it is; built anywhere else,
+ the caller copies it. Either way, write the answer over
+ the carrier without freeing it.
+ */
+typedef struct wireshark_file_type_vtable {
+  guatiao_kind_header header;
+  guatiao_status (*describe)(void *ctx, guatiao_map *out, guatiao_provider_error *err);
+  guatiao_status (*open)(void *ctx,
+                         const guatiao_object *file,
+                         guatiao_object *out,
+                         guatiao_provider_error *err);
+} wireshark_file_type_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_file_type_vtable_FLOOR_HASH 633579420
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+
+ A slot answering a value, a map or a list finds its out
+ slot holding a carrier, which owns nothing: an empty map
+ or list, or an ABSENT value, whose `alloc` (the map
+ arm's, for a value) names the allocator the caller wants
+ the answer in, or is null. Build the answer through it
+ and the caller keeps it as it is; built anywhere else,
+ the caller copies it. Either way, write the answer over
+ the carrier without freeing it.
+ */
+typedef struct wireshark_capture_reader_vtable {
+  guatiao_kind_header header;
+  void (*destroy)(void *ctx);
+  guatiao_status (*encapsulation)(void *ctx, int64_t *out);
+  guatiao_status (*read)(void *ctx,
+                         const guatiao_object *file,
+                         guatiao_map *out,
+                         guatiao_provider_error *err);
+} wireshark_capture_reader_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_capture_reader_vtable_FLOOR_HASH 2879541183
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+ */
+typedef struct wireshark_capture_source_vtable {
+  guatiao_kind_header header;
+  void (*destroy)(void *ctx);
+  guatiao_status (*read)(void *ctx, guatiao_bytes_mut buffer, int64_t *out);
+  guatiao_status (*position)(void *ctx, int64_t *out);
+} wireshark_capture_source_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_capture_source_vtable_FLOOR_HASH 4254949812
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+
+ A slot answering a value, a map or a list finds its out
+ slot holding a carrier, which owns nothing: an empty map
+ or list, or an ABSENT value, whose `alloc` (the map
+ arm's, for a value) names the allocator the caller wants
+ the answer in, or is null. Build the answer through it
+ and the caller keeps it as it is; built anywhere else,
+ the caller copies it. Either way, write the answer over
+ the carrier without freeing it.
+ */
+typedef struct wireshark_codec_vtable {
+  guatiao_kind_header header;
+  guatiao_status (*describe)(void *ctx, guatiao_map *out, guatiao_provider_error *err);
+  guatiao_status (*open)(void *ctx,
+                         const guatiao_map *format,
+                         guatiao_object *out,
+                         guatiao_provider_error *err);
+} wireshark_codec_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_codec_vtable_FLOOR_HASH 3823197131
+
+/*
+ The kind's function table: a header, then one slot per method,
+ in declaration order.
+ */
+typedef struct wireshark_decoder_vtable {
+  guatiao_kind_header header;
+  void (*destroy)(void *ctx);
+  guatiao_status (*sample_rate)(void *ctx, int64_t *out);
+  guatiao_status (*channels)(void *ctx, int64_t *out);
+  guatiao_status (*decoded_len)(void *ctx, guatiao_bytes payload, int64_t *out);
+  guatiao_status (*decode)(void *ctx, guatiao_bytes payload, guatiao_bytes_mut samples, int64_t *out);
+} wireshark_decoder_vtable;
+/*
+ FNV-1a over the shape and the required signatures, as a
+ literal, so a C header generator can render it: what a C
+ implementation writes into the table's header.
+ */
+#define wireshark_decoder_vtable_FLOOR_HASH 223420870
 
 #endif  /* LIBWIRESHARK_API_H */

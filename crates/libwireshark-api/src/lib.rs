@@ -8,14 +8,22 @@ extern crate alloc;
 /// through this path so both sides use one copy.
 pub use guatiao;
 
+pub mod codec;
 pub mod engine;
+pub mod file_type;
+pub mod filter;
 mod model;
+pub mod tap;
 mod typed;
 
+pub use codec::{Codec, CodecDescription, Decoder, StreamFormat};
+pub use file_type::{CaptureReader, CaptureRecord, CaptureSource, FileType, FileTypeDescription};
+pub use filter::{FilterDescription, FilterFunction, FilterReturn};
 pub use model::{
     Base, Binding, Description, Expert, ExpertGroup, Field, FieldType, NamedValue, Preference,
     PreferenceType, Severity,
 };
+pub use tap::{Tap, TapDescription, TapListener, TapPacket};
 pub use typed::{
     ExpertInfo, NoHeader, NoPreferences, PacketExt, ProtocolDissector, header_fields,
     preference_list,

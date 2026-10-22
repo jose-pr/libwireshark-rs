@@ -25,7 +25,20 @@ from libwireshark import (
     Table,
     TypedPacket,
 )
-from libwireshark.kinds import Dissector, Engine, Packet, Session
+from libwireshark.kinds import (
+    CaptureReader,
+    CaptureSource,
+    Codec,
+    Decoder,
+    Dissector,
+    Engine,
+    FileType,
+    FilterFunction,
+    Packet,
+    Session,
+    Tap,
+    TapListener,
+)
 
 HEADER_FILE = (
     Path(__file__).resolve().parents[3] / "crates" / "libwireshark-api" / "include" / "libwireshark_api.h"
@@ -206,6 +219,14 @@ def test_the_kind_classes_carry_the_c_headers_hashes() -> None:
     for kind, table in (
         (Dissector, "wireshark_dissector_vtable"),
         (Packet, "wireshark_packet_vtable"),
+        (Tap, "wireshark_tap_vtable"),
+        (TapListener, "wireshark_tap_listener_vtable"),
+        (FilterFunction, "wireshark_filter_function_vtable"),
+        (FileType, "wireshark_file_type_vtable"),
+        (CaptureReader, "wireshark_capture_reader_vtable"),
+        (CaptureSource, "wireshark_capture_source_vtable"),
+        (Codec, "wireshark_codec_vtable"),
+        (Decoder, "wireshark_decoder_vtable"),
         (Engine, "wireshark_engine_vtable"),
         (Session, "wireshark_session_vtable"),
     ):

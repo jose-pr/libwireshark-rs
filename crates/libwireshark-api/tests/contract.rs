@@ -8,6 +8,11 @@ use libwireshark_api::{
     Base, Binding, Description, Dissector, Expert, ExpertGroup, Field, FieldType, NamedValue,
     Packet, Preference, PreferenceType, Severity, header_fields, preference_list,
 };
+use libwireshark_api::{
+    CaptureReader, CaptureRecord, CaptureSource, Codec, CodecDescription, Decoder, FileType,
+    FileTypeDescription, FilterDescription, FilterFunction, FilterReturn, StreamFormat, Tap,
+    TapDescription, TapListener, TapPacket,
+};
 
 /// Changing either breaks every provider already built: only in a commit
 /// that means to.
@@ -15,6 +20,156 @@ const DISSECTOR_FLOOR_HASH: u32 = 1_003_939_949;
 const PACKET_FLOOR_HASH: u32 = 2_387_250_941;
 const ENGINE_FLOOR_HASH: u32 = 2_496_675_255;
 const SESSION_FLOOR_HASH: u32 = 1_680_421_174;
+
+/// Every other kind: its name, its C table and its hash.
+fn other_kinds() -> [(&'static str, &'static str, u32, u32); 8] {
+    [
+        (
+            "wireshark_tap",
+            "wireshark_tap_vtable",
+            floor_hash::<dyn Tap>(),
+            2_408_697_858,
+        ),
+        (
+            "wireshark_tap_listener",
+            "wireshark_tap_listener_vtable",
+            floor_hash::<dyn TapListener>(),
+            1_080_358_107,
+        ),
+        (
+            "wireshark_filter_function",
+            "wireshark_filter_function_vtable",
+            floor_hash::<dyn FilterFunction>(),
+            3_420_581_637,
+        ),
+        (
+            "wireshark_file_type",
+            "wireshark_file_type_vtable",
+            floor_hash::<dyn FileType>(),
+            633_579_420,
+        ),
+        (
+            "wireshark_capture_reader",
+            "wireshark_capture_reader_vtable",
+            floor_hash::<dyn CaptureReader>(),
+            2_879_541_183,
+        ),
+        (
+            "wireshark_capture_source",
+            "wireshark_capture_source_vtable",
+            floor_hash::<dyn CaptureSource>(),
+            4_254_949_812,
+        ),
+        (
+            "wireshark_codec",
+            "wireshark_codec_vtable",
+            floor_hash::<dyn Codec>(),
+            3_823_197_131,
+        ),
+        (
+            "wireshark_decoder",
+            "wireshark_decoder_vtable",
+            floor_hash::<dyn Decoder>(),
+            223_420_870,
+        ),
+    ]
+}
+
+#[test]
+fn the_other_kinds_hashes_are_pinned_in_rust_c_and_python() {
+    let header = shipped("include/libwireshark_api.h");
+    let python = shipped("../../bindings/python/src/libwireshark/kinds.py");
+    for (kind, table, actual, pinned) in other_kinds() {
+        assert_eq!(actual, pinned, "{kind}'s hash");
+        assert!(
+            header.contains(&format!("#define {table}_FLOOR_HASH {pinned}")),
+            "{table} in the header"
+        );
+        let class = python
+            .split("class ")
+            .find(|class| class.contains(&format!("kind=\"{kind}\"")))
+            .unwrap_or_else(|| panic!("{kind} in the Python classes"));
+        assert!(
+            class.contains(&format!("floor_hash={pinned}")),
+            "{kind}'s hash in the Python classes"
+        );
+    }
+}
+
+#[test]
+fn the_other_kinds_models_cross_as_maps() {
+    let tap = TapDescription {
+        name: "rstap".into(),
+        tap: "frame".into(),
+    };
+    assert_eq!(
+        TapDescription::from_map(&tap.to_map().unwrap()).unwrap(),
+        tap
+    );
+    let packet = TapPacket {
+        frame: 3,
+        len: 60,
+        time_ns: 1_700_000_000_000_000_000,
+        source: "192.0.2.1".into(),
+        destination: "192.0.2.2".into(),
+        src_port: 61000,
+        dst_port: 113,
+    };
+    assert_eq!(
+        TapPacket::from_map(&packet.to_map().unwrap()).unwrap(),
+        packet
+    );
+    let filter = FilterDescription {
+        name: "rs_double".into(),
+        returns: FilterReturn::Text,
+    };
+    let map = filter.to_map().unwrap();
+    assert_eq!(texts_of(&map, "returns"), "text");
+    assert_eq!(FilterDescription::from_map(&map).unwrap(), filter);
+    let format = FileTypeDescription {
+        name: "rscap2".into(),
+        description: "An example".into(),
+        extensions: vec!["rs2".into()],
+    };
+    assert_eq!(
+        FileTypeDescription::from_map(&format.to_map().unwrap()).unwrap(),
+        format
+    );
+    let record = CaptureRecord {
+        data: vec![1, 2, 3].into(),
+        time_ns: Some(5),
+        original_len: None,
+    };
+    assert_eq!(
+        CaptureRecord::from_map(&record.to_map().unwrap()).unwrap(),
+        Some(record)
+    );
+    assert_eq!(
+        CaptureRecord::from_map(&Map::new()).unwrap(),
+        None,
+        "the end"
+    );
+    let codec = CodecDescription {
+        name: "RL16".into(),
+    };
+    assert_eq!(
+        CodecDescription::from_map(&codec.to_map().unwrap()).unwrap(),
+        codec
+    );
+    let stream = StreamFormat {
+        sample_rate: Some(8000),
+        channels: None,
+    };
+    assert_eq!(
+        StreamFormat::from_map(&stream.to_map().unwrap()).unwrap(),
+        stream
+    );
+}
+
+/// A map's text entry `key`.
+fn texts_of(map: &Map, key: &str) -> String {
+    String::from_value(map.get(key).expect("the key")).expect("text")
+}
 
 fn floor_hash<K: Kind + ?Sized>() -> u32 {
     K::FLOOR_HASH

@@ -23,6 +23,11 @@ header = """
  * each dissect call: call its slots during the call, never keep it, never
  * call its destroy. dissect's conversation map is lent too.
  *
+ * wireshark_tap, wireshark_filter_function, wireshark_file_type and
+ * wireshark_codec are offered the same way; the objects they answer
+ * (listener, reader, decoder) are the host's to destroy, and the
+ * wireshark_capture_source it lends to open and read is not.
+ *
  * wireshark_engine and wireshark_session go the other way: the
  * libwireshark-engine library provides them, and a host opens a session
  * to dissect frames and read captures with Wireshark itself.
@@ -30,13 +35,34 @@ header = """
 """
 
 [export]
-include = ["DissectorVtable", "PacketVtable", "EngineVtable", "SessionVtable"]
+include = [
+    "DissectorVtable",
+    "PacketVtable",
+    "EngineVtable",
+    "SessionVtable",
+    "TapVtable",
+    "TapListenerVtable",
+    "FilterFunctionVtable",
+    "FileTypeVtable",
+    "CaptureReaderVtable",
+    "CaptureSourceVtable",
+    "CodecVtable",
+    "DecoderVtable",
+]
 
 [export.rename]
 "DissectorVtable" = "wireshark_dissector_vtable"
 "PacketVtable" = "wireshark_packet_vtable"
 "EngineVtable" = "wireshark_engine_vtable"
 "SessionVtable" = "wireshark_session_vtable"
+"TapVtable" = "wireshark_tap_vtable"
+"TapListenerVtable" = "wireshark_tap_listener_vtable"
+"FilterFunctionVtable" = "wireshark_filter_function_vtable"
+"FileTypeVtable" = "wireshark_file_type_vtable"
+"CaptureReaderVtable" = "wireshark_capture_reader_vtable"
+"CaptureSourceVtable" = "wireshark_capture_source_vtable"
+"CodecVtable" = "wireshark_codec_vtable"
+"DecoderVtable" = "wireshark_decoder_vtable"
 
 [parse]
 parse_deps = false

@@ -11,6 +11,11 @@ which loads providers and registers what they describe with Wireshark.
 - `Packet` (`wireshark_packet`): one packet, lent by the host for a call:
   fields, columns, expert findings.
 - `Description` and the types it holds: the shape `describe` answers.
+- `Tap`, `FilterFunction`, `FileType` and `Codec` (`wireshark_tap`,
+  `wireshark_filter_function`, `wireshark_file_type`, `wireshark_codec`):
+  the other kinds of plugin, with the objects they answer
+  (`TapListener`, `CaptureReader`, `Decoder`) and the `CaptureSource` a
+  reader is lent.
 - `engine::Engine` and `engine::Session` (`wireshark_engine`,
   `wireshark_session`): the other direction, which `libwireshark-engine`
   provides — a host opens Wireshark's engine and dissects with it.

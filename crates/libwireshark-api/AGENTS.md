@@ -45,6 +45,14 @@ pub trait Packet: Send {
 | --- | --- |
 | `wireshark_dissector` | 1003939949 |
 | `wireshark_packet` | 2387250941 |
+| `wireshark_tap` | 2408697858 |
+| `wireshark_tap_listener` | 1080358107 |
+| `wireshark_filter_function` | 3420581637 |
+| `wireshark_file_type` | 633579420 |
+| `wireshark_capture_reader` | 2879541183 |
+| `wireshark_capture_source` | 4254949812 |
+| `wireshark_codec` | 3823197131 |
+| `wireshark_decoder` | 223420870 |
 | `wireshark_engine` | 2496675255 |
 | `wireshark_session` | 1680421174 |
 
@@ -71,6 +79,64 @@ pub trait Packet: Send {
   `dissect` sees whole messages. Answer the length including the header;
   with -1, or less than the header, the rest of the segment is handed to
   `dissect` as one message.
+
+### Taps, filter functions, file formats and codecs
+
+```rust
+#[guatiao::kind(name = "wireshark_tap")]                     // tap::Tap
+pub trait Tap: Send + Sync {
+    fn describe(&self) -> Result<Map, ProviderError>;           // TapDescription { name, tap }
+    fn open(&self) -> Result<Object<dyn TapListener>, ProviderError>; // one per -z invocation
+}
+#[guatiao::kind(object, name = "wireshark_tap_listener")]
+pub trait TapListener: Send {
+    fn packet(&mut self, packet: &Map) -> Result<(), ProviderError>; // TapPacket
+    fn draw(&mut self) -> Result<String, ProviderError>;
+    fn reset(&mut self) -> Result<(), ProviderError>;
+}
+#[guatiao::kind(name = "wireshark_filter_function")]         // filter::FilterFunction
+pub trait FilterFunction: Send + Sync {
+    fn describe(&self) -> Result<Map, ProviderError>;           // FilterDescription { name, returns }
+    fn call(&self, value: &Value) -> Result<Value, ProviderError>; // number or text in; out, or null
+}
+#[guatiao::kind(name = "wireshark_file_type")]               // file_type::FileType
+pub trait FileType: Send + Sync {
+    fn describe(&self) -> Result<Map, ProviderError>;           // FileTypeDescription { name, description, extensions }
+    fn open(&self, file: &mut dyn CaptureSource) -> Result<Object<dyn CaptureReader>, ProviderError>; // NOT_FOUND: not mine
+}
+#[guatiao::kind(object, name = "wireshark_capture_reader")]
+pub trait CaptureReader: Send {
+    fn encapsulation(&self) -> i64;                              // WTAP_ENCAP_*
+    fn read(&mut self, file: &mut dyn CaptureSource) -> Result<Map, ProviderError>; // CaptureRecord; {} at the end
+}
+#[guatiao::kind(object, name = "wireshark_capture_source")]  // lent by the host
+pub trait CaptureSource: Send {
+    fn read(&mut self, buffer: &mut [u8]) -> i64;                // bytes; 0 at the end, -1 error
+    fn position(&self) -> i64;
+}
+#[guatiao::kind(name = "wireshark_codec")]                   // codec::Codec
+pub trait Codec: Send + Sync {
+    fn describe(&self) -> Result<Map, ProviderError>;           // CodecDescription { name }
+    fn open(&self, format: &Map) -> Result<Object<dyn Decoder>, ProviderError>; // StreamFormat
+}
+#[guatiao::kind(object, name = "wireshark_decoder")]
+pub trait Decoder: Send {
+    fn sample_rate(&self) -> i64;
+    fn channels(&self) -> i64;
+    fn decoded_len(&self, payload: &[u8]) -> i64;                // samples
+    fn decode(&mut self, payload: &[u8], samples: &mut [u8]) -> i64; // i16 LE samples written
+}
+```
+
+Models (each `to_map`/`from_map`): `TapDescription { name, tap }`,
+`TapPacket { frame, len, time_ns, source, destination, src_port, dst_port }`,
+`FilterDescription { name, returns: FilterReturn::{Count, Text} }` (spelled
+`count`/`text`), `FileTypeDescription { name, description, extensions }`,
+`CaptureRecord { data: Bytes, time_ns?, original_len? }` (`from_map` answers
+`None` for the empty map), `CodecDescription { name }`,
+`StreamFormat { sample_rate?, channels? }`. The listener, reader and decoder
+a provider answers are the host's to destroy; the capture source it is
+lent lives for the call.
 
 ### The other direction: Wireshark as a provider (`engine`)
 
