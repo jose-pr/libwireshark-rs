@@ -79,6 +79,24 @@ jobs:
       - run: cargo test --workspace --all-features
       - name: Load the example plugins in tshark
         run: cargo test -p libwireshark --all-features --test tshark -- --ignored
+      # The guatiao host's providers: Rust, C (compiled by the test) and
+      # Python, through guatiao's Python bridge, built from the revision the
+      # workspace pins, against this job's Python.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build guatiao's Python bridge
+        shell: bash
+        run: |
+          rev=$(sed -n 's/^guatiao = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          git clone --filter=blob:none https://github.com/Boriken-Dev/guatiao "$RUNNER_TEMP/guatiao"
+          git -C "$RUNNER_TEMP/guatiao" checkout "$rev"
+          PYO3_PYTHON="$(python -c "import sys; print(sys.executable)")" cargo build --manifest-path "$RUNNER_TEMP/guatiao/crates/guatiao-py/Cargo.toml"
+          echo "LIBWIRESHARK_TEST_GUATIAO=$RUNNER_TEMP/guatiao" >> "$GITHUB_ENV"
+      - name: Load dissectors from Rust, C and Python through the guatiao host
+        env:
+          LIBWIRESHARK_TEST_REQUIRE_ALL: "1"
+        run: cargo test -p libwireshark-guatiao --test tshark -- --ignored
 
   # The runtime type-checks against every release line's bindings.
   release-lines:
@@ -98,7 +116,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
-      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec -p runtime-protocol
+      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec -p runtime-protocol -p libwireshark-guatiao
 
   docs:
     name: Docs
