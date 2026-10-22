@@ -44,6 +44,14 @@ First release of the crates under these names.
   `file_types`, `codecs` and `dynamic`.
 - Protocols described at run time (`dynamic::{Protocol, ProtocolSpec,
   DynamicDissector}`).
+- `libwireshark-api` and `libwireshark-guatiao`: Wireshark dissectors
+  written in any language guatiao reaches (Rust, C, Python), each declaring
+  its header and preferences as typed structs and binding in `dissect_on`;
+  one host plugin loads them all. Examples in `examples/guatiao`.
+- `PacketView::add_item` refuses a length its field's type does not take
+  (`PacketFieldError::WrongLength`) instead of letting Wireshark throw; a
+  TCP framing length that cannot be read hands the rest of the segment to
+  `dissect`; a binding to a table not keyed by integers is skipped.
 - `libwireshark-sys` reports its release line to dependents' build scripts
   as `DEP_WIRESHARK_VERSION`.
 - A protocol whose names Wireshark already has is skipped instead of

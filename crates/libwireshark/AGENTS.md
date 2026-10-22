@@ -137,25 +137,33 @@ impl TcpFraming {
   dropping it from `dissect_on` turns it off rather than removing it.
 - `TcpFraming::new(header_len, message_len)`: `message_len` gets the first
   `header_len` bytes of a message and returns its total length, header
-  included; `None` stops dissection of the rest of the segment.
+  included; with `None`, or less than the header, the rest of the segment
+  is handed to `dissect` as one message, which may decline it.
+- A `uint` binding to a table that does not exist, or is not keyed by
+  integers, binds nothing (reported on stderr); Wireshark would abort on
+  the second. A protocol whose names Wireshark already has is left out,
+  also reported on stderr.
 
 ## Protocols described at run time (`libwireshark::dynamic`)
 
 ```rust
 #[non_exhaustive] pub struct ProtocolSpec {
     pub name: &'static str, pub short_name: &'static str, pub filter_name: &'static str,
-    pub fields: Vec<FieldInfo>, pub experts: Vec<Expert>,
+    pub fields: Vec<FieldInfo>, pub experts: Vec<Expert>, pub preferences: Vec<Declaration>,
 }
 impl ProtocolSpec {
     pub fn new(name: &'static str, short_name: &'static str, filter_name: &'static str) -> Self;
     pub fn with_fields(self, Vec<FieldInfo>) -> Self;
     pub fn with_experts(self, Vec<Expert>) -> Self;
+    pub fn with_preferences(self, Vec<Declaration>) -> Self;
 }
 pub trait DynamicDissector: Send + Sync + 'static {
-    fn bindings(&self) -> Vec<Binding>;
+    type Preferences: Send + Sync + 'static;
+    fn preferences(&self, values: &PreferenceMap) -> Option<Self::Preferences>; // None keeps the last
+    fn dissect_on(&self, preferences: &Self::Preferences) -> Vec<Binding>;
     fn tcp_header_len(&self) -> Option<usize> { None }       // Some: framed over TCP
     fn message_len(&self, header: &[u8]) -> Option<usize> { None } // whole length, header included
-    fn dissect(&self, packet: &mut PacketView<'_>) -> Option<usize>;
+    fn dissect(&self, preferences: &Self::Preferences, packet: &mut PacketView<'_>) -> Option<usize>;
 }
 impl Protocol { pub fn dynamic(spec: ProtocolSpec, dissector: impl DynamicDissector) -> Self; }
 ```
@@ -168,6 +176,9 @@ impl Protocol { pub fn dynamic(spec: ProtocolSpec, dissector: impl DynamicDissec
   except for a post-dissector, which appends to the Info column itself
   (`is_postdissector`). A declining dissector (`None`) adds nothing first.
 - Framing is `tcp_header_len` and `message_len` together, as `TcpFraming`.
+- Preferences are as a `Dissector`'s: declared in the spec, read from
+  Wireshark's values by `preferences` each time they are applied, then
+  `dissect_on` runs again.
 - Wireshark keeps what is registered for the process: owned text becomes
   `&'static str` with `String::leak`. No preferences yet.
 
@@ -451,6 +462,7 @@ every key optional: `name` defaults to the field name, `title` to `name`.
     UnsupportedFieldType, // the operation does not fit the field's type
     OutOfBounds,          // range outside the captured bytes
     ValueOutOfRange,      // value wider than the field
+    WrongLength,          // add_item: a length the field's type does not take
 }
 #[non_exhaustive] pub enum PreferenceError { WrongKind, OutOfRange }
 ```
