@@ -1,9 +1,16 @@
 [package]
 name = "cargo-wireshark"
-version = "0.1.0"
+description = "Cargo subcommand for Wireshark plugin development: find the installation, and generate, fetch or publish libwireshark-sys header bundles"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["development-tools::cargo-plugins", "network-programming"]
+readme = "README.md"
+exclude = [".*", "*.local.*"]
 
 [dependencies]
 bindgen.workspace = true
@@ -12,3 +19,8 @@ sha2.workspace = true
 sevenz-rust2.workspace = true
 ureq.workspace = true
 zip.workspace = true
+lzma-rust2.workspace = true
+tar.workspace = true
+
+[lints]
+workspace = true

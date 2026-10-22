@@ -1,22 +1,35 @@
 [package]
 name = "libwireshark"
-version = "0.1.0"
-authors = ["Jose A <jose-pr@coqui.dev>"]
+description = "Write Wireshark dissector plugins in Rust: a trait per protocol, typed preferences and fields, one macro for the plugin"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 readme = "README.md"
-[lib]
-name = "libwireshark"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-libwireshark_sys = { package = "libwireshark-sys", path = "../libwireshark-sys" }
-once_cell.workspace = true
-libloading.workspace = true
-libwireshark-macros = { path = "../libwireshark-macros", optional = true }
+exclude = [".*", "*.local.*"]
 
 [features]
 default = []
-macros = ["dep:libwireshark-macros"]
+# `#[derive(Header)]` and `#[derive(Preferences)]`, re-exported from the root.
+derive = ["dep:libwireshark-derive"]
+
+[dependencies]
+libwireshark-sys.workspace = true
+libwireshark-derive = { workspace = true, optional = true }
+libloading.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+# Built beside the test binaries so `tests/tshark.rs` can load them.
+[dev-dependencies]
+basic-dissector = { path = "../../examples/basic-dissector" }
+multi-protocol = { path = "../../examples/multi-protocol" }

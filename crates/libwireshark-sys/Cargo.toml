@@ -1,19 +1,27 @@
 [package]
-authors = [ "Jose A <jose-pr@coqui.dev>" ]
+name = "libwireshark-sys"
+description = "Raw bindings to Wireshark's libwireshark (EPAN), generated from bundled public headers for each release line"
+version.workspace = true
 edition.workspace = true
-rust-version = "1.89"
-name    = "libwireshark-sys"
-version = "0.1.0"
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 links = "wireshark"
 build = "build.rs"
-publish = false
+# `headers/` is ignored by git (it lives on the `headers` branch) and listed
+# here so the published crate carries the bundles.
+include = ["src/**", "build.rs", "headers/*.h", "README.md", "AGENTS.md", "LICENSE"]
 
 [lib]
-name = "libwireshark_sys"
 doctest = false
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 bindgen.workspace = true
 pkg-config.workspace = true
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

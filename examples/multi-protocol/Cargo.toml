@@ -3,10 +3,14 @@ name = "multi-protocol"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-libwireshark = { path = "../../crates/libwireshark", features = ["macros"] }
+libwireshark = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

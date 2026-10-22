@@ -3,34 +3,58 @@ resolver = "2"
 members = [
     "crates/libwireshark-sys",
     "crates/libwireshark",
-    "crates/libwireshark-macros",
+    "crates/libwireshark-derive",
     "crates/cargo-wireshark",
     "examples/basic-dissector",
-    "examples/tcp-dissector",
-    "examples/udp-dissector",
     "examples/multi-protocol",
 ]
 
 [workspace.package]
+version = "0.0.0-alpha.0"
 edition = "2024"
+# Let chains and `core::error::Error` set the floor; CI runs this toolchain.
 rust-version = "1.89"
+# A plugin links libwireshark, which is GPL-2.0-or-later.
+license = "GPL-2.0-or-later"
+repository = "https://github.com/jose-pr/libwireshark-rs"
+homepage = "https://github.com/jose-pr/libwireshark-rs"
+keywords = ["wireshark", "dissector", "plugin", "pcap", "ffi"]
+categories = ["network-programming", "external-ffi-bindings"]
 
 [workspace.dependencies]
-# Generates Rust FFI declarations from the selected Wireshark SDK headers.
+libwireshark = { path = "crates/libwireshark", version = "=0.0.0-alpha.0" }
+libwireshark-sys = { path = "crates/libwireshark-sys", version = "=0.0.0-alpha.0" }
+libwireshark-derive = { path = "crates/libwireshark-derive", version = "=0.0.0-alpha.0" }
+# Generates Rust FFI declarations from the header bundles.
 bindgen = { version = "0.72", default-features = false, features = ["runtime"] }
-# Reads Wireshark's system pkg-config metadata during native discovery.
+# Reads Wireshark's pkg-config metadata when a development SDK is installed.
 pkg-config = "0.3"
-# Supplies the derive-based command-line parser for cargo-wireshark.
-clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "derive", "env"] }
-# Synchronization primitives for the plugin registration state.
-once_cell = "1"
+# The derive-based command line of cargo-wireshark.
+clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "derive", "env", "error-context", "suggestions"] }
+# Resolves GLib's g_strdup at run time, so a plugin needs no GLib import library.
 libloading = "0.8"
+# The derive macros.
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
-# Resolves renamed runtime-crate dependencies in attribute macro expansions.
+syn = { version = "2", default-features = false, features = ["derive", "parsing", "printing", "proc-macro", "clone-impls"] }
+# Finds `libwireshark` under a renamed dependency in derive expansions.
 proc-macro-crate = { version = "3.5", default-features = false }
-sha2 = "0.10"
+# Verifies downloaded dependency archives.
+sha2 = { version = "0.10", default-features = false, features = ["std"] }
+# Wireshark's Windows dependency archives (.7z, .zip).
 sevenz-rust2 = { version = "0.20.2", default-features = false, features = ["util"] }
-ureq = { version = "3.4", default-features = true }
 zip = { version = "6", default-features = false, features = ["deflate"] }
+# Wireshark's macOS dependency archives (.tar.xz); lzma-rust2 is already
+# built for sevenz-rust2.
+lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "xz"] }
+tar = { version = "0.4", default-features = false }
+# Downloads dependency archives over HTTPS.
+ureq = { version = "3.4", default-features = false, features = ["rustls", "gzip"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+std_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+alloc_instead_of_core = "warn"

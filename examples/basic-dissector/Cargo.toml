@@ -1,17 +1,16 @@
 [package]
 name = "basic-dissector"
 version = "0.1.0"
-authors = ["Jose A <jose-pr@coqui.dev>"]
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
+
 [lib]
-name = "basic_dissector"
 crate-type = ["cdylib"]
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-ws_runtime = { package = "libwireshark", path = "../../crates/libwireshark", features = ["macros"] }
+libwireshark = { workspace = true, features = ["derive"] }
 
+[lints]
+workspace = true
