@@ -97,6 +97,53 @@ packet.add_expert(UnknownVersion("v9"))     # this text
 
 `GROUP` and `SEVERITY` are required (`TypeError` when the class is defined).
 
+## Taps, filter functions, file types and codecs
+
+Each is subclassed beside guatiao's `provide.Provider`, as
+`ProtocolDissector` is, and listed in the module's manifest `kinds`.
+
+```python
+class Tap(kinds.Tap):                         # -z NAME[,filter]
+    NAME: str; TAP: str                        # TAP: a protocol's filter name ("frame", "ip")
+    LISTENER: type[TapListener]                # made with no arguments per invocation
+class TapListener:
+    def packet(self, packet: TapPacket) -> None
+    def draw(self) -> str
+    def reset(self) -> None                    # default: __init__ again
+@dataclass(frozen=True)
+class TapPacket: frame: int; len: int; time_ns: int; source: str; destination: str; src_port: int; dst_port: int
+
+class FilterFunction(kinds.FilterFunction):   # NAME(field) in a display filter, 4.4 on
+    NAME: str; RETURNS: FilterReturn = FilterReturn.COUNT    # or TEXT
+    def apply(self, value: int | str) -> int | str | None    # int for integer fields, else display text
+
+class FileType(kinds.FileType):               # 4.6 on
+    NAME: str; DESCRIPTION: str; EXTENSIONS: Sequence[str] = ()
+    def reader(self, file: CaptureFile) -> CaptureReader | None   # None: another format
+class CaptureReader:
+    ENCAPSULATION: int = Encapsulation.ETHERNET
+    def read(self, file: CaptureFile) -> Record | None     # None at the end
+class CaptureFile:                             # lent for the call
+    def read(self, size: int) -> bytes                     # OSError when Wireshark cannot read
+    def read_exact(self, size: int) -> bytes | None        # None at a clean end; EOFError inside
+    position: int
+@dataclass(frozen=True)
+class Record: data: bytes; time_ns: int | None = None; original_len: int | None = None
+
+class Codec(kinds.Codec):
+    NAME: str                                  # the SDP encoding name
+    DECODER: type[Decoder]                     # made with the stream's StreamFormat
+class Decoder:
+    format: StreamFormat                       # sample_rate, channels: int | None
+    def sample_rate(self) -> int
+    def channels(self) -> int                  # 1
+    def decoded_len(self, payload: bytes) -> int           # len(payload)
+    def decode(self, payload: bytes) -> Sequence[int]      # 16-bit signed samples
+```
+
+- An `EOFError` while `reader` reads counts as another format.
+- Decoded samples past the host's buffer are dropped.
+
 ## `Engine`: Wireshark run from Python
 
 ```python

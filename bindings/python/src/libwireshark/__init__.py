@@ -71,7 +71,11 @@ from ._dissector import (
     Table,
     TypedPacket,
 )
+from ._codec import Codec, Decoder, StreamFormat
 from ._engine import Dissected, Encapsulation, Engine, Node
+from ._file_type import CaptureFile, CaptureReader, FileType, Record
+from ._filter import FilterFunction, FilterReturn
+from ._tap import Tap, TapListener, TapPacket
 from .exceptions import DisplayFilterError, EngineError, WiresharkError
 from .kinds import Dissector, Packet
 
@@ -111,6 +115,18 @@ __all__ = [
     "IPv4",
     "IPv6",
     "Ether",
+    "Tap",
+    "TapListener",
+    "TapPacket",
+    "FilterFunction",
+    "FilterReturn",
+    "FileType",
+    "CaptureFile",
+    "CaptureReader",
+    "Record",
+    "Codec",
+    "Decoder",
+    "StreamFormat",
     "Engine",
     "Encapsulation",
     "Dissected",

@@ -26,8 +26,11 @@ Wireshark plugin loads it through guatiao's Python bridge.
   description.
 - `Expert`: one subclass per finding, its docstring the summary;
   `packet.add_expert(UnknownVersion())`.
-- `libwireshark.kinds`: the guatiao kinds themselves, for a dissector
-  written without the helpers.
+- `Tap` (with a `TapListener` class per invocation), `FilterFunction`,
+  `FileType` (with a `CaptureReader`) and `Codec` (with a `Decoder`): the
+  other kinds of plugin, as classes the same way.
+- `libwireshark.kinds`: the guatiao kinds themselves, for a plugin written
+  without the helpers.
 
 ## Installation
 
@@ -117,6 +120,7 @@ directory must be on `PATH`. Wireshark starts once per process.
 | Module | Purpose |
 | --- | --- |
 | `libwireshark` | `ProtocolDissector`, `Header`, `Preferences`, `Expert`, `Meta`, the field type aliases, bindings |
+| `libwireshark` | `Tap`, `TapListener`, `TapPacket`, `FilterFunction`, `FilterReturn`, `FileType`, `CaptureFile`, `CaptureReader`, `Record`, `Codec`, `Decoder`, `StreamFormat`: the other plugin kinds |
 | `libwireshark` | `Engine`, `Encapsulation`, `Dissected`, `Node`: Wireshark run from Python |
 | `libwireshark.exceptions` | `WiresharkError`, `EngineError`, `DisplayFilterError` |
 | `libwireshark.kinds` | the guatiao kinds `Dissector`, `Packet`, `Engine` and `Session` |
