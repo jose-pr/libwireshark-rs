@@ -1,7 +1,8 @@
 /*
- * A dissector as a guatiao provider, written in C: CFOO over UDP 114, a
- * twin of FOO. libwireshark-guatiao loads this library and registers the
- * protocol it describes. It links nothing: the tables come from
+ * Plugins as guatiao providers, written in C: CFOO over UDP 114, a twin of
+ * FOO; the `ctap` tap listener, counting frames; and the `c_double`
+ * display-filter function. libwireshark-guatiao loads this library and
+ * registers what it describes. It links nothing: the tables come from
  * libwireshark_api.h, the value types from guatiao.h. Its description and
  * its bindings are literal trees, which record no allocator: guatiao.h's
  * rule for an answer built anywhere but the carrier's allocator is that
@@ -162,6 +163,134 @@ static guatiao_status dissect(void *ctx, guatiao_bytes data, const guatiao_map *
   return GUATIAO_OK;
 }
 
+/* ---- the tap listener: -z ctap --------------------------------------------- */
+
+static guatiao_entry TAP_DESCRIPTION[] = {
+    GUATIAO_ENTRY_LIT("name", GUATIAO_VALUE_STRING_LIT("ctap")),
+    GUATIAO_ENTRY_LIT("tap", GUATIAO_VALUE_STRING_LIT("frame")),
+};
+
+static guatiao_status tap_describe(void *ctx, guatiao_map *out, guatiao_provider_error *err) {
+  (void)ctx;
+  (void)err;
+  out->ptr = TAP_DESCRIPTION;
+  out->len = sizeof(TAP_DESCRIPTION) / sizeof(TAP_DESCRIPTION[0]);
+  out->cap = 0;
+  out->alloc = NULL;
+  return GUATIAO_OK;
+}
+
+/* One invocation's count, and the report `draw` lends the host to copy. */
+typedef struct {
+  unsigned long long frames;
+  char report[64];
+} frame_count;
+
+static void listener_destroy(void *ctx) { free(ctx); }
+
+static guatiao_status listener_packet(void *ctx, const guatiao_map *packet,
+                                      guatiao_provider_error *err) {
+  (void)packet;
+  (void)err;
+  ((frame_count *)ctx)->frames++;
+  return GUATIAO_OK;
+}
+
+static guatiao_status listener_draw(void *ctx, guatiao_string *out, guatiao_provider_error *err) {
+  (void)err;
+  frame_count *count = (frame_count *)ctx;
+  int len = snprintf(count->report, sizeof(count->report), "ctap: %llu frames\n", count->frames);
+  out->ptr = (uint8_t *)count->report;
+  out->len = len > 0 ? (size_t)len : 0;
+  out->cap = 0; /* not owned: the host copies it */
+  out->alloc = NULL;
+  return GUATIAO_OK;
+}
+
+static guatiao_status listener_reset(void *ctx, guatiao_provider_error *err) {
+  (void)err;
+  ((frame_count *)ctx)->frames = 0;
+  return GUATIAO_OK;
+}
+
+static const wireshark_tap_listener_vtable LISTENER = {
+    {(uint32_t)sizeof(wireshark_tap_listener_vtable), wireshark_tap_listener_vtable_FLOOR_HASH},
+    listener_destroy,
+    listener_packet,
+    listener_draw,
+    listener_reset,
+};
+
+/* A listener the host owns: its destroy frees the count. */
+static guatiao_status tap_open(void *ctx, guatiao_object *out, guatiao_provider_error *err) {
+  (void)ctx;
+  (void)err;
+  frame_count *count = (frame_count *)calloc(1, sizeof(frame_count));
+  if (!count) {
+    return GUATIAO_ERR_ALLOC;
+  }
+  out->table = &LISTENER;
+  out->size = sizeof(LISTENER);
+  out->ctx = count;
+  return GUATIAO_OK;
+}
+
+static const wireshark_tap_vtable TAP = {
+    {(uint32_t)sizeof(wireshark_tap_vtable), wireshark_tap_vtable_FLOOR_HASH},
+    tap_describe,
+    tap_open,
+};
+
+/* ---- the display-filter function: c_double(field) ------------------------- */
+
+static guatiao_entry DOUBLE_DESCRIPTION[] = {
+    GUATIAO_ENTRY_LIT("name", GUATIAO_VALUE_STRING_LIT("c_double")),
+    GUATIAO_ENTRY_LIT("returns", GUATIAO_VALUE_STRING_LIT("count")),
+};
+
+static guatiao_status double_describe(void *ctx, guatiao_map *out, guatiao_provider_error *err) {
+  (void)ctx;
+  (void)err;
+  out->ptr = DOUBLE_DESCRIPTION;
+  out->len = sizeof(DOUBLE_DESCRIPTION) / sizeof(DOUBLE_DESCRIPTION[0]);
+  out->cap = 0;
+  out->alloc = NULL;
+  return GUATIAO_OK;
+}
+
+/* The answer's digits: the host copies them before the next call, which
+ * comes from the same thread. */
+static char doubled[24];
+
+/* Twice an integer field's value; null (no answer) for anything else. */
+static guatiao_status double_call(void *ctx, const guatiao_value *value, guatiao_value *out,
+                                  guatiao_provider_error *err) {
+  (void)ctx;
+  (void)err;
+  const guatiao_value null_value = GUATIAO_VALUE_NULL_LIT;
+  *out = null_value;
+  if (!value || value->tag != (uint32_t)GUATIAO_NUMBER || value->payload.number.len == 0 ||
+      value->payload.number.len >= sizeof(doubled)) {
+    return GUATIAO_OK;
+  }
+  char digits[24] = {0};
+  memcpy(digits, value->payload.number.ptr, value->payload.number.len);
+  int len = snprintf(doubled, sizeof(doubled), "%llu", strtoull(digits, NULL, 10) * 2);
+  out->tag = (uint32_t)GUATIAO_NUMBER;
+  out->payload.number.ptr = (uint8_t *)doubled;
+  out->payload.number.len = len > 0 ? (size_t)len : 0;
+  out->payload.number.cap = 0;
+  out->payload.number.alloc = NULL;
+  return GUATIAO_OK;
+}
+
+static const wireshark_filter_function_vtable DOUBLE = {
+    {(uint32_t)sizeof(wireshark_filter_function_vtable),
+     wireshark_filter_function_vtable_FLOOR_HASH},
+    double_describe,
+    double_call,
+};
+
 /* ---- the envelope ---------------------------------------------------------- */
 
 static const wireshark_dissector_vtable TABLE = {
@@ -172,43 +301,68 @@ static const wireshark_dissector_vtable TABLE = {
     NULL, /* message_len: not framed over TCP */
 };
 
-static const guatiao_str KINDS[] = {{(const uint8_t *)"wireshark_dissector", 19}};
+#define KIND(name) {(const uint8_t *)(name), sizeof(name) - 1}
 
-static const guatiao_kind_table TABLES[] = {{
+static const guatiao_str DISSECTOR_KINDS[] = {KIND("wireshark_dissector")};
+static const guatiao_str TAP_KINDS[] = {KIND("wireshark_tap")};
+static const guatiao_str DOUBLE_KINDS[] = {KIND("wireshark_filter_function")};
+
+static const guatiao_kind_table DISSECTOR_TABLES[] = {{
     (uint32_t)sizeof(guatiao_kind_table),
     (uint32_t)sizeof(wireshark_dissector_vtable),
-    {(const uint8_t *)"wireshark_dissector", 19},
+    KIND("wireshark_dissector"),
     &TABLE,
 }};
+static const guatiao_kind_table TAP_TABLES[] = {{
+    (uint32_t)sizeof(guatiao_kind_table),
+    (uint32_t)sizeof(wireshark_tap_vtable),
+    KIND("wireshark_tap"),
+    &TAP,
+}};
+static const guatiao_kind_table DOUBLE_TABLES[] = {{
+    (uint32_t)sizeof(guatiao_kind_table),
+    (uint32_t)sizeof(wireshark_filter_function_vtable),
+    KIND("wireshark_filter_function"),
+    &DOUBLE,
+}};
 
-static guatiao_provider_info PROVIDER;
+static guatiao_provider_info PROVIDERS[3];
 static guatiao_library_info LIBRARY;
 
 /* What a scanner reads before mapping this file. */
-EXPORT const char guatiao_declares[] = "kind=wireshark_dissector\0";
+EXPORT const char guatiao_declares[] =
+    "kind=wireshark_dissector\0kind=wireshark_tap\0kind=wireshark_filter_function\0";
+
+/* One provider of one kind, served through `tables`. */
+static void provider(guatiao_provider_info *info, const char *id, const char *display_name,
+                     const guatiao_str *kinds, const guatiao_kind_table *tables) {
+  memset(info, 0, sizeof(*info));
+  info->struct_size = (uint32_t)sizeof(guatiao_provider_info);
+  info->kinds.ptr = kinds;
+  info->kinds.len = 1;
+  info->id = guatiao_cstr(id);
+  info->display_name = guatiao_cstr(display_name);
+  info->version = guatiao_cstr("0.1.0");
+  info->tables.ptr = tables;
+  info->tables.len = 1;
+  info->tables.stride = sizeof(guatiao_kind_table);
+}
 
 EXPORT const guatiao_library_info *guatiao_library_entry(const guatiao_host_info *host) {
   if (!host || host->abi_version != GUATIAO_ABI_VERSION) {
     return NULL;
   }
-  memset(&PROVIDER, 0, sizeof(PROVIDER));
-  PROVIDER.struct_size = (uint32_t)sizeof(guatiao_provider_info);
-  PROVIDER.kinds.ptr = KINDS;
-  PROVIDER.kinds.len = 1;
-  PROVIDER.id = guatiao_cstr("cfoo");
-  PROVIDER.display_name = guatiao_cstr("FOO, in C");
-  PROVIDER.version = guatiao_cstr("0.1.0");
-  PROVIDER.tables.ptr = TABLES;
-  PROVIDER.tables.len = 1;
-  PROVIDER.tables.stride = sizeof(guatiao_kind_table);
+  provider(&PROVIDERS[0], "cfoo", "FOO, in C", DISSECTOR_KINDS, DISSECTOR_TABLES);
+  provider(&PROVIDERS[1], "ctap", "Frames, counted in C", TAP_KINDS, TAP_TABLES);
+  provider(&PROVIDERS[2], "c_double", "Twice a value, in C", DOUBLE_KINDS, DOUBLE_TABLES);
 
   memset(&LIBRARY, 0, sizeof(LIBRARY));
   LIBRARY.struct_size = (uint32_t)sizeof(guatiao_library_info);
   LIBRARY.abi_version = GUATIAO_ABI_VERSION;
   LIBRARY.id = guatiao_cstr("cfoo");
   LIBRARY.version = guatiao_cstr("0.1.0");
-  LIBRARY.providers.ptr = &PROVIDER;
-  LIBRARY.providers.len = 1;
+  LIBRARY.providers.ptr = PROVIDERS;
+  LIBRARY.providers.len = 3;
   LIBRARY.providers.stride = sizeof(guatiao_provider_info);
   return &LIBRARY;
 }

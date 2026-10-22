@@ -2,5 +2,11 @@
 # (the library; its id is the module's name), the kinds it serves, and
 # where it is (relative to this file, put on sys.path while it is open).
 module = "pyfoo"
-kinds = ["wireshark_dissector"]
+kinds = [
+    "wireshark_dissector",
+    "wireshark_tap",
+    "wireshark_filter_function",
+    "wireshark_file_type",
+    "wireshark_codec",
+]
 paths = ["."]

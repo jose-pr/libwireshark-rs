@@ -1,6 +1,8 @@
-//! A dissector as a guatiao provider, written in Rust: RSFOO over UDP 113
-//! (a preference), a twin of FOO. `libwireshark-guatiao` loads this library
-//! and registers the protocol it describes; the library links no Wireshark.
+//! Plugins as guatiao providers, written in Rust: RSFOO over UDP 113 (a
+//! preference), a twin of FOO, and in `extras` a tap listener, a
+//! display-filter function, a capture format and a codec.
+//! `libwireshark-guatiao` loads this library and registers what it
+//! describes; the library links no Wireshark.
 //!
 //! The header and the preferences are structs, as with `libwireshark`'s
 //! `Dissector`: the host decodes the header and adds its fields, and asks
@@ -115,5 +117,9 @@ impl ProtocolDissector for Rsfoo {
     }
 }
 
+mod extras;
+
+pub use extras::{RsDouble, RsTap, RsgCap, Rsl8};
+
 libwireshark_api::dissector!(Rsfoo);
-guatiao::providers!(Rsfoo);
+guatiao::providers!(Rsfoo, RsTap, RsDouble, RsgCap, Rsl8);

@@ -2,7 +2,8 @@
 
 The same protocol three times, each a twin of FOO (a version byte, a flags
 byte, a big-endian length), each written in another language and loaded
-by the `libwireshark-guatiao` host plugin:
+by the `libwireshark-guatiao` host plugin, with the other kinds of plugin
+beside it:
 
 | Directory | Language | Protocol | Port |
 | --- | --- | --- | --- |
@@ -16,6 +17,14 @@ other version; a packet shorter than the header is declined. The Rust and
 Python ones declare their port as a preference and bind in `dissect_on`
 (`-o rsfoo.port:..`), and keep a count per conversation; the C one binds a
 fixed port and shows the frame number.
+
+Beside its protocol, each provides a tap listener counting frames
+(`-z rstap`, `-z ctap`, `-z pytap`) and a display-filter function doubling
+an integer field (`rs_double`, `c_double`, `py_double`); the Rust and
+Python ones also a capture format (RSGCAP and PYGCAP: an 8-byte magic,
+then records of a nanosecond time, two lengths and the bytes; Wireshark
+4.6 on) and an RTP codec decoding unsigned 8-bit samples (`RSL8`,
+`PYL8`).
 
 Install a provider in a `guatiao` directory of Wireshark's plugin
 directory, or in a directory named by `LIBWIRESHARK_GUATIAO_PATH` (see the
