@@ -362,3 +362,57 @@ fn taps_report_statistics_over_a_plugins_own_and_wiresharks_taps() {
         "the -z filter applies: {filtered}"
     );
 }
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn filter_functions_work_in_display_filters_from_4_4() {
+    let profile = Profile::new("filters");
+    let since_4_4 = (
+        libwireshark::sys::VERSION_MAJOR,
+        libwireshark::sys::VERSION_MINOR,
+    ) >= (4, 4);
+    let capture = profile.capture();
+    let output = Command::new(tshark())
+        .args([
+            "-r",
+            capture.as_str(),
+            "-Y",
+            r#"port_class(udp.dstport) == "well-known""#,
+        ])
+        .args(["-T", "fields", "-e", "frame.number"])
+        .env("WIRESHARK_CONFIG_DIR", &profile.0)
+        .env("HOME", &profile.0)
+        .output()
+        .expect("run tshark");
+    if !since_4_4 {
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("does not exist"),
+            "before 4.4 the function is not registered"
+        );
+        return;
+    }
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "1",
+        "port 111 is well-known"
+    );
+    let digits = profile.fields(&["-Y", "digits(udp.dstport) == 4"], &["frame.number"]);
+    assert_eq!(digits, ["2"], "4242 has four digits");
+    let literal = Command::new(tshark())
+        .args(["-r", capture.as_str(), "-Y", r#"port_class("x") == "y""#])
+        .env("WIRESHARK_CONFIG_DIR", &profile.0)
+        .env("HOME", &profile.0)
+        .output()
+        .expect("run tshark");
+    assert!(!literal.status.success(), "a literal argument is refused");
+    assert!(
+        String::from_utf8_lossy(&literal.stderr).contains("Only fields"),
+        "{}",
+        String::from_utf8_lossy(&literal.stderr)
+    );
+}

@@ -4,12 +4,14 @@
 //! Everything here is `#[doc(hidden)]`; a plugin names only the macro.
 
 mod callbacks;
+mod filters;
 mod preferences;
 mod protocol;
 mod runtime;
 mod taps;
 
 pub use callbacks::{HeuristicFn, HeuristicResult, heuristic_result};
+pub use filters::{DfilterPlugin, FilterSpec, PluginStatic, dfilter_plugin};
 pub use protocol::Protocol;
 pub use taps::TapSpec;
 
@@ -23,16 +25,21 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 /// For derive expansions, which cannot assume `extern crate alloc`.
 pub use alloc::vec::Vec;
 
-/// `plugin_describe`'s answer for a plugin with `taps` taps: dissectors,
-/// and tap listeners when it has any (`WS_PLUGIN_DESC_*`).
-pub const fn describe(taps: usize) -> u32 {
+/// `plugin_describe`'s answer for a plugin with `taps` taps and `filters`
+/// filter functions: dissectors, plus tap listeners and display-filter
+/// functions when it has any (`WS_PLUGIN_DESC_*`).
+pub const fn describe(taps: usize, filters: usize) -> u32 {
     const DISSECTOR: u32 = 1 << 0;
     const TAP_LISTENER: u32 = 1 << 4;
-    if taps == 0 {
-        DISSECTOR
-    } else {
-        DISSECTOR | TAP_LISTENER
+    const DFILTER: u32 = 1 << 5;
+    let mut flags = DISSECTOR;
+    if taps > 0 {
+        flags |= TAP_LISTENER;
     }
+    if filters > 0 {
+        flags |= DFILTER;
+    }
+    flags
 }
 
 /// The release line the plugin is built for, checked by Wireshark's loader.
@@ -75,12 +82,13 @@ pub const fn tap_plugin(register_tap_listener: extern "C" fn()) -> sys::tap_plug
     }
 }
 
-/// Registers the plugin's tables with Wireshark; the tap table only when
-/// the plugin has taps.
+/// Registers the plugin's tables with Wireshark: the tap and display-filter
+/// tables only when the plugin has taps or filter functions.
 pub fn register(
     plugin: &'static sys::proto_plugin,
     taps: &'static sys::tap_plugin,
-    has_taps: bool,
+    filters: &'static DfilterPlugin,
+    [has_taps, has_filters]: [bool; 2],
 ) {
     // SAFETY: the tables and their callbacks are statics of the plugin library.
     unsafe {
@@ -88,6 +96,9 @@ pub fn register(
         if has_taps {
             sys::tap_register_plugin(taps);
         }
+    }
+    if has_filters {
+        filters::register_plugin(filters);
     }
 }
 
@@ -107,7 +118,9 @@ pub struct Callbacks {
 pub struct Plugin {
     protocols: &'static [Protocol],
     taps: &'static [TapSpec],
+    filters: &'static [FilterSpec],
     state: Mutex<Vec<Runtime>>,
+    filter_state: Mutex<Option<filters::Registered>>,
 }
 
 impl core::fmt::Debug for Plugin {
@@ -115,18 +128,61 @@ impl core::fmt::Debug for Plugin {
         f.debug_struct("Plugin")
             .field("protocols", &self.protocols)
             .field("taps", &self.taps)
+            .field("filters", &self.filters)
             .finish_non_exhaustive()
     }
 }
 
 impl Plugin {
-    /// A plugin of `protocols` and `taps`, registered when Wireshark loads it.
-    pub const fn new(protocols: &'static [Protocol], taps: &'static [TapSpec]) -> Self {
+    /// A plugin of `protocols`, `taps` and `filters`, registered when
+    /// Wireshark loads it.
+    pub const fn new(
+        protocols: &'static [Protocol],
+        taps: &'static [TapSpec],
+        filters: &'static [FilterSpec],
+    ) -> Self {
         Self {
             protocols,
             taps,
+            filters,
             state: Mutex::new(Vec::new()),
+            filter_state: Mutex::new(None),
         }
+    }
+
+    /// The display-filter plugin `init`: registers the filter functions.
+    pub fn register_filters(&'static self) {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let mut state = self
+                .filter_state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if state.is_none() {
+                *state = filters::register(self.filters);
+            }
+        }));
+    }
+
+    /// The display-filter plugin `cleanup`: deregisters them.
+    pub fn deregister_filters(&'static self) {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            if let Some(registered) = self
+                .filter_state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take()
+            {
+                registered.deregister();
+            }
+        }));
+    }
+
+    fn filter_api(&'static self) -> Option<filters::Api> {
+        self.filter_state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|registered| registered.api)
     }
 
     /// Wireshark's tap registration: offers each tap as `-z <name>`.

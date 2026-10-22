@@ -48,10 +48,12 @@ fn unsafe_code_stays_in_the_ffi_modules() {
     assert_eq!(
         files_containing(|line| line.contains("unsafe")),
         [
+            "filter.rs",
             "lib.rs",
             "macros.rs",
             "packet.rs",
             "plugin/callbacks.rs",
+            "plugin/filters.rs",
             "plugin/mod.rs",
             "plugin/preferences.rs",
             "plugin/runtime.rs",

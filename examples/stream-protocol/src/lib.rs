@@ -3,12 +3,15 @@
 //! heuristics in UDP; and FSIZE, a post-dissector that sees every frame.
 //! Two taps report statistics: `tshark -z lpmstats` over what LPM
 //! publishes, and `tshark -z udpbytes[,FILTER]` over Wireshark's UDP tap.
+//! Two display-filter functions (Wireshark 4.4 on) classify a port,
+//! `port_class(udp.dstport) == "well-known"`, and count its digits,
+//! `digits(udp.dstport) == 4`.
 
 #![forbid(unsafe_code)]
 
 use libwireshark::{
-    Binding, DissectResult, Dissector, Expert, ExpertGroup, Header, NoPreferences, PacketView,
-    Severity, Tap, TapPacket, TcpFraming,
+    Binding, DissectResult, Dissector, Expert, ExpertGroup, FieldValue, FilterFunction, Header,
+    NoPreferences, PacketView, Severity, Tap, TapPacket, TcpFraming,
 };
 use std::collections::BTreeMap;
 
@@ -133,6 +136,36 @@ impl Tap for UdpBytes {
     }
 }
 
+/// `port_class(field)`: "well-known", "registered" or "dynamic" for a port.
+struct PortClass;
+
+impl FilterFunction for PortClass {
+    const NAME: &'static str = "port_class";
+    type Output = String;
+
+    fn call(value: &FieldValue<'_>) -> Option<String> {
+        let class = match value.as_u64()? {
+            0..1024 => "well-known",
+            1024..49152 => "registered",
+            _ => "dynamic",
+        };
+        Some(class.to_owned())
+    }
+}
+
+/// `digits(field)`: how many decimal digits a value has, as displayed.
+struct Digits;
+
+impl FilterFunction for Digits {
+    const NAME: &'static str = "digits";
+    type Output = u32;
+
+    fn call(value: &FieldValue<'_>) -> Option<u32> {
+        let text = value.to_text();
+        u32::try_from(text.chars().filter(char::is_ascii_digit).count()).ok()
+    }
+}
+
 /// An HBEAT heartbeat: the magic `HB`, a sequence number and a status flag.
 #[derive(Header)]
 struct Heartbeat {
@@ -198,5 +231,6 @@ impl Dissector for Fsize {
 
 libwireshark::plugin!(
     dissectors = [Lpm, Hbeat, Fsize],
-    taps = [LpmStats, UdpBytes]
+    taps = [LpmStats, UdpBytes],
+    filters = [PortClass, Digits],
 );

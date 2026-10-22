@@ -19,6 +19,8 @@ extern crate self as libwireshark;
 pub mod __private;
 mod dissector;
 mod expert;
+#[allow(unsafe_code)]
+mod filter;
 mod header;
 mod macros;
 #[allow(unsafe_code)]
@@ -32,6 +34,7 @@ pub use libwireshark_sys as sys;
 
 pub use dissector::{Binding, DissectResult, Dissector, TcpFraming};
 pub use expert::{Expert, ExpertGroup, Severity};
+pub use filter::{FieldValue, FilterFunction, FilterOutput};
 pub use header::{Base, FieldInfo, FieldType, Header, NoHeader};
 pub use packet::{Encoding, PacketFieldError, PacketView};
 pub use prefs::{NoPreferences, Preferences};
