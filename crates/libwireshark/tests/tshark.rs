@@ -115,9 +115,12 @@ impl Profile {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("libwireshark-tshark-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
+        // The release line's directory: `4-6` on macOS, whose code signing
+        // reads dotted directory names as bundles, `4.6` elsewhere.
         let version = format!(
-            "{}.{}",
+            "{}{}{}",
             libwireshark::sys::VERSION_MAJOR,
+            if cfg!(target_os = "macos") { "-" } else { "." },
             libwireshark::sys::VERSION_MINOR
         );
         for base in [
