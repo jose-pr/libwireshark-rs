@@ -40,7 +40,11 @@ preference apply, cleanup, the heuristic entry point, tap and filter
 registration) forwarding to it, and the exports Wireshark's loader reads.
 A filter function's callback has no data pointer either, so it is
 monomorphised for the function and for `ThisPlugin`, a type the macro
-expands whose `PluginStatic` impl returns the static.
+expands whose `PluginStatic` impl returns the static; so is a file
+format's open routine, which needs the file type number registration gave
+it. `plugin_register` hands Wireshark a table per interface the plugin
+uses (`Tables`): protocols, taps, display-filter functions (4.4+), file
+formats (4.6+) and codecs.
 Callbacks that do carry a data pointer (dissection, TCP framing, taps) are
 shared by every plugin and find their state through it. Where a callback's
 C signature differs between release lines (heuristic and tap results, the
@@ -51,6 +55,17 @@ Display-filter functions exist from 4.4, so their symbols are resolved from
 the running Wireshark rather than linked: a plugin for an older line loads
 and registers none. Each borrows the argument check of the built-in `count`
 or `string`, so every check, and the error it raises, stays in C.
+
+File formats and codecs live in libwiretap and libwsutil, which the sys
+crate does not link, so their functions are resolved the same way. A file
+reader fills `struct wtap`, public from 4.6.2 (`wiretap/wtap_module.h`) and
+private before; the runtime declares only the start of it, which is the
+same in every 4.6 release, and reaches it through Wireshark's pointer.
+`libwireshark-sys` reports its release line (`DEP_WIRESHARK_VERSION`), and
+`libwireshark`'s build script compiles the reader only from 4.6, where a
+record carries its own data buffer. Codec callbacks take a
+`codec_context_t` from 4.2 and the decoder itself before; both sets are
+compiled, and registration picks the release line's.
 
 ```mermaid
 flowchart TD

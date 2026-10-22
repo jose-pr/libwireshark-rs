@@ -37,6 +37,13 @@ First release of the crates under these names.
   `PacketView::tap`.
 - Display-filter functions (`FilterFunction`, `FieldValue`) for Wireshark
   4.4 and later, returning a number or text.
+- Capture file formats (`FileType`, `CaptureFile`, `Record`,
+  `Encapsulation`) for Wireshark 4.6 and later, and audio codecs (`Codec`)
+  for the RTP player; `Binding::encapsulation`.
+- `plugin!` takes its lists in any order, each optional, and adds
+  `file_types` and `codecs`.
+- `libwireshark-sys` reports its release line to dependents' build scripts
+  as `DEP_WIRESHARK_VERSION`.
 - A protocol whose names Wireshark already has is skipped instead of
   aborting Wireshark.
 - Three example plugins, and tests that load them in tshark.

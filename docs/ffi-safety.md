@@ -3,8 +3,8 @@
 `libwireshark-sys` is raw C: every function is `unsafe`. `libwireshark`
 wraps both sides of the boundary, Wireshark calling the plugin and the
 plugin calling Wireshark, so a plugin needs no `unsafe`. Its `unsafe`
-is in `src/packet.rs`, `src/tap.rs`, `src/filter.rs` and the `src/plugin/`
-module; a test fails if any other file gains some.
+is in `src/packet.rs`, `src/tap.rs`, `src/filter.rs`, `src/file_type.rs`
+and the `src/plugin/` module; a test fails if any other file gains some.
 
 ## Wireshark calling the plugin
 
@@ -32,6 +32,14 @@ module; a test fails if any other file gains some.
   result cell, which owns and frees them; text is copied by
   `fvalue_set_string`, and display text from `fvalue_to_string_repr` is
   freed with `g_free`.
+- A file reader writes only the fields of `struct wtap` up to
+  `file_tsprec`, declared to match `wiretap/wtap_module.h`; later fields
+  moved between 4.6 releases and are never touched. Packet data is written
+  into the record's buffer after `ws_buffer_assure_space` reserves it, and
+  the buffer's length moves only past bytes written. Error messages handed
+  back are `g_strdup` copies, which Wireshark frees.
+- A codec's output buffer is used only when it is aligned for `i16`, and
+  only up to the length Wireshark gives.
 
 ## Memory Wireshark keeps
 
@@ -47,6 +55,10 @@ module; a test fails if any other file gains some.
   runtime takes the slot's type from the binding's signature.
 - Filter function definitions and names are leaked: Wireshark keeps them
   until the plugin's cleanup deregisters them.
+- File type records, reader records and their strings, and codec names are
+  leaked: Wireshark keeps the pointers for the process. An open file's
+  reader state is boxed in `wth->priv` and dropped by the reader's close
+  callback, which clears the pointer before Wireshark frees `priv`.
 
 ## Threads
 

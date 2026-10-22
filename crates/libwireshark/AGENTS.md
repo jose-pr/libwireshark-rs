@@ -17,8 +17,9 @@ The root re-exports everything below except the `prefs` module's contents
 (the root has `prefs::Preferences` and `prefs::NoPreferences`). `sys` is
 `libwireshark-sys`. `__private` is for `plugin!` and the derives only.
 
-`unsafe` is confined to `src/packet.rs`, `src/tap.rs`, `src/filter.rs` and
-`src/plugin/`; a plugin written with this crate needs none.
+`unsafe` is confined to `src/packet.rs`, `src/tap.rs`, `src/filter.rs`,
+`src/file_type.rs` and `src/plugin/`; a plugin written with this crate needs
+none.
 
 ## A plugin
 
@@ -27,22 +28,37 @@ libwireshark::plugin!(DissectorA, DissectorB);
 libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA, TapB]);
 libwireshark::plugin!(version = "1.2.0", dissectors = [DissectorA, DissectorB], taps = [TapA]);
 libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA], filters = [FunctionA]);
+libwireshark::plugin!(file_types = [FormatA], dissectors = [DissectorA]);
+libwireshark::plugin!(codecs = [CodecA]);
 ```
+
+Keys: `version` (a `&str` expression), `dissectors`, `taps`, `filters`,
+`file_types`, `codecs`; any order, each optional. `plugin!(A, B)` is
+`plugin!(dissectors = [A, B])`. An unknown key is a compile error, and so is
+`codecs` beside any other list.
 
 Write it once, at the root of a `cdylib` crate. It defines `#[no_mangle]`
 `plugin_version` (the crate's `CARGO_PKG_VERSION` unless given),
-`plugin_want_major`, `plugin_want_minor`, `plugin_describe` (dissector, plus
-tap listener when there are taps) and
+`plugin_want_major`, `plugin_want_minor`, `plugin_describe` and
 `plugin_register`, and a static holding the plugin's registration state.
-`plugin_describe` reports a dissector, plus a tap listener when there are
-taps and display-filter functions when there are filters. A plugin crate
-can be `#![forbid(unsafe_code)]`.
+`plugin_describe` reports each kind the plugin has: dissector, file type,
+codec, tap listener, display-filter function. A plugin crate can be
+`#![forbid(unsafe_code)]`.
 
-Install the built library under `<plugin dir>/<major>.<minor>/epan/`; the
+Install the built library under `<plugin dir>/<major>.<minor>/<kind>/`; the
 personal plugin directory is `%APPDATA%\Wireshark\plugins` on Windows and
 `~/.local/lib/wireshark/plugins` elsewhere. Wireshark loads only `*.dll` on
 Windows and `*.so` elsewhere: on macOS rename Cargo's `.dylib` to `.so`, and
-the version directory is `<major>-<minor>` there.
+the version directory is `<major>-<minor>` there. `<kind>`:
+
+| The library has | `<kind>` | Why |
+| --- | --- | --- |
+| dissectors, taps, filter functions | `epan` | |
+| file types (and anything but codecs) | `wiretap` | loaded before protocols register, so the rest still registers |
+| codecs, alone | `codecs` | loaded after protocols register |
+
+A library is loaded once per directory it is in: never install the same one
+in two.
 
 ## Protocols (`Dissector`)
 
@@ -96,6 +112,7 @@ impl Binding {
     pub const fn udp_port(port: u16) -> Self;
     pub const fn heuristic(list: &'static str) -> Self;         // "udp", "tcp", ...
     pub const fn postdissector() -> Self;
+    pub const fn encapsulation(encapsulation: Encapsulation) -> Self; // "wtap_encap" table
 }
 
 pub struct TcpFraming; // Copy
@@ -109,6 +126,9 @@ impl TcpFraming {
 - `heuristic(list)`: packets of that heuristic list no table claimed are
   offered to `dissect`; `None` passes them on. Registered as
   `<filter>_<list>`, enabled; users can turn it off in Enabled Protocols.
+- `encapsulation(e)`: every frame of a capture whose link-layer type is `e`
+  (such as `Encapsulation::user(0)` for a file type's private link layer),
+  from its first byte.
 - `postdissector()`: every frame, after all other dissection, with the whole
   frame. The runtime leaves the Protocol column alone and appends the Info
   text. Wireshark gives plugins no way to remove a post-dissector, so
@@ -218,6 +238,78 @@ impl<'a> FieldValue<'a> {
   result. The filter matches when any result compares as written:
   `port_class(udp.dstport) == "well-known"`.
 - A panic in `call` is caught, and the call then reports no results.
+
+## File types
+
+```rust
+pub trait FileType: Sized + 'static {
+    const NAME: &'static str;         // short name: tshark -X read_format:NAME
+    const DESCRIPTION: &'static str;  // in Wireshark's file type lists
+    const EXTENSIONS: &'static [&'static str] = &[]; // without the dot; first is the default
+    fn open(file: &mut CaptureFile<'_>) -> io::Result<Option<Self>>;
+    fn encapsulation(&self) -> Encapsulation;
+    fn read(&self, file: &mut CaptureFile<'_>, record: &mut Record<'_>) -> io::Result<bool>;
+}
+
+impl io::Read for CaptureFile<'_> {}
+impl CaptureFile<'_> { fn position(&self) -> u64; } // of the decompressed contents
+
+impl Record<'_> {
+    fn set_time(&mut self, since_epoch: Duration);  // nanosecond precision
+    fn set_original_len(&mut self, len: u32);       // on the wire; default the data's length
+    fn read_data(&mut self, file: &mut CaptureFile<'_>, len: usize) -> io::Result<()>;
+    fn extend_data(&mut self, bytes: &[u8]);
+}
+
+pub struct Encapsulation; // Copy, Eq, Hash: WTAP_ENCAP_*
+impl Encapsulation {
+    pub const ETHERNET: Self;
+    pub const RAW_IP: Self;
+    pub const fn user(index: u8) -> Option<Self>; // USER0..USER15 (pcap DLT_USER)
+    pub const fn from_raw(value: i32) -> Self;
+    pub const fn to_raw(self) -> i32;
+}
+```
+
+- Wireshark 4.6 on, where a reader's structures are public; before, the
+  plugin loads and registers no format.
+- Wireshark tries every format's `open` on every file it opens, from the
+  start of the file. `Ok(None)`, or an `UnexpectedEof` error, means "not
+  this format"; any other error fails the open.
+- `read` is called for each record in order, then again for a single record
+  from the offset `position()` gave before it (`tshark -2`, Wireshark's
+  packet list): a record must be readable from its own offset with only
+  what `open` returned. `Ok(false)` ends the file; a record cut short
+  (`UnexpectedEof`) is reported as a truncated file, `InvalidData` as a
+  damaged one with the error's message.
+- Every record is a packet of the format's `encapsulation`, captured from
+  interface 0. Packets then go to the dissectors as from any capture.
+- A format whose `NAME` Wireshark already has is left out.
+
+## Codecs
+
+```rust
+pub trait Codec: 'static {
+    const NAME: &'static str;   // payload format: SDP rtpmap name or static payload type name
+    fn new(format: &StreamFormat) -> Self;
+    fn sample_rate(&self) -> u32;
+    fn channels(&self) -> u32 { 1 }
+    fn decoded_len(&self, payload: &[u8]) -> usize;  // samples, at most
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize; // samples written
+}
+
+#[non_exhaustive] pub struct StreamFormat {
+    pub sample_rate: Option<u32>, // a=rtpmap clock rate; None before 4.2
+    pub channels: Option<u32>,
+}
+```
+
+- Used by Wireshark's RTP player and `sharkd`'s RTP download, not by tshark.
+- `NAME` is compared ignoring case; Wireshark refuses a name already
+  registered (its own codecs: G.711, G.722, G.726, G.729, iLBC, L16, Opus,
+  SBC, AMR).
+- One decoder per stream and payload type; `decode` gets one RTP payload.
+- A panic is caught; the callback reports nothing (0 samples, 0 Hz).
 
 ## Expert info
 
@@ -345,3 +437,6 @@ Both implement `Display` and `core::error::Error`.
   `libglib-2.0.0.dylib`, `libglib-2.0.so.0`). If it cannot be loaded, string
   preferences are not registered.
 - Registration state lives for the process; Wireshark never unloads plugins.
+- `libwireshark-sys` reports its release line to build scripts as
+  `DEP_WIRESHARK_VERSION` (`major.minor`); this crate enables file types
+  from it.

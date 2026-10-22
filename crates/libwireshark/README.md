@@ -29,8 +29,11 @@ the [API documentation](https://docs.rs/libwireshark).
   publish, run by `tshark -z <name>[,<filter>]`.
 - `FilterFunction`: functions of a field for display filters,
   `myfunc(udp.dstport) == 4` (Wireshark 4.4 on).
-- `plugin!`: exports what Wireshark's loader reads, for one or more
-  protocols, taps and filter functions.
+- `FileType`: a capture file format Wireshark opens, read through
+  `std::io::Read` (Wireshark 4.6 on).
+- `Codec`: an audio decoder for RTP payloads, for Wireshark's RTP player.
+- `plugin!`: exports what Wireshark's loader reads, for any mix of the
+  above.
 - The runtime sets the Protocol column and adds the protocol's own tree item,
   so `-Y <protocol>` filters work.
 
@@ -153,6 +156,8 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 | `prefs` (`Preferences`, `PreferenceValue`, `Declaration`, `Value`) | protocol preferences |
 | `Tap`, `TapPacket` | tap listeners (`tshark -z`) |
 | `FilterFunction`, `FieldValue`, `FilterOutput` | display-filter functions |
+| `FileType`, `CaptureFile`, `Record`, `Encapsulation` | capture file formats |
+| `Codec`, `StreamFormat` | audio codecs |
 | `plugin!` | the plugin's exported entry points |
 | `sys` | the raw `libwireshark-sys` bindings |
 

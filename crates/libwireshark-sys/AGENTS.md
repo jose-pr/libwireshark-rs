@@ -46,6 +46,9 @@ build with the commands that produce it.
 
 The `WIRESHARK_*` names follow the `<LIB>_DIR` convention of `-sys` crates.
 
+The build reports the release line to the build scripts of crates that
+depend on this one directly: `DEP_WIRESHARK_VERSION=<major>.<minor>`.
+
 ## Gotchas
 
 - An SDK takes precedence over a runtime when both are found.
@@ -53,3 +56,6 @@ The `WIRESHARK_*` names follow the `<LIB>_DIR` convention of `-sys` crates.
 - Cross-compiling needs the target's C headers (libc) for bindgen.
 - On Windows the generated import library is checked against the target
   architecture; an x64 Wireshark cannot link an aarch64 plugin.
+- bindgen lays out C bitfields as GCC does; on `*-windows-msvc` a bitfield
+  unit that follows a narrower field sits at a different offset than its
+  accessors read (`_frame_data`'s flags, for one).
