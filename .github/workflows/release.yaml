@@ -1,0 +1,135 @@
+name: Release
+
+# Runs when a version tag (v0.1.0, v0.1.0-alpha.1) is pushed. The test
+# workflow is the gate; this one re-checks, packages, releases and publishes.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the tag and the packages
+    runs-on: ubuntu-latest
+    env:
+      WIRESHARK_NO_LINK: "1"
+      WIRESHARK_VERSION: "4.6"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: The tag names the workspace version
+        shell: python
+        run: |
+          import tomllib
+          version = tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"]
+          tag = "${{ github.ref_name }}"
+          if tag != f"v{version}":
+              raise SystemExit(f"tag {tag} does not match workspace version {version}")
+      # The bundles live on the `headers` branch; the sys crate ships them.
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - run: cargo publish --workspace --dry-run --allow-dirty
+      - run: cargo package --workspace --no-verify --allow-dirty
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crates
+          path: target/package/*.crate
+
+  github-release:
+    name: Create the GitHub release
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: crates
+          path: dist/
+      - name: Extract this version's CHANGELOG.md section
+        shell: python
+        run: |
+          import pathlib
+          import re
+          import sys
+
+          tag = "${{ github.ref_name }}"
+          version = tag[1:] if tag.startswith("v") else tag
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          match = re.search(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]:\s|\Z)",
+              changelog,
+              re.DOTALL | re.MULTILINE,
+          )
+          if not match:
+              sys.exit(f"No CHANGELOG.md section found for version {version!r}")
+          pathlib.Path("release_notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: release_notes.md
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: github-release
+    runs-on: ubuntu-latest
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/libwireshark
+    permissions:
+      contents: read
+      id-token: write # trusted publishing, once it is configured
+    env:
+      WIRESHARK_NO_LINK: "1"
+      WIRESHARK_VERSION: "4.6"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      # Trusted publishing can only be configured for a crate that exists,
+      # so the first release uses the CARGO_REGISTRY_TOKEN secret. Then set
+      # the repository variable CRATES_IO_TRUSTED_PUBLISHING to `true`.
+      - name: Exchange this run's identity for a crates.io token
+        id: auth
+        if: ${{ vars.CRATES_IO_TRUSTED_PUBLISHING == 'true' }}
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish each crate crates.io does not have yet, in dependency order
+        shell: python
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          import json
+          import os
+          import subprocess
+          import sys
+          import tomllib
+          import urllib.error
+          import urllib.request
+
+          if not os.environ.get("CARGO_REGISTRY_TOKEN"):
+              sys.exit("no crates.io token: set the CARGO_REGISTRY_TOKEN secret, "
+                       "or configure trusted publishing and CRATES_IO_TRUSTED_PUBLISHING")
+          version = tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"]
+          headers = {"User-Agent": "libwireshark-rs release workflow (github.com/jose-pr/libwireshark-rs)"}
+
+          def published(name):
+              url = f"https://crates.io/api/v1/crates/{name}/{version}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as r:
+                      return json.load(r).get("version", {}).get("num") == version
+              except urllib.error.HTTPError as e:
+                  if e.code == 404:
+                      return False
+                  raise
+
+          for name in ["libwireshark-sys", "libwireshark-derive", "libwireshark", "cargo-wireshark"]:
+              if published(name):
+                  print(f"{name} {version} is already on crates.io; skipped")
+                  continue
+              subprocess.run(["cargo", "publish", "-p", name, "--allow-dirty"], check=True)

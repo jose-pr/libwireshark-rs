@@ -1,0 +1,129 @@
+name: Test
+
+# On demand, or for a throwaway `ci-*` tag (delete it afterwards). Not run
+# on branch pushes.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to test (branch, tag, or SHA)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "ci-*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that builds without Wireshark: the CLI and the derives.
+  tooling:
+    name: Tooling (${{ matrix.toolchain }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        toolchain: [stable, "1.89"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p cargo-wireshark -p libwireshark-derive --all-targets -- -D warnings
+      - run: cargo test -p cargo-wireshark -p libwireshark-derive
+
+  # The runtime and the example plugins against an installed Wireshark,
+  # loaded by its tshark.
+  plugins:
+    name: Plugins (${{ matrix.toolchain }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        toolchain: [stable, "1.89"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Wireshark (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark libwireshark-dev libclang-dev
+      - name: Install Wireshark (macOS)
+        if: runner.os == 'macOS'
+        run: brew install wireshark
+      - name: Install Wireshark (Windows)
+        if: runner.os == 'Windows'
+        run: choco install wireshark --no-progress -y
+      - name: Fetch the header bundles
+        run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+      - name: Load the example plugins in tshark
+        run: cargo test -p libwireshark --all-features --test tshark -- --ignored
+
+  # The runtime type-checks against every release line's bindings.
+  release-lines:
+    name: Release line ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["3.0", "3.2", "3.4", "3.6", "4.0", "4.2", "4.4", "4.6"]
+    env:
+      WIRESHARK_NO_LINK: "1"
+      WIRESHARK_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    env:
+      WIRESHARK_NO_LINK: "1"
+      WIRESHARK_VERSION: "4.6"
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - run: cargo doc --workspace --no-deps --all-features
+      - name: The published crates carry their headers and no private files
+        run: |
+          cargo package --list -p libwireshark-sys --allow-dirty > sys.txt
+          grep -q '^headers/wireshark-4-6.h$' sys.txt
+          grep -q '^headers/deps-linux-x86_64.h$' sys.txt
+          for crate in libwireshark libwireshark-derive libwireshark-sys cargo-wireshark; do
+            cargo package --list -p "$crate" --allow-dirty > files.txt
+            grep -q '^AGENTS.md$' files.txt
+            grep -q '^README.md$' files.txt
+            grep -q '^LICENSE$' files.txt
+            ! grep -v '^\.cargo_vcs_info\.json$' files.txt | grep -q '^\.'
+          done
