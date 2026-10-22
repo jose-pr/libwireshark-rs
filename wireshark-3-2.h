@@ -31,50 +31,6 @@ typedef struct _dcerpc_info dcerpc_info;
 #define WIRESHARK_VERSION_MICRO 0
 #endif
 
-/* Begin epan/addr_and_mask.h */
-/* addr_and_mask.h
- * Declarations of routines to fetch IPv4 and IPv6 addresses from a tvbuff
- * and then mask out bits other than those covered by a prefix length
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ADDR_AND_MASK_H__
-#define __ADDR_AND_MASK_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * These routines return PREFIX_LEN_OK on success, PREFIX_LEN_TOO_LONG if
- * the prefix length is too long, and PREFIX_LEN_ZERO if the prefix length
- * is 0.
- */
-
-#define PREFIX_LEN_OK		0
-#define PREFIX_LEN_TOO_LONG	1
-#define PREFIX_LEN_ZERO		2
-
-extern int tvb_get_ipv4_addr_with_prefix_len(tvbuff_t *tvb, int offset,
-    guint8 *addr, guint32 prefix_len);
-
-extern int tvb_get_ipv6_addr_with_prefix_len(tvbuff_t *tvb, int offset,
-    ws_in6_addr *addr, guint32 prefix_len);
-
-guint32 ip_get_subnet_mask(const guint32 mask_length);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __ADDR_AND_MASK_H__  */
-/* End embedded header */
-
 /* Begin ws_compiler_tests.h */
 /* ws_compiler_tests.h
  *
@@ -418,61 +374,6 @@ guint32 ip_get_subnet_mask(const guint32 mask_length);
  * vi: set shiftwidth=2 tabstop=8 expandtab:
  * :indentSize=2:tabSize=8:noTabs=true:
  */
-/* End embedded header */
-
-/* Begin epan/guid-utils.h */
-/* guid-utils.h
- * Definitions for GUID handling
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- *
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __GUID_UTILS_H__
-#define __GUID_UTILS_H__
-
-
-#define GUID_LEN	16
-
-/* Note: this might be larger than GUID_LEN, so don't overlay data in packets
-   with this. */
-typedef struct _e_guid_t {
-    guint32 data1;
-    guint16 data2;
-    guint16 data3;
-    guint8  data4[8];
-} e_guid_t;
-
-
-WS_DLL_PUBLIC void guids_init(void);
-
-/* add a GUID */
-WS_DLL_PUBLIC void guids_add_guid(const e_guid_t *guid, const gchar *name);
-
-/* try to get registered name for this GUID */
-WS_DLL_PUBLIC const gchar *guids_get_guid_name(const e_guid_t *guid);
-
-/* resolve GUID to name (or if unknown to hex string) */
-/* (if you need hex string only, use guid_to_str instead) */
-WS_DLL_PUBLIC const gchar* guids_resolve_guid_to_str(const e_guid_t *guid);
-
-/* add a UUID (dcerpc_init_uuid() will call this too) */
-#define guids_add_uuid(uuid, name) guids_add_guid((const e_guid_t *) (uuid), (name))
-
-/* try to get registered name for this UUID */
-#define guids_get_uuid_name(uuid) guids_get_guid_name((e_guid_t *) (uuid))
-
-/* resolve UUID to name (or if unknown to hex string) */
-/* (if you need hex string only, use guid_to_str instead) */
-#define guids_resolve_uuid_to_str(uuid) guids_resolve_guid_to_str((e_guid_t *) (uuid))
-
-WS_DLL_PUBLIC int guid_cmp(const e_guid_t *g1, const e_guid_t *g2);
-
-#endif /* __GUID_UTILS_H__ */
 /* End embedded header */
 
 /* Begin ws_attributes.h */
@@ -2267,8 +2168,8 @@ wmem_unregister_callback(wmem_allocator_t *allocator, guint id);
  */
 /* End embedded header */
 
-/* Begin wsutil/inet_ipv6.h */
-/* inet_ipv6.h
+/* Begin wsutil/inet_ipv4.h */
+/* inet_ipv4.h
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -2277,127 +2178,62 @@ wmem_unregister_callback(wmem_allocator_t *allocator, guint id);
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef __INET_IPV6_H__
-#define __INET_IPV6_H__
+#ifndef __INET_IPV4_H__
+#define __INET_IPV4_H__
 
 
-#define IPv6_ADDR_SIZE  16
-
-#define IPv6_HDR_SIZE           40
-#define IPv6_FRAGMENT_HDR_SIZE  8
-
-typedef struct e_in6_addr {
-    guint8 bytes[16];           /* 128 bit IPv6 address */
-} ws_in6_addr;
+typedef guint32 ws_in4_addr;	/* 32 bit IPv4 address, in network byte order */
 
 /*
- * Definition for internet protocol version 6.
- * RFC 2460
+ * We define these in *network byte order*, unlike the C library. Therefore
+ * it uses a different prefix than INADDR_* to make the distinction more obvious.
  */
-struct ws_ip6_hdr {
-    guint32     ip6h_vc_flow;           /* version, class, flow */
-    guint16     ip6h_plen;              /* payload length */
-    guint8      ip6h_nxt;               /* next header */
-    guint8      ip6h_hlim;              /* hop limit */
-    ws_in6_addr ip6h_src;               /* source address */
-    ws_in6_addr ip6h_dst;               /* destination address */
-};
-
-/*
- * Extension Headers
- */
-
-struct ip6_ext {
-    guchar ip6e_nxt;
-    guchar ip6e_len;
-};
-
-/* Routing header */
-struct ip6_rthdr {
-    guint8 ip6r_nxt;        /* next header */
-    guint8 ip6r_len;        /* length in units of 8 octets */
-    guint8 ip6r_type;       /* routing type */
-    guint8 ip6r_segleft;    /* segments left */
-    /* followed by routing type specific data */
-};
-
-/* Type 0 Routing header */
-struct ip6_rthdr0 {
-    guint8 ip6r0_nxt;       /* next header */
-    guint8 ip6r0_len;       /* length in units of 8 octets */
-    guint8 ip6r0_type;      /* always zero */
-    guint8 ip6r0_segleft;   /* segments left */
-    guint8 ip6r0_reserved;  /* reserved field */
-    guint8 ip6r0_slmap[3];  /* strict/loose bit map */
-    /* followed by up to 127 addresses */
-    ws_in6_addr ip6r0_addr[1];
-};
-
-/* Fragment header */
-struct ip6_frag {
-    guint8  ip6f_nxt;       /* next header */
-    guint8  ip6f_reserved;  /* reserved field */
-    guint16 ip6f_offlg;     /* offset, reserved, and flag */
-    guint32 ip6f_ident;     /* identification */
-};
-
-#define IP6F_OFF_MASK           0xfff8 /* mask out offset from _offlg */
-#define IP6F_RESERVED_MASK      0x0006 /* reserved bits in ip6f_offlg */
-#define IP6F_MORE_FRAG          0x0001 /* more-fragments flag */
-
+#define WS_IN4_LOOPBACK ((ws_in4_addr)GUINT32_TO_BE(0x7f000001))
 
 /**
- * Unicast Scope
- * Note that we must check topmost 10 bits only, not 16 bits (see RFC2373).
+ * Unicast Local
+ * Returns true if the address is in the 224.0.0.0/24 local network
+ * control block
  */
-static inline gboolean in6_addr_is_linklocal(const ws_in6_addr *a)
-{
-    return (a->bytes[0] == 0xfe) && ((a->bytes[1] & 0xc0) == 0x80);
-}
-
-static inline gboolean in6_addr_is_sitelocal(const ws_in6_addr *a)
-{
-    return (a->bytes[0] == 0xfe) && ((a->bytes[1] & 0xc0) == 0xc0);
-}
+#define in4_addr_is_local_network_control_block(addr) \
+  ((addr & 0xffffff00) == 0xe0000000)
 
 /**
  * Multicast
+ * Returns true if the address is in the 224.0.0.0/4 network block
  */
-static inline gboolean in6_addr_is_multicast(const ws_in6_addr *a)
-{
-    return a->bytes[0] == 0xff;
-}
+#define in4_addr_is_multicast(addr) \
+  ((addr & 0xf0000000) == 0xe0000000)
 
 #endif
 /* End embedded header */
 
-/* Begin epan/ipv6.h */
-/* ipv6.h
- * Definitions of IPv6 address-and-prefix structure, which is what an
- * FT_IPV6 value is (even if there's no prefix in a packet, those
- * values can be compared against an address+prefix in a filter
+/* Begin epan/ipv4.h */
+/* ipv4.h
+ * Definitions of IPv4 address-and-mask structure, which is what an
+ * FT_IPV4 value is (even if there's no mask in a packet, those
+ * values can be compared against an address+mask in a filter
  * expression).
+ *
+ * Gilbert Ramirez <gram@alumni.rice.edu>
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
- *
  * Copyright 1998 Gerald Combs
- *
- * MobileIPv6 support added by Tomislav Borosa <tomislav.borosa@siemens.hr>
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef __IPV6_UTILS_H__
-#define __IPV6_UTILS_H__
+#ifndef __IPV4_H__
+#define __IPV4_H__
 
 
 typedef struct {
-	ws_in6_addr addr;
-	guint32 prefix;
-} ipv6_addr_and_prefix;
+	guint32	addr;	/* stored in host order */
+	guint32	nmask;	/* stored in host order */
+} ipv4_addr_and_mask;
 
-#endif /* __IPV6_UTILS_H__ */
+#endif
 /* End embedded header */
 
 /* Begin wsutil/nstime.h */
@@ -2529,6 +2365,234 @@ WS_DLL_PUBLIC gboolean nsfiletime_to_nstime(nstime_t *nstime, guint64 nsfiletime
 #endif /* __cplusplus */
 
 #endif /* __NSTIME_H__  */
+/* End embedded header */
+
+/* Begin epan/time_fmt.h */
+/* time_fmt.h
+ * Definitions for various time display formats.
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __TIME_FMT_H__
+#define __TIME_FMT_H__
+
+/*
+ * Resolution of a time stamp.
+ */
+typedef enum {
+	TO_STR_TIME_RES_T_SECS,	 /* seconds      */
+	TO_STR_TIME_RES_T_DSECS, /* deciseconds  */
+	TO_STR_TIME_RES_T_CSECS, /* centiseconds */
+	TO_STR_TIME_RES_T_MSECS, /* milliseconds */
+	TO_STR_TIME_RES_T_USECS, /* microseconds */
+	TO_STR_TIME_RES_T_NSECS	 /* nanoseconds  */
+} to_str_time_res_t;
+
+/*
+ * Display format of an absolute-time time stamp.
+ */
+typedef enum {
+	/* Start at 1000 to avoid duplicating the values used in field_display_e */
+	ABSOLUTE_TIME_LOCAL = 1000,	/* local time in our time zone, with month and day */
+	ABSOLUTE_TIME_UTC,	/* UTC, with month and day */
+	ABSOLUTE_TIME_DOY_UTC,	/* UTC, with 1-origin day-of-year */
+	ABSOLUTE_TIME_NTP_UTC	/* UTC, with "NULL" when timestamp is all zeros */
+} absolute_time_display_e;
+
+#endif /* __TIME_FMT_H__  */
+/* End embedded header */
+
+/* Begin epan/guid-utils.h */
+/* guid-utils.h
+ * Definitions for GUID handling
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ *
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __GUID_UTILS_H__
+#define __GUID_UTILS_H__
+
+
+#define GUID_LEN	16
+
+/* Note: this might be larger than GUID_LEN, so don't overlay data in packets
+   with this. */
+typedef struct _e_guid_t {
+    guint32 data1;
+    guint16 data2;
+    guint16 data3;
+    guint8  data4[8];
+} e_guid_t;
+
+
+WS_DLL_PUBLIC void guids_init(void);
+
+/* add a GUID */
+WS_DLL_PUBLIC void guids_add_guid(const e_guid_t *guid, const gchar *name);
+
+/* try to get registered name for this GUID */
+WS_DLL_PUBLIC const gchar *guids_get_guid_name(const e_guid_t *guid);
+
+/* resolve GUID to name (or if unknown to hex string) */
+/* (if you need hex string only, use guid_to_str instead) */
+WS_DLL_PUBLIC const gchar* guids_resolve_guid_to_str(const e_guid_t *guid);
+
+/* add a UUID (dcerpc_init_uuid() will call this too) */
+#define guids_add_uuid(uuid, name) guids_add_guid((const e_guid_t *) (uuid), (name))
+
+/* try to get registered name for this UUID */
+#define guids_get_uuid_name(uuid) guids_get_guid_name((e_guid_t *) (uuid))
+
+/* resolve UUID to name (or if unknown to hex string) */
+/* (if you need hex string only, use guid_to_str instead) */
+#define guids_resolve_uuid_to_str(uuid) guids_resolve_guid_to_str((e_guid_t *) (uuid))
+
+WS_DLL_PUBLIC int guid_cmp(const e_guid_t *g1, const e_guid_t *g2);
+
+#endif /* __GUID_UTILS_H__ */
+/* End embedded header */
+
+/* Begin wsutil/inet_ipv6.h */
+/* inet_ipv6.h
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __INET_IPV6_H__
+#define __INET_IPV6_H__
+
+
+#define IPv6_ADDR_SIZE  16
+
+#define IPv6_HDR_SIZE           40
+#define IPv6_FRAGMENT_HDR_SIZE  8
+
+typedef struct e_in6_addr {
+    guint8 bytes[16];           /* 128 bit IPv6 address */
+} ws_in6_addr;
+
+/*
+ * Definition for internet protocol version 6.
+ * RFC 2460
+ */
+struct ws_ip6_hdr {
+    guint32     ip6h_vc_flow;           /* version, class, flow */
+    guint16     ip6h_plen;              /* payload length */
+    guint8      ip6h_nxt;               /* next header */
+    guint8      ip6h_hlim;              /* hop limit */
+    ws_in6_addr ip6h_src;               /* source address */
+    ws_in6_addr ip6h_dst;               /* destination address */
+};
+
+/*
+ * Extension Headers
+ */
+
+struct ip6_ext {
+    guchar ip6e_nxt;
+    guchar ip6e_len;
+};
+
+/* Routing header */
+struct ip6_rthdr {
+    guint8 ip6r_nxt;        /* next header */
+    guint8 ip6r_len;        /* length in units of 8 octets */
+    guint8 ip6r_type;       /* routing type */
+    guint8 ip6r_segleft;    /* segments left */
+    /* followed by routing type specific data */
+};
+
+/* Type 0 Routing header */
+struct ip6_rthdr0 {
+    guint8 ip6r0_nxt;       /* next header */
+    guint8 ip6r0_len;       /* length in units of 8 octets */
+    guint8 ip6r0_type;      /* always zero */
+    guint8 ip6r0_segleft;   /* segments left */
+    guint8 ip6r0_reserved;  /* reserved field */
+    guint8 ip6r0_slmap[3];  /* strict/loose bit map */
+    /* followed by up to 127 addresses */
+    ws_in6_addr ip6r0_addr[1];
+};
+
+/* Fragment header */
+struct ip6_frag {
+    guint8  ip6f_nxt;       /* next header */
+    guint8  ip6f_reserved;  /* reserved field */
+    guint16 ip6f_offlg;     /* offset, reserved, and flag */
+    guint32 ip6f_ident;     /* identification */
+};
+
+#define IP6F_OFF_MASK           0xfff8 /* mask out offset from _offlg */
+#define IP6F_RESERVED_MASK      0x0006 /* reserved bits in ip6f_offlg */
+#define IP6F_MORE_FRAG          0x0001 /* more-fragments flag */
+
+
+/**
+ * Unicast Scope
+ * Note that we must check topmost 10 bits only, not 16 bits (see RFC2373).
+ */
+static inline gboolean in6_addr_is_linklocal(const ws_in6_addr *a)
+{
+    return (a->bytes[0] == 0xfe) && ((a->bytes[1] & 0xc0) == 0x80);
+}
+
+static inline gboolean in6_addr_is_sitelocal(const ws_in6_addr *a)
+{
+    return (a->bytes[0] == 0xfe) && ((a->bytes[1] & 0xc0) == 0xc0);
+}
+
+/**
+ * Multicast
+ */
+static inline gboolean in6_addr_is_multicast(const ws_in6_addr *a)
+{
+    return a->bytes[0] == 0xff;
+}
+
+#endif
+/* End embedded header */
+
+/* Begin epan/ipv6.h */
+/* ipv6.h
+ * Definitions of IPv6 address-and-prefix structure, which is what an
+ * FT_IPV6 value is (even if there's no prefix in a packet, those
+ * values can be compared against an address+prefix in a filter
+ * expression).
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ *
+ * Copyright 1998 Gerald Combs
+ *
+ * MobileIPv6 support added by Tomislav Borosa <tomislav.borosa@siemens.hr>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __IPV6_UTILS_H__
+#define __IPV6_UTILS_H__
+
+
+typedef struct {
+	ws_in6_addr addr;
+	guint32 prefix;
+} ipv6_addr_and_prefix;
+
+#endif /* __IPV6_UTILS_H__ */
 /* End embedded header */
 
 /* Begin wsutil/ws_mempbrk.h */
@@ -3612,10 +3676,9 @@ WS_DLL_PUBLIC guint tvb_get_varint(tvbuff_t *tvb, guint offset, guint maxlen, gu
  */
 /* End embedded header */
 
-/* Begin epan/address.h */
-/* address.h
- * Definitions for structures storing addresses, and for the type of
- * variables holding port-type values
+/* Begin epan/value_string.h */
+/* value_string.h
+ * Definitions for value_string structures and routines
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -3624,359 +3687,359 @@ WS_DLL_PUBLIC guint tvb_get_varint(tvbuff_t *tvb, guint offset, guint maxlen, gu
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef __ADDRESS_H__
-#define __ADDRESS_H__
-
-#include <string.h>     /* for memcmp */
-
+#ifndef __VALUE_STRING_H__
+#define __VALUE_STRING_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-/* Types of "global" addresses Wireshark knows about. */
-/* Address types can be added here if there are many dissectors that use them or just
- * within a specific dissector.
- * If an address type is added here, it must be "registered" within address_types.c
- * For dissector address types, just use the address_type_dissector_register function
- * from address_types.h
- */
-typedef enum {
-    AT_NONE,               /* no link-layer address */
-    AT_ETHER,              /* MAC (Ethernet, 802.x, FDDI) address */
-    AT_IPv4,               /* IPv4 */
-    AT_IPv6,               /* IPv6 */
-    AT_IPX,                /* IPX */
-    AT_FC,                 /* Fibre Channel */
-    AT_FCWWN,              /* Fibre Channel WWN */
-    AT_STRINGZ,            /* null-terminated string */
-    AT_EUI64,              /* IEEE EUI-64 */
-    AT_IB,                 /* Infiniband GID/LID */
-    AT_AX25,               /* AX.25 */
-    AT_VINES,              /* Banyan Vines address */
 
-    AT_END_OF_LIST         /* Must be last in list */
-} address_type;
+/* VALUE TO STRING MATCHING */
 
-typedef struct _address {
-    int           type;         /* type of address */
-    int           len;          /* length of address, in bytes */
-    const void   *data;         /* pointer to address data */
+typedef struct _value_string {
+    guint32      value;
+    const gchar *strptr;
+} value_string;
 
-    /* private */
-    void         *priv;
-} address;
+#if 0
+  /* -----  VALUE_STRING "Helper" macros ----- */
 
-#define ADDRESS_INIT(type, len, data) {type, len, data, NULL}
-#define ADDRESS_INIT_NONE ADDRESS_INIT(AT_NONE, 0, NULL)
+  /* Essentially: Provide the capability to define a list of value_strings once and
+     then to expand the list as an enum and/or as a value_string array. */
 
-static inline void
-clear_address(address *addr)
-{
-    addr->type = AT_NONE;
-    addr->len  = 0;
-    addr->data = NULL;
-    addr->priv = NULL;
+  /* Usage: */
+
+  /*- define list of value strings -*/
+     #define foo_VALUE_STRING_LIST(XXX) \
+        XXX( FOO_A, 1, "aaa" ) \
+        XXX( FOO_B, 3, "bbb" )
+
+  /*- gen enum -*/
+     VALUE_STRING_ENUM(foo);      /* gen's 'enum {FOO_A=1, FOO_B=3};' */
+
+  /*- gen value_string array -*/
+     /* local */
+     VALUE_STRING_ARRAY(foo);     /* gen's 'static const value_string foo[] = {{1,"aaa"}, {3,"bbb"}}; */
+
+     /* global */
+     VALUE_STRING_ARRAY_GLOBAL_DEF(foo); /* gen's 'const value_string foo[] = {{1,"aaa"}, {3,"bbb"}}; */
+     VALUE_STRING_ARRAY_GLOBAL_DCL(foo); /* gen's 'const value_string foo[]; */
+
+  /* Alternatively: */
+     #define bar_VALUE_STRING_LIST(XXX) \
+        XXX( BAR_A, 1) \
+        XXX( BAR_B, 3)
+
+     VALUE_STRING_ENUM2(bar);     /* gen's 'enum {BAR_A=1, BAR_B=3};' */
+     VALUE_STRING_ARRAY2(bar);    /* gen's 'static const value_string bar[] = {{1,"BAR_A"}, {3,"BAR_B"}}; */
+     ...
+#endif
+
+/* -- Public -- */
+#define VALUE_STRING_ENUM(              array_name) _VS_ENUM_XXX( array_name, _VS_ENUM_ENTRY)
+#define VALUE_STRING_ARRAY(             array_name) _VS_ARRAY_SC_XXX(array_name, _VS_ARRAY_ENTRY, static)
+#define VALUE_STRING_ARRAY_GLOBAL_DEF(  array_name) _VS_ARRAY_XXX(array_name, _VS_ARRAY_ENTRY)
+#define VALUE_STRING_ARRAY_GLOBAL_DCL(  array_name) _VS_ARRAY_SC_TYPE_NAME(array_name, extern)
+
+#define VALUE_STRING_ENUM2(             array_name) _VS_ENUM_XXX( array_name, _VS_ENUM_ENTRY2)
+#define VALUE_STRING_ARRAY2(            array_name) _VS_ARRAY_SC_XXX(array_name, _VS_ARRAY_ENTRY2, static)
+#define VALUE_STRING_ARRAY2_GLOBAL_DEF( array_name) _VS_ARRAY_XXX(array_name, _VS_ARRAY_ENTRY2)
+#define VALUE_STRING_ARRAY2_GLOBAL_DCL( array_name) _VS_ARRAY_SC_TYPE_NAME(array_name, extern)
+
+/* -- Private -- */
+#define _VS_ENUM_XXX(array_name, macro) \
+enum { \
+    array_name##_VALUE_STRING_LIST(macro) \
+    _##array_name##_ENUM_DUMMY = 0 \
 }
 
-/** Initialize an address with the given values.
- *
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param addr_data [in] Pointer to the address data.
- */
-static inline void
-set_address(address *addr, int addr_type, int addr_len, const void *addr_data) {
-    if (addr_len == 0) {
-        /* Zero length must mean no data */
-        g_assert(addr_data == NULL);
-    } else {
-        /* Must not be AT_NONE - AT_NONE must have no data */
-        g_assert(addr_type != AT_NONE);
-        /* Make sure we *do* have data */
-        g_assert(addr_data != NULL);
-    }
-    addr->type = addr_type;
-    addr->len  = addr_len;
-    addr->data = addr_data;
-    addr->priv = NULL;
+#define _VS_ARRAY_SC_XXX(array_name, macro, sc)  \
+    _VS_ARRAY_SC_TYPE_NAME(array_name, sc) = { \
+    array_name##_VALUE_STRING_LIST(macro) \
+    { 0, NULL } \
 }
 
-/** Initialize an address from TVB data.
- *
- * Same as set_address but it takes a TVB and an offset. This is preferred
- * over passing the return value of tvb_get_ptr() to set_address().
- *
- * This calls tvb_get_ptr() (including throwing any exceptions) before
- * modifying the address.
- *
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param tvb [in] Pointer to the TVB.
- * @param offset [in] Offset within the TVB.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- */
-static inline void
-set_address_tvb(address *addr, int addr_type, int addr_len, tvbuff_t *tvb, int offset) {
-    const void *p;
-
-    if (addr_len != 0) {
-        /* Must not be AT_NONE - AT_NONE must have no data */
-        g_assert(addr_type != AT_NONE);
-        p = tvb_get_ptr(tvb, offset, addr_len);
-    } else
-        p = NULL;
-    set_address(addr, addr_type, addr_len, p);
+#define _VS_ARRAY_XXX(array_name, macro)  \
+    _VS_ARRAY_TYPE_NAME(array_name) = { \
+    array_name##_VALUE_STRING_LIST(macro) \
+    { 0, NULL } \
 }
 
-/** Initialize an address with the given values, allocating a new buffer
- * for the address data using wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param addr_data [in] Pointer to the address data.
- */
-static inline void
-alloc_address_wmem(wmem_allocator_t *scope, address *addr,
-                        int addr_type, int addr_len, const void *addr_data) {
-    g_assert(addr);
-    clear_address(addr);
-    addr->type = addr_type;
-    if (addr_len == 0) {
-        /* Zero length must mean no data */
-        g_assert(addr_data == NULL);
-        /* Nothing to copy */
-        return;
-    }
-    /* Must not be AT_NONE - AT_NONE must have no data */
-    g_assert(addr_type != AT_NONE);
-    /* Make sure we *do* have data to copy */
-    g_assert(addr_data != NULL);
-    addr->data = addr->priv = wmem_memdup(scope, addr_data, addr_len);
-    addr->len = addr_len;
-}
+#define _VS_ARRAY_SC_TYPE_NAME(array_name, sc) sc const value_string array_name[]
+#define _VS_ARRAY_TYPE_NAME(array_name) const value_string array_name[]
 
-/** Allocate an address from TVB data.
- *
- * Same as alloc_address_wmem but it takes a TVB and an offset.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param tvb [in] Pointer to the TVB.
- * @param offset [in] Offset within the TVB.
- */
-static inline void
-alloc_address_tvb(wmem_allocator_t *scope, address *addr,
-                    int addr_type, int addr_len,  tvbuff_t *tvb, int offset) {
-    const void *p;
+#define _VS_ENUM_ENTRY( name, value, string) name = value,
+#define _VS_ARRAY_ENTRY(name, value, string) { value, string },
 
-    p = tvb_get_ptr(tvb, offset, addr_len);
-    alloc_address_wmem(scope, addr, addr_type, addr_len, p);
-}
+#define _VS_ENUM_ENTRY2( name, value) name = value,
+#define _VS_ARRAY_ENTRY2(name, value) { value, #name },
+/* ----- ----- */
 
-/** Compare two addresses.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return 0 if the addresses are equal,
- *  A positive number if addr1 > addr2 in some nondefined metric,
- *  A negative number if addr1 < addr2 in some nondefined metric.
- */
-static inline int
-cmp_address(const address *addr1, const address *addr2) {
-    if (addr1->type > addr2->type) return 1;
-    if (addr1->type < addr2->type) return -1;
-    if (addr1->len  > addr2->len) return 1;
-    if (addr1->len  < addr2->len) return -1;
-    if (addr1->len == 0) {
-        /*
-         * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
-         * if both addresses are zero-length, don't compare them
-         * (there's nothing to compare, so they're equal).
-         */
-        return 0;
-    }
-    return memcmp(addr1->data, addr2->data, addr1->len);
-}
+WS_DLL_PUBLIC
+const gchar *
+val_to_str(const guint32 val, const value_string *vs, const char *fmt)
+G_GNUC_PRINTF(3, 0);
 
-/** Check two addresses for equality.
- *
- * Given two addresses, return "true" if they're equal, "false" otherwise.
- * Addresses are equal only if they have the same type and length; if the
- * length is zero, they are then equal, otherwise the data must be the
- * same.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return TRUE if the addresses are equal, FALSE otherwise.
- */
-static inline gboolean
-addresses_equal(const address *addr1, const address *addr2) {
-    /*
-     * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
-     * if both addresses are zero-length, don't compare them
-     * (there's nothing to compare, so they're equal).
-     */
-    if (addr1->type == addr2->type &&
-        addr1->len == addr2->len &&
-        (addr1->len == 0 ||
-         memcmp(addr1->data, addr2->data, addr1->len) == 0))
-        return TRUE;
-    return FALSE;
-}
+WS_DLL_PUBLIC
+gchar *
+val_to_str_wmem(wmem_allocator_t *scope, const guint32 val, const value_string *vs, const char *fmt)
+G_GNUC_PRINTF(4, 0);
 
-/** Check the data of two addresses for equality.
- *
- * Given two addresses, return "true" if they have the same length and,
- * their data is equal, "false" otherwise.
- * The address types are ignored. This can be used to compare custom
- * address types defined with address_type_dissector_register.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return TRUE if the addresses are equal, FALSE otherwise.
- */
-static inline gboolean
-addresses_data_equal(const address *addr1, const address *addr2) {
-    if ( addr1->len == addr2->len
-            && memcmp(addr1->data, addr2->data, addr1->len) == 0
-            ) return TRUE;
-    return FALSE;
-}
+WS_DLL_PUBLIC
+const gchar *
+val_to_str_const(const guint32 val, const value_string *vs, const char *unknown_str);
 
-/** Perform a shallow copy of the address (both addresses point to the same
- * memory location).
- *
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- *
- * \warning Make sure 'from' memory stays valid for the lifetime of this object.
- * Also it's strongly recommended to use this function instead of copy-assign.
- */
-static inline void
-copy_address_shallow(address *to, const address *from) {
-    set_address(to, from->type, from->len, from->data);
-}
+WS_DLL_PUBLIC
+const gchar *
+try_val_to_str(const guint32 val, const value_string *vs);
 
-/** Copy an address, allocating a new buffer for the address data
- *  using wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- */
-static inline void
-copy_address_wmem(wmem_allocator_t *scope, address *to, const address *from) {
-    alloc_address_wmem(scope, to, from->type, from->len, from->data);
-}
+WS_DLL_PUBLIC
+const gchar *
+try_val_to_str_idx(const guint32 val, const value_string *vs, gint *idx);
 
-/** Copy an address, allocating a new buffer for the address data.
- *
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- */
-static inline void
-copy_address(address *to, const address *from) {
-    copy_address_wmem(NULL, to, from);
-}
+/* 64-BIT VALUE TO STRING MATCHING */
 
-/** Free an address allocated with wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
- * @param addr [in,out] The address whose data to free.
- */
-static inline void
-free_address_wmem(wmem_allocator_t *scope, address *addr) {
-    /* Because many dissectors set 'type = AT_NONE' to mean clear we check for that */
-    if (addr->type != AT_NONE && addr->len > 0 && addr->priv != NULL) {
-        /* Make sure API use is correct */
-        /* if priv is not null then data == priv */
-        g_assert(addr->data == addr->priv);
-        wmem_free(scope, addr->priv);
-    }
-    clear_address(addr);
-}
+typedef struct _val64_string {
+    guint64      value;
+    const gchar *strptr;
+} val64_string;
 
-/** Free an address.
- *
- * @param addr [in,out] The address whose data to free.
- */
-static inline void
-free_address(address *addr) {
-    free_address_wmem(NULL, addr);
-}
+WS_DLL_PUBLIC
+const gchar *
+val64_to_str(const guint64 val, const val64_string *vs, const char *fmt)
+G_GNUC_PRINTF(3, 0);
 
-/** Hash an address into a hash value (which must already have been set).
- *
- * @param hash_val The existing hash value.
- * @param addr The address to add.
- * @return The new hash value.
- */
-static inline guint
-add_address_to_hash(guint hash_val, const address *addr) {
-    const guint8 *hash_data = (const guint8 *)(addr)->data;
-    int idx;
+WS_DLL_PUBLIC
+const gchar *
+val64_to_str_const(const guint64 val, const val64_string *vs, const char *unknown_str);
 
-    for (idx = 0; idx < (addr)->len; idx++) {
-        hash_val += hash_data[idx];
-        hash_val += ( hash_val << 10 );
-        hash_val ^= ( hash_val >> 6 );
-    }
-    return hash_val;
-}
+WS_DLL_PUBLIC
+const gchar *
+try_val64_to_str(const guint64 val, const val64_string *vs);
 
-/** Hash an address into a hash value (which must already have been set).
- *  64-bit version of add_address_to_hash().
- *
- * @param hash_val The existing hash value.
- * @param addr The address to add.
- * @return The new hash value.
- */
-static inline guint64
-add_address_to_hash64(guint64 hash_val, const address *addr) {
-    const guint8 *hash_data = (const guint8 *)(addr)->data;
-    int idx;
+WS_DLL_PUBLIC
+const gchar *
+try_val64_to_str_idx(const guint64 val, const val64_string *vs, gint *idx);
 
-    for (idx = 0; idx < (addr)->len; idx++) {
-        hash_val += hash_data[idx];
-        hash_val += ( hash_val << 10 );
-        hash_val ^= ( hash_val >> 6 );
-    }
-    return hash_val;
-}
+/* STRING TO VALUE MATCHING */
 
-WS_DLL_PUBLIC guint address_to_bytes(const address *addr, guint8 *buf, guint buf_len);
+WS_DLL_PUBLIC
+guint32
+str_to_val(const gchar *val, const value_string *vs, const guint32 err_val);
 
-/* Types of port numbers Wireshark knows about. */
-typedef enum {
-    PT_NONE,            /* no port number */
-    PT_SCTP,            /* SCTP */
-    PT_TCP,             /* TCP */
-    PT_UDP,             /* UDP */
-    PT_DCCP,            /* DCCP */
-    PT_IPX,             /* IPX sockets */
-    PT_DDP,             /* DDP AppleTalk connection */
-    PT_IDP,             /* XNS IDP sockets */
-    PT_USB,             /* USB endpoint 0xffff means the host */
-    PT_I2C,
-    PT_IBQP,            /* Infiniband QP number */
-    PT_BLUETOOTH
-} port_type;
+WS_DLL_PUBLIC
+gint
+str_to_val_idx(const gchar *val, const value_string *vs);
+
+/* EXTENDED VALUE TO STRING MATCHING */
+
+typedef struct _value_string_ext value_string_ext;
+typedef const value_string *(*_value_string_match2_t)(const guint32, value_string_ext*);
+
+struct _value_string_ext {
+    _value_string_match2_t _vs_match2;
+    guint32                _vs_first_value; /* first value of the value_string array       */
+    guint                  _vs_num_entries; /* number of entries in the value_string array */
+                                            /*  (excluding final {0, NULL})                */
+    const value_string    *_vs_p;           /* the value string array address              */
+    const gchar           *_vs_name;        /* vse "Name" (for error messages)             */
+};
+
+#define VALUE_STRING_EXT_VS_P(x)           (x)->_vs_p
+#define VALUE_STRING_EXT_VS_NUM_ENTRIES(x) (x)->_vs_num_entries
+#define VALUE_STRING_EXT_VS_NAME(x)        (x)->_vs_name
+
+WS_DLL_PUBLIC
+const value_string *
+_try_val_to_str_ext_init(const guint32 val, value_string_ext *vse);
+#define VALUE_STRING_EXT_INIT(x) { _try_val_to_str_ext_init, 0, G_N_ELEMENTS(x)-1, x, #x }
+
+WS_DLL_PUBLIC
+value_string_ext *
+value_string_ext_new(const value_string *vs, guint vs_tot_num_entries, const gchar *vs_name);
+
+WS_DLL_PUBLIC
+void
+value_string_ext_free(value_string_ext *vse);
+
+WS_DLL_PUBLIC
+const gchar *
+val_to_str_ext(const guint32 val, value_string_ext *vse, const char *fmt)
+G_GNUC_PRINTF(3, 0);
+
+WS_DLL_PUBLIC
+gchar *
+val_to_str_ext_wmem(wmem_allocator_t *scope, const guint32 val, value_string_ext *vse, const char *fmt)
+G_GNUC_PRINTF(4, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+val_to_str_ext_const(const guint32 val, value_string_ext *vs, const char *unknown_str);
+
+WS_DLL_PUBLIC
+const gchar *
+try_val_to_str_ext(const guint32 val, value_string_ext *vse);
+
+WS_DLL_PUBLIC
+const gchar *
+try_val_to_str_idx_ext(const guint32 val, value_string_ext *vse, gint *idx);
+
+/* EXTENDED 64-BIT VALUE TO STRING MATCHING */
+
+typedef struct _val64_string_ext val64_string_ext;
+typedef const val64_string *(*_val64_string_match2_t)(const guint64, val64_string_ext*);
+
+struct _val64_string_ext {
+    _val64_string_match2_t _vs_match2;
+    guint64                _vs_first_value; /* first value of the val64_string array       */
+    guint                  _vs_num_entries; /* number of entries in the val64_string array */
+                                            /*  (excluding final {0, NULL})                */
+    const val64_string    *_vs_p;           /* the value string array address              */
+    const gchar           *_vs_name;        /* vse "Name" (for error messages)             */
+};
+
+#define VAL64_STRING_EXT_VS_P(x)           (x)->_vs_p
+#define VAL64_STRING_EXT_VS_NUM_ENTRIES(x) (x)->_vs_num_entries
+#define VAL64_STRING_EXT_VS_NAME(x)        (x)->_vs_name
+
+WS_DLL_PUBLIC
+const val64_string *
+_try_val64_to_str_ext_init(const guint64 val, val64_string_ext *vse);
+#define VAL64_STRING_EXT_INIT(x) { _try_val64_to_str_ext_init, 0, G_N_ELEMENTS(x)-1, x, #x }
+
+WS_DLL_PUBLIC
+val64_string_ext *
+val64_string_ext_new(const val64_string *vs, guint vs_tot_num_entries, const gchar *vs_name);
+
+WS_DLL_PUBLIC
+void
+val64_string_ext_free(val64_string_ext *vse);
+
+WS_DLL_PUBLIC
+const gchar *
+val64_to_str_ext(const guint64 val, val64_string_ext *vse, const char *fmt)
+G_GNUC_PRINTF(3, 0);
+
+WS_DLL_PUBLIC
+gchar *
+val64_to_str_ext_wmem(wmem_allocator_t *scope, const guint64 val, val64_string_ext *vse, const char *fmt)
+G_GNUC_PRINTF(4, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+val64_to_str_ext_const(const guint64 val, val64_string_ext *vs, const char *unknown_str);
+
+WS_DLL_PUBLIC
+const gchar *
+try_val64_to_str_ext(const guint64 val, val64_string_ext *vse);
+
+WS_DLL_PUBLIC
+const gchar *
+try_val64_to_str_idx_ext(const guint64 val, val64_string_ext *vse, gint *idx);
+
+/* STRING TO STRING MATCHING */
+
+typedef struct _string_string {
+    const gchar *value;
+    const gchar *strptr;
+} string_string;
+
+WS_DLL_PUBLIC
+const gchar *
+str_to_str(const gchar *val, const string_string *vs, const char *fmt)
+G_GNUC_PRINTF(3, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+try_str_to_str(const gchar *val, const string_string *vs);
+
+WS_DLL_PUBLIC
+const gchar *
+try_str_to_str_idx(const gchar *val, const string_string *vs, gint *idx);
+
+/* RANGE TO STRING MATCHING */
+
+typedef struct _range_string {
+    guint32      value_min;
+    guint32      value_max;
+    const gchar *strptr;
+} range_string;
+
+WS_DLL_PUBLIC
+const gchar *
+rval_to_str(const guint32 val, const range_string *rs, const char *fmt)
+G_GNUC_PRINTF(3, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+rval_to_str_const(const guint32 val, const range_string *rs, const char *unknown_str);
+
+WS_DLL_PUBLIC
+const gchar *
+try_rval_to_str(const guint32 val, const range_string *rs);
+
+WS_DLL_PUBLIC
+const gchar *
+try_rval_to_str_idx(const guint32 val, const range_string *rs, gint *idx);
+
+WS_DLL_PUBLIC
+const gchar *
+try_rval64_to_str(const guint64 val, const range_string *rs);
+
+WS_DLL_PUBLIC
+const gchar *
+try_rval64_to_str_idx(const guint64 val, const range_string *rs, gint *idx);
+
+/* BYTES TO STRING MATCHING */
+
+typedef struct _bytes_string {
+  const guint8 *value;
+  const size_t  value_length;
+  const gchar  *strptr;
+} bytes_string;
+
+WS_DLL_PUBLIC
+const gchar *
+bytesval_to_str(const guint8 *val, const size_t val_len, const bytes_string *bs, const char *fmt)
+G_GNUC_PRINTF(4, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+try_bytesval_to_str(const guint8 *val, const size_t val_len, const bytes_string *bs);
+
+WS_DLL_PUBLIC
+const gchar *
+bytesprefix_to_str(const guint8 *haystack, const size_t haystack_len, const bytes_string *bs, const char *fmt)
+G_GNUC_PRINTF(4, 0);
+
+WS_DLL_PUBLIC
+const gchar *
+try_bytesprefix_to_str(const guint8 *haystack, const size_t haystack_len, const bytes_string *bs);
+
+/* MISC (generally do not use) */
+
+WS_DLL_LOCAL
+gboolean
+value_string_ext_validate(const value_string_ext *vse);
+
+WS_DLL_LOCAL
+const gchar *
+value_string_ext_match_type_str(const value_string_ext *vse);
+
+WS_DLL_LOCAL
+gboolean
+val64_string_ext_validate(const val64_string_ext *vse);
+
+WS_DLL_LOCAL
+const gchar *
+val64_string_ext_match_type_str(const val64_string_ext *vse);
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif /* __ADDRESS_H__ */
+#endif /* __VALUE_STRING_H__ */
 
 /*
  * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
@@ -3992,8 +4055,10 @@ typedef enum {
  */
 /* End embedded header */
 
-/* Begin wsutil/inet_ipv4.h */
-/* inet_ipv4.h
+/* Begin epan/tfs.h */
+/* tfs.h
+ * true_false strings
+ * Copyright 2007, Jaap Keuter <jaap.keuter@xs4all.nl>
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -4002,141 +4067,115 @@ typedef enum {
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef __INET_IPV4_H__
-#define __INET_IPV4_H__
+#ifndef __TFS_H__
+#define __TFS_H__
 
 
-typedef guint32 ws_in4_addr;	/* 32 bit IPv4 address, in network byte order */
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/** @file
+ * true_false strings
+ */
+
+/** Struct for boolean enumerations */
+typedef struct true_false_string {
+        const char      *true_string;   /**< The string presented when true  */
+        const char      *false_string;  /**< The string presented when false */
+} true_false_string;
 
 /*
- * We define these in *network byte order*, unlike the C library. Therefore
- * it uses a different prefix than INADDR_* to make the distinction more obvious.
+ * A default set of true/false strings that dissectors can use for
+ * FT_BOOLEAN header fields.
  */
-#define WS_IN4_LOOPBACK ((ws_in4_addr)GUINT32_TO_BE(0x7f000001))
+WS_DLL_PUBLIC const true_false_string tfs_true_false;
+WS_DLL_PUBLIC const true_false_string tfs_yes_no;
+WS_DLL_PUBLIC const true_false_string tfs_no_yes;
+WS_DLL_PUBLIC const true_false_string tfs_set_notset;
+WS_DLL_PUBLIC const true_false_string tfs_enabled_disabled;
+WS_DLL_PUBLIC const true_false_string tfs_disabled_enabled;
+WS_DLL_PUBLIC const true_false_string tfs_ok_error;
+WS_DLL_PUBLIC const true_false_string tfs_error_ok;
+WS_DLL_PUBLIC const true_false_string tfs_success_fail;
+WS_DLL_PUBLIC const true_false_string tfs_fail_success;
+WS_DLL_PUBLIC const true_false_string tfs_on_off;
+WS_DLL_PUBLIC const true_false_string tfs_ack_nack;
+WS_DLL_PUBLIC const true_false_string tfs_odd_even;
+WS_DLL_PUBLIC const true_false_string tfs_allow_block;
+WS_DLL_PUBLIC const true_false_string tfs_restricted_allowed;
+WS_DLL_PUBLIC const true_false_string tfs_restricted_not_restricted;
+WS_DLL_PUBLIC const true_false_string tfs_accept_reject;
+WS_DLL_PUBLIC const true_false_string tfs_more_nomore;
+WS_DLL_PUBLIC const true_false_string tfs_present_absent;
+WS_DLL_PUBLIC const true_false_string tfs_present_not_present;
+WS_DLL_PUBLIC const true_false_string tfs_active_inactive;
+WS_DLL_PUBLIC const true_false_string tfs_activated_deactivated;
+WS_DLL_PUBLIC const true_false_string tfs_found_not_found;
+WS_DLL_PUBLIC const true_false_string tfs_command_response;
+WS_DLL_PUBLIC const true_false_string tfs_response_command;
+WS_DLL_PUBLIC const true_false_string tfs_capable_not_capable;
+WS_DLL_PUBLIC const true_false_string tfs_supported_not_supported;
+WS_DLL_PUBLIC const true_false_string tfs_not_supported_supported;
+WS_DLL_PUBLIC const true_false_string tfs_used_notused;
+WS_DLL_PUBLIC const true_false_string tfs_high_low;
+WS_DLL_PUBLIC const true_false_string tfs_high_normal;
+WS_DLL_PUBLIC const true_false_string tfs_low_normal;
+WS_DLL_PUBLIC const true_false_string tfs_pressed_not_pressed;
+WS_DLL_PUBLIC const true_false_string tfs_implemented_not_implemented;
+WS_DLL_PUBLIC const true_false_string tfs_requested_not_requested;
+WS_DLL_PUBLIC const true_false_string tfs_reliable_not_reliable;
+WS_DLL_PUBLIC const true_false_string tfs_allowed_not_allowed;
+WS_DLL_PUBLIC const true_false_string tfs_not_allowed_allowed;
+WS_DLL_PUBLIC const true_false_string tfs_accepted_not_accepted;
+WS_DLL_PUBLIC const true_false_string tfs_detected_not_detected;
+WS_DLL_PUBLIC const true_false_string tfs_available_not_available;
+WS_DLL_PUBLIC const true_false_string tfs_shared_independent;
+WS_DLL_PUBLIC const true_false_string tfs_valid_invalid;
+WS_DLL_PUBLIC const true_false_string tfs_invalid_valid;
+WS_DLL_PUBLIC const true_false_string tfs_group_unique_name;
+WS_DLL_PUBLIC const true_false_string tfs_inuse_not_inuse;
+WS_DLL_PUBLIC const true_false_string tfs_critical_not_critical;
+WS_DLL_PUBLIC const true_false_string tfs_complete_incomplete;
+WS_DLL_PUBLIC const true_false_string tfs_valid_not_valid;
+WS_DLL_PUBLIC const true_false_string tfs_do_not_clear_clear;
+WS_DLL_PUBLIC const true_false_string tfs_confirmed_unconfirmed;
+WS_DLL_PUBLIC const true_false_string tfs_enforced_not_enforced;
+WS_DLL_PUBLIC const true_false_string tfs_possible_not_possible;
+WS_DLL_PUBLIC const true_false_string tfs_required_not_required;
+WS_DLL_PUBLIC const true_false_string tfs_registered_not_registered;
+WS_DLL_PUBLIC const true_false_string tfs_provisioned_not_provisioned;
+WS_DLL_PUBLIC const true_false_string tfs_included_not_included;
+WS_DLL_PUBLIC const true_false_string tfs_allocated_by_receiver_sender;
+WS_DLL_PUBLIC const true_false_string tfs_asynchronous_synchronous;
+WS_DLL_PUBLIC const true_false_string tfs_protocol_sensative_bit_transparent;
+WS_DLL_PUBLIC const true_false_string tfs_full_half;
+WS_DLL_PUBLIC const true_false_string tfs_acknowledged_not_acknowledged;
+WS_DLL_PUBLIC const true_false_string tfs_segmentation_no_segmentation;
+WS_DLL_PUBLIC const true_false_string tfs_response_request;
+WS_DLL_PUBLIC const true_false_string tfs_defined_not_defined;
+WS_DLL_PUBLIC const true_false_string tfs_constructed_primitive;
+WS_DLL_PUBLIC const true_false_string tfs_client_server;
+WS_DLL_PUBLIC const true_false_string tfs_server_client;
+WS_DLL_PUBLIC const true_false_string tfs_preferred_no_preference;
+WS_DLL_PUBLIC const true_false_string tfs_encrypt_do_not_encrypt;
+WS_DLL_PUBLIC const true_false_string tfs_down_up;
+WS_DLL_PUBLIC const true_false_string tfs_up_down;
+WS_DLL_PUBLIC const true_false_string tfs_downlink_uplink;
+WS_DLL_PUBLIC const true_false_string tfs_uplink_downlink;
+WS_DLL_PUBLIC const true_false_string tfs_s2c_c2s;
+WS_DLL_PUBLIC const true_false_string tfs_c2s_s2c;
+WS_DLL_PUBLIC const true_false_string tfs_open_closed;
+WS_DLL_PUBLIC const true_false_string tfs_external_internal;
+WS_DLL_PUBLIC const true_false_string tfs_changed_not_changed;
+WS_DLL_PUBLIC const true_false_string tfs_needed_not_needed;
+WS_DLL_PUBLIC const true_false_string tfs_selected_not_selected;
 
-/**
- * Unicast Local
- * Returns true if the address is in the 224.0.0.0/24 local network
- * control block
- */
-#define in4_addr_is_local_network_control_block(addr) \
-  ((addr & 0xffffff00) == 0xe0000000)
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
-/**
- * Multicast
- * Returns true if the address is in the 224.0.0.0/4 network block
- */
-#define in4_addr_is_multicast(addr) \
-  ((addr & 0xf0000000) == 0xe0000000)
-
-#endif
-/* End embedded header */
-
-/* Begin wsutil/inet_addr.h */
-/* inet_addr.h
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WS_INET_ADDR_H__
-#define __WS_INET_ADDR_H__
-
-
-
-/*
- * These are the values specified by RFC 2133 and its successors for
- * INET_ADDRSTRLEN and INET6_ADDRSTRLEN.
- *
- * On UN*X systems, INET_ADDRSTRLEN and INET6_ADDRSTRLEN are defined
- * to the values from RFC 2133 and its successors.
- *
- * However, on Windows:
- *
- * There are APIs RtlIpv4AddressToStringEx(), which converts an
- * IPv4 address *and transport-layer port* to the address in the
- * standard text form, followed by a colon and the port number,
- * and RtlIpv6AddressToStringEx(), which converts an IPv6 address
- * *and scope ID and transport-layer port* to the address in the
- * standard text form, followed by a percent sign and the scope
- * ID (with the address and scope ID in square brackets), followed
- * by a colon and the port number.
- *
- * Instead of defining INET_ADDRSTRLEN_EX as 22 and INET6_ADDRSTRLEN_EX
- * as 65, and saying *those* were the buffer sizes to use for
- * RtlIpv4AddressToStringEx() and RtlIpv6AddressToStringEx(), they
- * defined INET_ADDRSTRLEN to be 22 and INET6_ADDRSTRLEN to be 65 - and
- * recommend using those as the size for the buffers passed to
- * RtlIpv4AddressToStringEx() and RtlIpv6AddressToStringEx().
- *
- * At least they document inet_ntop() as requiring a 16-byte or larger
- * buffer for IPv4 addresses and a 46-byte or larger buffer for
- * IPv6 addresses. For this reason, use hard-coded numeric constants rather than
- * INET_ADDRSTRLEN and INET6_ADDRSTRLEN.
- */
-#define WS_INET_ADDRSTRLEN      16
-#define WS_INET6_ADDRSTRLEN     46
-
-/*
- * To check for errors set errno to zero before calling ws_inet_ntop{4,6}.
- * ENOSPC is set if the result exceeds the given buffer size.
- */
-WS_DLL_PUBLIC WS_RETNONNULL const gchar *
-ws_inet_ntop4(gconstpointer src, gchar *dst, guint dst_size);
-
-WS_DLL_PUBLIC WS_RETNONNULL const gchar *
-ws_inet_ntop6(gconstpointer src, gchar *dst, guint dst_size);
-
-WS_DLL_PUBLIC gboolean
-ws_inet_pton4(const gchar *src, ws_in4_addr *dst);
-
-WS_DLL_PUBLIC gboolean
-ws_inet_pton6(const gchar *src, ws_in6_addr *dst);
-
-#endif
-/* End embedded header */
-
-/* Begin epan/time_fmt.h */
-/* time_fmt.h
- * Definitions for various time display formats.
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __TIME_FMT_H__
-#define __TIME_FMT_H__
-
-/*
- * Resolution of a time stamp.
- */
-typedef enum {
-	TO_STR_TIME_RES_T_SECS,	 /* seconds      */
-	TO_STR_TIME_RES_T_DSECS, /* deciseconds  */
-	TO_STR_TIME_RES_T_CSECS, /* centiseconds */
-	TO_STR_TIME_RES_T_MSECS, /* milliseconds */
-	TO_STR_TIME_RES_T_USECS, /* microseconds */
-	TO_STR_TIME_RES_T_NSECS	 /* nanoseconds  */
-} to_str_time_res_t;
-
-/*
- * Display format of an absolute-time time stamp.
- */
-typedef enum {
-	/* Start at 1000 to avoid duplicating the values used in field_display_e */
-	ABSOLUTE_TIME_LOCAL = 1000,	/* local time in our time zone, with month and day */
-	ABSOLUTE_TIME_UTC,	/* UTC, with month and day */
-	ABSOLUTE_TIME_DOY_UTC,	/* UTC, with 1-origin day-of-year */
-	ABSOLUTE_TIME_NTP_UTC	/* UTC, with "NULL" when timestamp is all zeros */
-} absolute_time_display_e;
-
-#endif /* __TIME_FMT_H__  */
+#endif /* __TFS_H__ */
 /* End embedded header */
 
 /* Begin ws_diag_control.h */
@@ -4437,6 +4476,73 @@ void ws_buffer_cleanup(void);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
+
+#endif
+/* End embedded header */
+
+/* Begin wsutil/inet_addr.h */
+/* inet_addr.h
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WS_INET_ADDR_H__
+#define __WS_INET_ADDR_H__
+
+
+
+/*
+ * These are the values specified by RFC 2133 and its successors for
+ * INET_ADDRSTRLEN and INET6_ADDRSTRLEN.
+ *
+ * On UN*X systems, INET_ADDRSTRLEN and INET6_ADDRSTRLEN are defined
+ * to the values from RFC 2133 and its successors.
+ *
+ * However, on Windows:
+ *
+ * There are APIs RtlIpv4AddressToStringEx(), which converts an
+ * IPv4 address *and transport-layer port* to the address in the
+ * standard text form, followed by a colon and the port number,
+ * and RtlIpv6AddressToStringEx(), which converts an IPv6 address
+ * *and scope ID and transport-layer port* to the address in the
+ * standard text form, followed by a percent sign and the scope
+ * ID (with the address and scope ID in square brackets), followed
+ * by a colon and the port number.
+ *
+ * Instead of defining INET_ADDRSTRLEN_EX as 22 and INET6_ADDRSTRLEN_EX
+ * as 65, and saying *those* were the buffer sizes to use for
+ * RtlIpv4AddressToStringEx() and RtlIpv6AddressToStringEx(), they
+ * defined INET_ADDRSTRLEN to be 22 and INET6_ADDRSTRLEN to be 65 - and
+ * recommend using those as the size for the buffers passed to
+ * RtlIpv4AddressToStringEx() and RtlIpv6AddressToStringEx().
+ *
+ * At least they document inet_ntop() as requiring a 16-byte or larger
+ * buffer for IPv4 addresses and a 46-byte or larger buffer for
+ * IPv6 addresses. For this reason, use hard-coded numeric constants rather than
+ * INET_ADDRSTRLEN and INET6_ADDRSTRLEN.
+ */
+#define WS_INET_ADDRSTRLEN      16
+#define WS_INET6_ADDRSTRLEN     46
+
+/*
+ * To check for errors set errno to zero before calling ws_inet_ntop{4,6}.
+ * ENOSPC is set if the result exceeds the given buffer size.
+ */
+WS_DLL_PUBLIC WS_RETNONNULL const gchar *
+ws_inet_ntop4(gconstpointer src, gchar *dst, guint dst_size);
+
+WS_DLL_PUBLIC WS_RETNONNULL const gchar *
+ws_inet_ntop6(gconstpointer src, gchar *dst, guint dst_size);
+
+WS_DLL_PUBLIC gboolean
+ws_inet_pton4(const gchar *src, ws_in4_addr *dst);
+
+WS_DLL_PUBLIC gboolean
+ws_inet_pton6(const gchar *src, ws_in6_addr *dst);
 
 #endif
 /* End embedded header */
@@ -7514,6 +7620,386 @@ WS_DLL_PUBLIC void frame_data_set_after_dissect(frame_data *fdata,
  */
 /* End embedded header */
 
+/* Begin epan/address.h */
+/* address.h
+ * Definitions for structures storing addresses, and for the type of
+ * variables holding port-type values
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ADDRESS_H__
+#define __ADDRESS_H__
+
+#include <string.h>     /* for memcmp */
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/* Types of "global" addresses Wireshark knows about. */
+/* Address types can be added here if there are many dissectors that use them or just
+ * within a specific dissector.
+ * If an address type is added here, it must be "registered" within address_types.c
+ * For dissector address types, just use the address_type_dissector_register function
+ * from address_types.h
+ */
+typedef enum {
+    AT_NONE,               /* no link-layer address */
+    AT_ETHER,              /* MAC (Ethernet, 802.x, FDDI) address */
+    AT_IPv4,               /* IPv4 */
+    AT_IPv6,               /* IPv6 */
+    AT_IPX,                /* IPX */
+    AT_FC,                 /* Fibre Channel */
+    AT_FCWWN,              /* Fibre Channel WWN */
+    AT_STRINGZ,            /* null-terminated string */
+    AT_EUI64,              /* IEEE EUI-64 */
+    AT_IB,                 /* Infiniband GID/LID */
+    AT_AX25,               /* AX.25 */
+    AT_VINES,              /* Banyan Vines address */
+
+    AT_END_OF_LIST         /* Must be last in list */
+} address_type;
+
+typedef struct _address {
+    int           type;         /* type of address */
+    int           len;          /* length of address, in bytes */
+    const void   *data;         /* pointer to address data */
+
+    /* private */
+    void         *priv;
+} address;
+
+#define ADDRESS_INIT(type, len, data) {type, len, data, NULL}
+#define ADDRESS_INIT_NONE ADDRESS_INIT(AT_NONE, 0, NULL)
+
+static inline void
+clear_address(address *addr)
+{
+    addr->type = AT_NONE;
+    addr->len  = 0;
+    addr->data = NULL;
+    addr->priv = NULL;
+}
+
+/** Initialize an address with the given values.
+ *
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param addr_data [in] Pointer to the address data.
+ */
+static inline void
+set_address(address *addr, int addr_type, int addr_len, const void *addr_data) {
+    if (addr_len == 0) {
+        /* Zero length must mean no data */
+        g_assert(addr_data == NULL);
+    } else {
+        /* Must not be AT_NONE - AT_NONE must have no data */
+        g_assert(addr_type != AT_NONE);
+        /* Make sure we *do* have data */
+        g_assert(addr_data != NULL);
+    }
+    addr->type = addr_type;
+    addr->len  = addr_len;
+    addr->data = addr_data;
+    addr->priv = NULL;
+}
+
+/** Initialize an address from TVB data.
+ *
+ * Same as set_address but it takes a TVB and an offset. This is preferred
+ * over passing the return value of tvb_get_ptr() to set_address().
+ *
+ * This calls tvb_get_ptr() (including throwing any exceptions) before
+ * modifying the address.
+ *
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param tvb [in] Pointer to the TVB.
+ * @param offset [in] Offset within the TVB.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ */
+static inline void
+set_address_tvb(address *addr, int addr_type, int addr_len, tvbuff_t *tvb, int offset) {
+    const void *p;
+
+    if (addr_len != 0) {
+        /* Must not be AT_NONE - AT_NONE must have no data */
+        g_assert(addr_type != AT_NONE);
+        p = tvb_get_ptr(tvb, offset, addr_len);
+    } else
+        p = NULL;
+    set_address(addr, addr_type, addr_len, p);
+}
+
+/** Initialize an address with the given values, allocating a new buffer
+ * for the address data using wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param addr_data [in] Pointer to the address data.
+ */
+static inline void
+alloc_address_wmem(wmem_allocator_t *scope, address *addr,
+                        int addr_type, int addr_len, const void *addr_data) {
+    g_assert(addr);
+    clear_address(addr);
+    addr->type = addr_type;
+    if (addr_len == 0) {
+        /* Zero length must mean no data */
+        g_assert(addr_data == NULL);
+        /* Nothing to copy */
+        return;
+    }
+    /* Must not be AT_NONE - AT_NONE must have no data */
+    g_assert(addr_type != AT_NONE);
+    /* Make sure we *do* have data to copy */
+    g_assert(addr_data != NULL);
+    addr->data = addr->priv = wmem_memdup(scope, addr_data, addr_len);
+    addr->len = addr_len;
+}
+
+/** Allocate an address from TVB data.
+ *
+ * Same as alloc_address_wmem but it takes a TVB and an offset.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param tvb [in] Pointer to the TVB.
+ * @param offset [in] Offset within the TVB.
+ */
+static inline void
+alloc_address_tvb(wmem_allocator_t *scope, address *addr,
+                    int addr_type, int addr_len,  tvbuff_t *tvb, int offset) {
+    const void *p;
+
+    p = tvb_get_ptr(tvb, offset, addr_len);
+    alloc_address_wmem(scope, addr, addr_type, addr_len, p);
+}
+
+/** Compare two addresses.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return 0 if the addresses are equal,
+ *  A positive number if addr1 > addr2 in some nondefined metric,
+ *  A negative number if addr1 < addr2 in some nondefined metric.
+ */
+static inline int
+cmp_address(const address *addr1, const address *addr2) {
+    if (addr1->type > addr2->type) return 1;
+    if (addr1->type < addr2->type) return -1;
+    if (addr1->len  > addr2->len) return 1;
+    if (addr1->len  < addr2->len) return -1;
+    if (addr1->len == 0) {
+        /*
+         * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
+         * if both addresses are zero-length, don't compare them
+         * (there's nothing to compare, so they're equal).
+         */
+        return 0;
+    }
+    return memcmp(addr1->data, addr2->data, addr1->len);
+}
+
+/** Check two addresses for equality.
+ *
+ * Given two addresses, return "true" if they're equal, "false" otherwise.
+ * Addresses are equal only if they have the same type and length; if the
+ * length is zero, they are then equal, otherwise the data must be the
+ * same.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return TRUE if the addresses are equal, FALSE otherwise.
+ */
+static inline gboolean
+addresses_equal(const address *addr1, const address *addr2) {
+    /*
+     * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
+     * if both addresses are zero-length, don't compare them
+     * (there's nothing to compare, so they're equal).
+     */
+    if (addr1->type == addr2->type &&
+        addr1->len == addr2->len &&
+        (addr1->len == 0 ||
+         memcmp(addr1->data, addr2->data, addr1->len) == 0))
+        return TRUE;
+    return FALSE;
+}
+
+/** Check the data of two addresses for equality.
+ *
+ * Given two addresses, return "true" if they have the same length and,
+ * their data is equal, "false" otherwise.
+ * The address types are ignored. This can be used to compare custom
+ * address types defined with address_type_dissector_register.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return TRUE if the addresses are equal, FALSE otherwise.
+ */
+static inline gboolean
+addresses_data_equal(const address *addr1, const address *addr2) {
+    if ( addr1->len == addr2->len
+            && memcmp(addr1->data, addr2->data, addr1->len) == 0
+            ) return TRUE;
+    return FALSE;
+}
+
+/** Perform a shallow copy of the address (both addresses point to the same
+ * memory location).
+ *
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ *
+ * \warning Make sure 'from' memory stays valid for the lifetime of this object.
+ * Also it's strongly recommended to use this function instead of copy-assign.
+ */
+static inline void
+copy_address_shallow(address *to, const address *from) {
+    set_address(to, from->type, from->len, from->data);
+}
+
+/** Copy an address, allocating a new buffer for the address data
+ *  using wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ */
+static inline void
+copy_address_wmem(wmem_allocator_t *scope, address *to, const address *from) {
+    alloc_address_wmem(scope, to, from->type, from->len, from->data);
+}
+
+/** Copy an address, allocating a new buffer for the address data.
+ *
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ */
+static inline void
+copy_address(address *to, const address *from) {
+    copy_address_wmem(NULL, to, from);
+}
+
+/** Free an address allocated with wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., wmem_packet_scope()
+ * @param addr [in,out] The address whose data to free.
+ */
+static inline void
+free_address_wmem(wmem_allocator_t *scope, address *addr) {
+    /* Because many dissectors set 'type = AT_NONE' to mean clear we check for that */
+    if (addr->type != AT_NONE && addr->len > 0 && addr->priv != NULL) {
+        /* Make sure API use is correct */
+        /* if priv is not null then data == priv */
+        g_assert(addr->data == addr->priv);
+        wmem_free(scope, addr->priv);
+    }
+    clear_address(addr);
+}
+
+/** Free an address.
+ *
+ * @param addr [in,out] The address whose data to free.
+ */
+static inline void
+free_address(address *addr) {
+    free_address_wmem(NULL, addr);
+}
+
+/** Hash an address into a hash value (which must already have been set).
+ *
+ * @param hash_val The existing hash value.
+ * @param addr The address to add.
+ * @return The new hash value.
+ */
+static inline guint
+add_address_to_hash(guint hash_val, const address *addr) {
+    const guint8 *hash_data = (const guint8 *)(addr)->data;
+    int idx;
+
+    for (idx = 0; idx < (addr)->len; idx++) {
+        hash_val += hash_data[idx];
+        hash_val += ( hash_val << 10 );
+        hash_val ^= ( hash_val >> 6 );
+    }
+    return hash_val;
+}
+
+/** Hash an address into a hash value (which must already have been set).
+ *  64-bit version of add_address_to_hash().
+ *
+ * @param hash_val The existing hash value.
+ * @param addr The address to add.
+ * @return The new hash value.
+ */
+static inline guint64
+add_address_to_hash64(guint64 hash_val, const address *addr) {
+    const guint8 *hash_data = (const guint8 *)(addr)->data;
+    int idx;
+
+    for (idx = 0; idx < (addr)->len; idx++) {
+        hash_val += hash_data[idx];
+        hash_val += ( hash_val << 10 );
+        hash_val ^= ( hash_val >> 6 );
+    }
+    return hash_val;
+}
+
+WS_DLL_PUBLIC guint address_to_bytes(const address *addr, guint8 *buf, guint buf_len);
+
+/* Types of port numbers Wireshark knows about. */
+typedef enum {
+    PT_NONE,            /* no port number */
+    PT_SCTP,            /* SCTP */
+    PT_TCP,             /* TCP */
+    PT_UDP,             /* UDP */
+    PT_DCCP,            /* DCCP */
+    PT_IPX,             /* IPX sockets */
+    PT_DDP,             /* DDP AppleTalk connection */
+    PT_IDP,             /* XNS IDP sockets */
+    PT_USB,             /* USB endpoint 0xffff means the host */
+    PT_I2C,
+    PT_IBQP,            /* Infiniband QP number */
+    PT_BLUETOOTH
+} port_type;
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __ADDRESS_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
 /* Begin epan/packet_info.h */
 /* packet_info.h
  * Definitions for packet info structures and routines
@@ -7682,3042 +8168,6 @@ typedef struct _packet_info {
  * ex: set shiftwidth=2 tabstop=8 expandtab:
  * :indentSize=2:tabSize=8:noTabs=true:
  */
-/* End embedded header */
-
-/* Begin epan/to_str.h */
-/* to_str.h
- * Definitions for utilities to convert various other types to strings.
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __TO_STR_H__
-#define __TO_STR_H__
-
-
-
-#define GUID_STR_LEN     37
-#define MAX_ADDR_STR_LEN 256
-#define VINES_ADDR_LEN   6
-#define EUI64_STR_LEN    24
-#define AX25_ADDR_LEN    7
-#define FCWWN_ADDR_LEN   8
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * These are utility functions which convert various types to strings,
- * but for which no more specific module applies.
- */
-
-WS_DLL_PUBLIC gchar* address_to_str(wmem_allocator_t *scope, const address *addr);
-WS_DLL_PUBLIC gchar* address_with_resolution_to_str(wmem_allocator_t *scope, const address *addr);
-WS_DLL_PUBLIC gchar* tvb_address_with_resolution_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, int type, const gint offset);
-
-/*
- * address_to_name takes as input an "address", as defined in address.h.
- *
- * If the address is of a type that can be translated into a name, and the
- * user has activated name resolution, and the name can be resolved, it
- * returns a string containing the translated name.
- *
- * Otherwise, it returns NULL.
- */
-WS_DLL_PUBLIC const gchar *address_to_name(const address *addr);
-
-/*
- * address_to_display takes as input an "address", as defined in address.h .
- *
- * If the address is of a type that can be translated into a name, and the
- * user has activated name resolution, and the name can be resolved, it
- * returns a string containing the translated name.
- *
- * Otherwise, if the address is of type AT_NONE, it returns "NONE".
- *
- * Otherwise, it returns a string containing the result of address_to_str
- * on the argument, which should be a string representation for the address,
- * e.g. "10.10.10.10" for IPv4 address 10.10.10.10.
- */
-WS_DLL_PUBLIC
-gchar *address_to_display(wmem_allocator_t *allocator, const address *addr);
-
-WS_DLL_PUBLIC void     address_to_str_buf(const address *addr, gchar *buf, int buf_len);
-
-#define tvb_ether_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_ETHER, offset)
-#define tvb_ip_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv4, offset)
-#define tvb_ip6_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv6, offset)
-#define tvb_fcwwn_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_FCWWN, offset)
-#define tvb_fc_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_FC, offset)
-#define tvb_eui64_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_EUI64, offset)
-
-void	ip_to_str_buf(const guint8 *ad, gchar *buf, const int buf_len);
-
-/* Returns length of the result. */
-int ip6_to_str_buf(const ws_in6_addr *ad, gchar *buf, int buf_size);
-
-/* Returns length of the result. Takes a prefix to be inserted before the address. */
-int ip6_to_str_buf_with_pfx(const ws_in6_addr *ad, gchar *buf, int buf_size, const char *prefix);
-
-extern gchar*	ipxnet_to_str_punct(wmem_allocator_t *scope, const guint32 ad, const char punct);
-WS_DLL_PUBLIC gchar*	eui64_to_str(wmem_allocator_t *scope, const guint64 ad);
-
-WS_DLL_PUBLIC gchar*	abs_time_to_str(wmem_allocator_t *scope, const nstime_t*, const absolute_time_display_e fmt,
-    gboolean show_zone);
-WS_DLL_PUBLIC gchar*	abs_time_secs_to_str(wmem_allocator_t *scope, const time_t, const absolute_time_display_e fmt,
-    gboolean show_zone);
-WS_DLL_PUBLIC void	display_epoch_time(gchar *, int, const time_t,  gint32, const to_str_time_res_t);
-
-WS_DLL_PUBLIC void	display_signed_time(gchar *, int, const gint32, gint32, const to_str_time_res_t);
-
-WS_DLL_PUBLIC gchar*	signed_time_secs_to_str(wmem_allocator_t *scope, const gint32 time_val);
-WS_DLL_PUBLIC gchar*	unsigned_time_secs_to_str(wmem_allocator_t *scope, const guint32);
-WS_DLL_PUBLIC gchar*	signed_time_msecs_to_str(wmem_allocator_t *scope, gint32 time_val);
-
-WS_DLL_PUBLIC void guint32_to_str_buf(guint32 u, gchar *buf, int buf_len);
-WS_DLL_PUBLIC void guint64_to_str_buf(guint64 u, gchar *buf, int buf_len);
-
-WS_DLL_PUBLIC gchar*	rel_time_to_str(wmem_allocator_t *scope, const nstime_t*);
-WS_DLL_PUBLIC gchar*	rel_time_to_secs_str(wmem_allocator_t *scope, const nstime_t*);
-WS_DLL_PUBLIC gchar*	guid_to_str(wmem_allocator_t *scope, const e_guid_t*);
-gchar*	guid_to_str_buf(const e_guid_t*, gchar*, int);
-
-WS_DLL_PUBLIC char *decode_bits_in_field(const guint bit_offset, const gint no_of_bits, const guint64 value);
-
-WS_DLL_PUBLIC const gchar* port_type_to_str (port_type type);
-
-/** Turn an address type retrieved from a tvb into a string.
- *
- * @param scope memory allocation scheme used
- * @param tvb tvbuff to retrieve address
- * @param type address type to retrieve
- * @param offset offset into tvb to retrieve address
- * @return A pointer to the formatted string
- *
- */
-WS_DLL_PUBLIC gchar* tvb_address_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, int type, const gint offset);
-
-/** Turn an address type retrieved from a tvb into a string.
- *
- * @param scope memory allocation scheme used
- * @param tvb tvbuff to retrieve address
- * @param type address type to retrieve
- * @param offset offset into tvb to retrieve address
- * @param length The length of the string
- * @return A pointer to the formatted string
- *
- */
-WS_DLL_PUBLIC gchar* tvb_address_var_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, address_type type, const gint offset, int length);
-
-/**
- * guint8_to_hex()
- *
- * Output guint8 hex represetation to 'out', and return pointer after last character (out + 4).
- * It always output full representation (padded with 0).
- *
- * String is not NUL terminated by this routine.
- * There needs to be at least 2 bytes in the buffer.
- */
-WS_DLL_PUBLIC char *guint8_to_hex(char *out, guint8 val);
-
-/**
- * word_to_hex()
- *
- * Output guint16 hex represetation to 'out', and return pointer after last character (out + 4).
- * It always output full representation (padded with 0).
- *
- * String is not NUL terminated by this routine.
- * There needs to be at least 4 bytes in the buffer.
- */
-WS_DLL_PUBLIC char *word_to_hex(char *out, guint16 word);
-
-/**
- * dword_to_hex()
- *
- * Output guint32 hex represetation to 'out', and return pointer after last character.
- * It always output full representation (padded with 0).
- *
- * String is not NUL terminated by this routine.
- * There needs to be at least 8 bytes in the buffer.
- */
-WS_DLL_PUBLIC char *dword_to_hex(char *out, guint32 dword);
-
-/** Turn an array of bytes into a string showing the bytes in hex.
- *
- * @param scope memory allocation scheme used
- * @param bd A pointer to the byte array
- * @param bd_len The length of the byte array
- * @return A pointer to the formatted string
- */
-WS_DLL_PUBLIC char *bytes_to_str(wmem_allocator_t *scope, const guint8 *bd, int bd_len);
-
-/** Turn an array of bytes into a string showing the bytes in hex,
- *  separated by a punctuation character.
- *
- * @param scope memory allocation scheme used
- * @param ad A pointer to the byte array
- * @param len The length of the byte array
- * @param punct The punctuation character
- * @return A pointer to the formatted string
- *
- * @see bytes_to_str()
- */
-WS_DLL_PUBLIC gchar *bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, const char punct);
-
-/**
- * bytes_to_hexstr()
- *
- * Output hex represetation of guint8 ad array, and return pointer after last character.
- * It always output full representation (padded with 0).
- *
- * String is not NUL terminated by this routine.
- * There needs to be at least len * 2 bytes in the buffer.
- */
-WS_DLL_PUBLIC char *bytes_to_hexstr(char *out, const guint8 *ad, guint32 len);
-
-/**
- * uint_to_str_back()
- *
- * Output guint32 decimal representation backward (last character will be written on ptr - 1),
- * and return pointer to first character.
- *
- * String is not NUL terminated by this routine.
- * There needs to be at least 10 bytes in the buffer.
- */
-WS_DLL_PUBLIC char *uint_to_str_back(char *ptr, guint32 value);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __TO_STR_H__  */
-/* End embedded header */
-
-/* Begin epan/addr_resolv.h */
-/* addr_resolv.h
- * Definitions for network object lookup
- *
- * Laurent Deniel <laurent.deniel@free.fr>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-/* The buffers returned by these functions are all allocated with a
- * packet lifetime and does not have have to be freed.
- * However, take into account that when the packet dissection
- * completes, these buffers will be automatically reclaimed/freed.
- * If you need the buffer to remain for a longer scope than packet lifetime
- * you must copy the content to an wmem_file_scope() buffer.
- */
-
-#ifndef __RESOLV_H__
-#define __RESOLV_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#ifndef MAXNAMELEN
-#define MAXNAMELEN  	64	/* max name length (hostname and port name) */
-#endif
-
-#ifndef MAXVLANNAMELEN
-#define MAXVLANNAMELEN  	128	/* max vlan name length */
-#endif
-
-#define BASE_ENTERPRISES     BASE_CUSTOM
-#define STRINGS_ENTERPRISES  CF_FUNC(enterprises_base_custom)
-
-/**
- * @brief Flags to control name resolution.
- */
-typedef struct _e_addr_resolve {
-  gboolean mac_name;                          /**< Whether to resolve Ethernet MAC to manufacturer names */
-  gboolean network_name;                      /**< Whether to resolve IPv4, IPv6, and IPX addresses into host names */
-  gboolean transport_name;                    /**< Whether to resolve TCP/UDP/DCCP/SCTP ports into service names */
-  gboolean dns_pkt_addr_resolution;           /**< Whether to resolve addresses using captured DNS packets */
-  gboolean use_external_net_name_resolver;    /**< Whether to system's configured DNS server to resolve names */
-  gboolean load_hosts_file_from_profile_only; /**< Whether to only load the hosts in the current profile, not hosts files */
-  gboolean vlan_name;                         /**< Whether to resolve VLAN IDs to names */
-  gboolean ss7pc_name;                        /**< Whether to resolve SS7 Point Codes to names */
-} e_addr_resolve;
-
-#define ADDR_RESOLV_MACADDR(at) \
-    (((at)->type == AT_ETHER))
-
-#define ADDR_RESOLV_NETADDR(at) \
-    (((at)->type == AT_IPv4) || ((at)->type == AT_IPv6) || ((at)->type == AT_IPX))
-
-struct hashether;
-typedef struct hashether hashether_t;
-
-struct hashmanuf;
-typedef struct hashmanuf hashmanuf_t;
-
-typedef struct serv_port {
-  gchar            *udp_name;
-  gchar            *tcp_name;
-  gchar            *sctp_name;
-  gchar            *dccp_name;
-  gchar            *numeric;
-} serv_port_t;
-
-/*
- * Flags for various IPv4/IPv6 hash table entries.
- */
-#define TRIED_RESOLVE_ADDRESS    (1U<<0)  /* XXX - what does this bit *really* mean? */
-#define NAME_RESOLVED            (1U<<1)  /* the name field contains a host name, not a printable address */
-#define RESOLVED_ADDRESS_USED    (1U<<2)  /* a get_hostname* call returned the host name */
-
-#define TRIED_OR_RESOLVED_MASK   (TRIED_RESOLVE_ADDRESS | NAME_RESOLVED)
-#define USED_AND_RESOLVED_MASK   (NAME_RESOLVED | RESOLVED_ADDRESS_USED)
-
-/*
- * Flag controlling what names to resolve.
- */
-WS_DLL_PUBLIC e_addr_resolve gbl_resolv_flags;
-
-/* global variables */
-
-extern gchar *g_ethers_path;
-extern gchar *g_ipxnets_path;
-extern gchar *g_pethers_path;
-extern gchar *g_pipxnets_path;
-
-/* Functions in addr_resolv.c */
-
-/*
- * udp_port_to_display() returns the port name corresponding to that UDP port,
- * or the port number as a string if not found.
- */
-WS_DLL_PUBLIC gchar *udp_port_to_display(wmem_allocator_t *allocator, guint port);
-
-/*
- * tcp_port_to_display() returns the port name corresponding to that TCP port,
- * or the port number as a string if not found.
- */
-WS_DLL_PUBLIC gchar *tcp_port_to_display(wmem_allocator_t *allocator, guint port);
-
-/*
- * dccp_port_to_display() returns the port name corresponding to that DCCP port,
- * or the port number as a string if not found.
- */
-extern gchar *dccp_port_to_display(wmem_allocator_t *allocator, guint port);
-
-/*
- * sctp_port_to_display() returns the port name corresponding to that SCTP port,
- * or the port number as a string if not found.
- */
-WS_DLL_PUBLIC gchar *sctp_port_to_display(wmem_allocator_t *allocator, guint port);
-
-/*
- * serv_name_lookup() returns the well known service name string, or numeric
- * representation if one doesn't exist.
- */
-WS_DLL_PUBLIC const gchar *serv_name_lookup(port_type proto, guint port);
-
-/*
- * enterprises_lookup() returns the private enterprise code string, or 'unknown_str'
- * if one doesn't exist, or "<Unknown>" if that is NULL.
- */
-WS_DLL_PUBLIC const gchar *enterprises_lookup(guint32 value, const char *unknown_str);
-
-/*
- * try_enterprises_lookup() returns the private enterprise code string, or NULL if not found.
- */
-WS_DLL_PUBLIC const gchar *try_enterprises_lookup(guint32 value);
-
-/*
- * enterprises_base_custom() prints the "name (decimal)" string to 'buf'.
- * (Used with BASE_CUSTOM field display).
- */
-WS_DLL_PUBLIC void enterprises_base_custom(char *buf, guint32 value);
-
-/*
- * try_serv_name_lookup() returns the well known service name string, or NULL if
- * one doesn't exist.
- */
-WS_DLL_PUBLIC const gchar *try_serv_name_lookup(port_type proto, guint port);
-
-/*
- * port_with_resolution_to_str() prints the "<resolved> (<numerical>)" port
- * string.
- */
-WS_DLL_PUBLIC gchar *port_with_resolution_to_str(wmem_allocator_t *scope,
-                                        port_type proto, guint port);
-
-/*
- * port_with_resolution_to_str_buf() prints the "<resolved> (<numerical>)" port
- * string to 'buf'. Return value is the same as g_snprintf().
- */
-WS_DLL_PUBLIC int port_with_resolution_to_str_buf(gchar *buf, gulong buf_size,
-                                        port_type proto, guint port);
-
-/*
- * Asynchronous host name lookup initialization, processing, and cleanup
- */
-
-/* Setup name resolution preferences */
-struct pref_module;
-extern void addr_resolve_pref_init(struct pref_module *nameres);
-extern void addr_resolve_pref_apply(void);
-
-/*
- * disable_name_resolution() sets all relevant gbl_resolv_flags to FALSE.
- */
-WS_DLL_PUBLIC void disable_name_resolution(void);
-
-/** If we're using c-ares process outstanding host name lookups.
- *  This is called from a GLIB timeout in Wireshark and before processing
- *  each packet in TShark.
- *
- * @return True if any new objects have been resolved since the previous
- * call. This can be used to trigger a display update, e.g. in Wireshark.
- */
-WS_DLL_PUBLIC gboolean host_name_lookup_process(void);
-
-/* get_hostname returns the host name or "%d.%d.%d.%d" if not found */
-WS_DLL_PUBLIC const gchar *get_hostname(const guint addr);
-
-/* get_hostname6 returns the host name, or numeric addr if not found */
-WS_DLL_PUBLIC const gchar *get_hostname6(const ws_in6_addr *ad);
-
-/* get_ether_name returns the logical name if found in ethers files else
-   "<vendor>_%02x:%02x:%02x" if the vendor code is known else
-   "%02x:%02x:%02x:%02x:%02x:%02x" */
-WS_DLL_PUBLIC const gchar *get_ether_name(const guint8 *addr);
-
-/* get_hostname_ss7pc returns the logical name if found in ss7pcs file else
-   '\0' on the first call or the unresolved Point Code in the subsequent calls */
-const gchar *get_hostname_ss7pc(const guint8 ni, const guint32 pc);
-
-/* fill_unresolved_ss7pc initializes the unresolved Point Code Address string in the hashtable */
-void fill_unresolved_ss7pc(const gchar * pc_addr, const guint8 ni, const guint32 pc);
-
-
-/* Same as get_ether_name with tvb support */
-WS_DLL_PUBLIC const gchar *tvb_get_ether_name(tvbuff_t *tvb, gint offset);
-
-/* get_ether_name_if_known returns the logical name if found in ethers files else NULL */
-const gchar *get_ether_name_if_known(const guint8 *addr);
-
-/*
- * Given a sequence of 3 octets containing an OID, get_manuf_name()
- * returns the vendor name, or "%02x:%02x:%02x" if not known.
- */
-extern const gchar *get_manuf_name(const guint8 *addr);
-
-/*
- * Given a sequence of 3 octets containing an OID, get_manuf_name_if_known()
- * returns the vendor name, or NULL if not known.
- */
-WS_DLL_PUBLIC const gchar *get_manuf_name_if_known(const guint8 *addr);
-
-/*
- * Given an integer containing a 24-bit OID, uint_get_manuf_name_if_known()
- * returns the vendor name, or NULL if not known.
- */
-extern const gchar *uint_get_manuf_name_if_known(const guint oid);
-
-/*
- * Given a tvbuff and an offset in that tvbuff for a 3-octet OID,
- * tvb_get_manuf_name() returns the vendor name, or "%02x:%02x:%02x"
- * if not known.
- */
-WS_DLL_PUBLIC const gchar *tvb_get_manuf_name(tvbuff_t *tvb, gint offset);
-
-/*
- * Given a tvbuff and an offset in that tvbuff for a 3-octet OID,
- * tvb_get_manuf_name_if_known() returns the vendor name, or NULL
- * if not known.
- */
-WS_DLL_PUBLIC const gchar *tvb_get_manuf_name_if_known(tvbuff_t *tvb, gint offset);
-
-/* eui64_to_display returns "<vendor>_%02x:%02x:%02x:%02x:%02x:%02x" if the vendor code is known
-   "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x" */
-extern gchar *eui64_to_display(wmem_allocator_t *allocator, const guint64 addr);
-
-/* get_ipxnet_name returns the logical name if found in an ipxnets file,
- * or a string formatted with "%X" if not */
-extern gchar *get_ipxnet_name(wmem_allocator_t *allocator, const guint32 addr);
-
-/* get_vlan_name returns the logical name if found in a vlans file,
- * or the VLAN ID itself as a string if not found*/
-extern gchar *get_vlan_name(wmem_allocator_t *allocator, const guint16 id);
-
-WS_DLL_PUBLIC guint get_hash_ether_status(hashether_t* ether);
-WS_DLL_PUBLIC char* get_hash_ether_hexaddr(hashether_t* ether);
-WS_DLL_PUBLIC char* get_hash_ether_resolved_name(hashether_t* ether);
-
-WS_DLL_PUBLIC char* get_hash_manuf_resolved_name(hashmanuf_t* manuf);
-
-
-/* adds a hostname/IPv4 in the hash table */
-WS_DLL_PUBLIC void add_ipv4_name(const guint addr, const gchar *name);
-
-/* adds a hostname/IPv6 in the hash table */
-WS_DLL_PUBLIC void add_ipv6_name(const ws_in6_addr *addr, const gchar *name);
-
-/** Add an additional "hosts" file for IPv4 and IPv6 name resolution.
- *
- * The file can be added before host_name_lookup_init() is called and
- * will be re-read each time host_name_lookup_init() is called.
- *
- * @param hosts_file Absolute path to the hosts file.
- *
- * @return TRUE if the hosts file can be read.
- */
-WS_DLL_PUBLIC gboolean add_hosts_file (const char *hosts_file);
-
-/* adds a hostname in the hash table */
-WS_DLL_PUBLIC gboolean add_ip_name_from_string (const char *addr, const char *name);
-
-
-/** Get lists of host name to address mappings we know about.
- *
- * The struct contains two g_lists one with hashipv4_t entries and one with hashipv6_t entries.
- *
- * @return a struct with lists of known addresses(IPv4 and IPv6). May be NULL.
- */
-WS_DLL_PUBLIC addrinfo_lists_t *get_addrinfo_list(void);
-
-/* add ethernet address / name corresponding to IP address  */
-extern void add_ether_byip(const guint ip, const guint8 *eth);
-
-/** Translates a string representing a hostname or dotted-decimal IPv4 address
- *  into a numeric IPv4 address value in network byte order. If compiled with
- *  c-ares, the request will wait a maximum of 250ms for the request to finish.
- *  Otherwise the wait time will be system-dependent, ususally much longer.
- *  Immediately returns FALSE for hostnames if network name resolution is
- *  disabled.
- *
- * @param[in] host The hostname.
- * @param[out] addrp The numeric IPv4 address in network byte order.
- * @return TRUE on success, FALSE on failure, timeout.
- */
-WS_DLL_PUBLIC
-gboolean get_host_ipaddr(const char *host, guint32 *addrp);
-
-/** Translates a string representing a hostname or colon-hex IPv6 address
- *  into a numeric IPv6 address value in network byte order. If compiled with
- *  c-ares, the request will wait a maximum of 250ms for the request to finish.
- *  Otherwise the wait time will be system-dependent, usually much longer.
- *  Immediately returns FALSE for hostnames if network name resolution is
- *  disabled.
- *
- * @param[in] host The hostname.
- * @param[out] addrp The numeric IPv6 address in network byte order.
- * @return TRUE on success, FALSE on failure or timeout.
- */
-WS_DLL_PUBLIC
-gboolean get_host_ipaddr6(const char *host, ws_in6_addr *addrp);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_manuf_hashtable(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_wka_hashtable(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_eth_hashtable(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_serv_port_hashtable(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_ipxnet_hash_table(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_vlan_hash_table(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_ipv4_hash_table(void);
-
-WS_DLL_PUBLIC
-wmem_map_t *get_ipv6_hash_table(void);
-
-/*
- * XXX - if we ever have per-session host name etc. information, we
- * should probably have the "resolve synchronously or asynchronously"
- * flag be per-session, set with an epan API.
- */
-WS_DLL_PUBLIC
-void set_resolution_synchrony(gboolean synchronous);
-
-/*
- * private functions (should only be called by epan directly)
- */
-
-WS_DLL_LOCAL
-void name_resolver_init(void);
-
-/* Reinitialize hostname resolution subsystem */
-WS_DLL_LOCAL
-void host_name_lookup_reset(void);
-
-WS_DLL_LOCAL
-void addr_resolv_init(void);
-
-WS_DLL_LOCAL
-void addr_resolv_cleanup(void);
-
-WS_DLL_PUBLIC
-void manually_resolve_cleanup(void);
-
-WS_DLL_PUBLIC
-gboolean str_to_ip(const char *str, void *dst);
-
-WS_DLL_PUBLIC
-gboolean str_to_ip6(const char *str, void *dst);
-
-WS_DLL_LOCAL
-gboolean str_to_eth(const char *str, char *eth_bytes);
-
-WS_DLL_LOCAL
-guint ipv6_oat_hash(gconstpointer key);
-
-WS_DLL_LOCAL
-gboolean ipv6_equal(gconstpointer v1, gconstpointer v2);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __RESOLV_H__ */
-/* End embedded header */
-
-/* Begin epan/address_types.h */
-/* address_types.h
- * Definitions for address types
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ADDRESS_TYPES_H__
-#define __ADDRESS_TYPES_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-typedef int (*AddrValueToString)(const address* addr, gchar *buf, int buf_len);
-typedef int (*AddrValueToStringLen)(const address* addr);
-typedef guint (*AddrValueToByte)(const address* addr, guint8 *buf, guint buf_len);
-typedef int (*AddrFixedLen)(void);
-typedef const char* (*AddrColFilterString)(const address* addr, gboolean src);
-typedef int (*AddrNameResolutionLen)(void);
-typedef const gchar* (*AddrNameResolutionToString)(const address* addr);
-
-struct _address_type_t;
-typedef struct _address_type_t address_type_t;
-
-WS_DLL_PUBLIC int address_type_dissector_register(const char* name, const char* pretty_name,
-                                    AddrValueToString to_str_func, AddrValueToStringLen str_len_func,
-                                    AddrValueToByte to_bytes_func, AddrColFilterString col_filter_str_func, AddrFixedLen fixed_len_func,
-                                    AddrNameResolutionToString name_res_str_func, AddrNameResolutionLen name_res_len_func);
-
-WS_DLL_PUBLIC int address_type_get_by_name(const char* name);
-
-void address_types_initialize(void);
-
-/* Address type functions used by multiple (dissector) address types */
-int none_addr_to_str(const address* addr, gchar *buf, int buf_len);
-int none_addr_str_len(const address* addr);
-int none_addr_len(void);
-
-int ether_to_str(const address* addr, gchar *buf, int buf_len);
-int ether_str_len(const address* addr);
-int ether_len(void);
-const gchar* ether_name_resolution_str(const address* addr);
-int ether_name_resolution_len(void);
-
-
-
-/* XXX - Temporary?  Here at least until all of the address type handling is finalized
- * Otherwise should be folded into address_types.c or just be handled with function pointers
- */
-const char* address_type_column_filter_string(const address* addr, gboolean src);
-
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __ADDRESS_TYPES_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/afn.h */
-/* afn.h
- * RFC 1700 address family numbers
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __AFN_H__
-#define __AFN_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * Address family numbers, from
- *
- *  http://www.iana.org/assignments/address-family-numbers
- */
-#define AFNUM_RESERVED          0       /* Reserved */
-#define AFNUM_INET              1       /* IP (IP version 4) */
-#define AFNUM_INET6             2       /* IP6 (IP version 6) */
-#define AFNUM_NSAP              3       /* NSAP */
-#define AFNUM_HDLC              4       /* HDLC (8-bit multidrop) */
-#define AFNUM_BBN1822           5       /* BBN 1822 */
-#define AFNUM_802               6       /* 802 (includes all 802 media plus Ethernet "canonical format") */
-#define AFNUM_E163              7       /* E.163 */
-#define AFNUM_E164              8       /* E.164 (SMDS, Frame Relay, ATM) */
-#define AFNUM_F69               9       /* F.69 (Telex) */
-#define AFNUM_X121              10      /* X.121 (X.25, Frame Relay) */
-#define AFNUM_IPX               11      /* IPX */
-#define AFNUM_ATALK             12      /* Appletalk */
-#define AFNUM_DECNET            13      /* Decnet IV */
-#define AFNUM_BANYAN            14      /* Banyan Vines */
-#define AFNUM_E164NSAP          15      /* E.164 with NSAP format subaddress */
-#define AFNUM_DNS               16      /* DNS (Domain Name System) */
-#define AFNUM_DISTNAME          17      /* Distinguished Name */
-#define AFNUM_AS_NUMBER         18      /* AS Number */
-#define AFNUM_XTP_IP4           19      /* XTP over IP version 4 */
-#define AFNUM_XTP_IP6           20      /* XTP over IP version 6 */
-#define AFNUM_XTP               21      /* XTP native mode XTP */
-#define AFNUM_FC_WWPN           22      /* Fibre Channel World-Wide Port Name */
-#define AFNUM_FC_WWNN           23      /* Fibre Channel World-Wide Node Name */
-#define AFNUM_GWID              24      /* GWID */
-#define AFNUM_L2VPN             25      /* RFC4761 RFC6074 */
-#define AFNUM_L2VPN_OLD        196
-#define AFNUM_MPLS_TP_SEI       26      /* MPLS-TP Section Endpoint Identifier, RFC7212 */
-#define AFNUM_MPLS_TP_LSPEI     27      /* MPLS-TP LSP Endpoint Identifier, RFC7212 */
-#define AFNUM_MPLS_TP_PEI       28      /* MPLS-TP Pseudowire Endpoint Identifier, RFC7212 */
-#define AFNUM_MT_IP             29      /* MT IP: Multi-Topology IP version 4, RFC7307 */
-#define AFNUM_MT_IPV6           30      /* MT IPv6: Multi-Topology IP version 6, RFC7307 */
-#define AFNUM_EIGRP_COMMON      16384   /* EIGRP Common Service Family, Donnie Savage */
-#define AFNUM_EIGRP_IPV4        16385   /* EIGRP IPv4 Service Family, Donnie Savage */
-#define AFNUM_EIGRP_IPV6        16386   /* EIGRP IPv6 Service Family, Donnie Savage */
-#define AFNUM_LCAF              16387   /* LISP Canonical Address Format, David Meyer */
-#define AFNUM_BGP_LS            16388   /* BGP-LS, RFC7752 */
-#define AFNUM_EUI48             16389   /* 48-bit MAC, RFC7042 */
-#define AFNUM_EUI64             16390   /* 64-bit MAC, RFC7042 */
-#define AFNUM_OUI               16391   /* OUI, RFC7961 */
-#define AFNUM_MAC_24            16392   /* MAC/24, RFC7961 */
-#define AFNUM_MAC_40            16393   /* MAC/40, RFC7961 */
-#define AFNUM_IPv6_64           16394   /* IPv6/64, RFC7961 */
-#define AFNUM_RB_PID            16395   /* RBridge Port ID, RFC7961 */
-#define AFNUM_TRILL_NICKNAME    16396   /* TRILL Nickname, RFC7455 */
-extern const value_string afn_vals[];
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __AFN_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/value_string.h */
-/* value_string.h
- * Definitions for value_string structures and routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __VALUE_STRING_H__
-#define __VALUE_STRING_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-
-/* VALUE TO STRING MATCHING */
-
-typedef struct _value_string {
-    guint32      value;
-    const gchar *strptr;
-} value_string;
-
-#if 0
-  /* -----  VALUE_STRING "Helper" macros ----- */
-
-  /* Essentially: Provide the capability to define a list of value_strings once and
-     then to expand the list as an enum and/or as a value_string array. */
-
-  /* Usage: */
-
-  /*- define list of value strings -*/
-     #define foo_VALUE_STRING_LIST(XXX) \
-        XXX( FOO_A, 1, "aaa" ) \
-        XXX( FOO_B, 3, "bbb" )
-
-  /*- gen enum -*/
-     VALUE_STRING_ENUM(foo);      /* gen's 'enum {FOO_A=1, FOO_B=3};' */
-
-  /*- gen value_string array -*/
-     /* local */
-     VALUE_STRING_ARRAY(foo);     /* gen's 'static const value_string foo[] = {{1,"aaa"}, {3,"bbb"}}; */
-
-     /* global */
-     VALUE_STRING_ARRAY_GLOBAL_DEF(foo); /* gen's 'const value_string foo[] = {{1,"aaa"}, {3,"bbb"}}; */
-     VALUE_STRING_ARRAY_GLOBAL_DCL(foo); /* gen's 'const value_string foo[]; */
-
-  /* Alternatively: */
-     #define bar_VALUE_STRING_LIST(XXX) \
-        XXX( BAR_A, 1) \
-        XXX( BAR_B, 3)
-
-     VALUE_STRING_ENUM2(bar);     /* gen's 'enum {BAR_A=1, BAR_B=3};' */
-     VALUE_STRING_ARRAY2(bar);    /* gen's 'static const value_string bar[] = {{1,"BAR_A"}, {3,"BAR_B"}}; */
-     ...
-#endif
-
-/* -- Public -- */
-#define VALUE_STRING_ENUM(              array_name) _VS_ENUM_XXX( array_name, _VS_ENUM_ENTRY)
-#define VALUE_STRING_ARRAY(             array_name) _VS_ARRAY_SC_XXX(array_name, _VS_ARRAY_ENTRY, static)
-#define VALUE_STRING_ARRAY_GLOBAL_DEF(  array_name) _VS_ARRAY_XXX(array_name, _VS_ARRAY_ENTRY)
-#define VALUE_STRING_ARRAY_GLOBAL_DCL(  array_name) _VS_ARRAY_SC_TYPE_NAME(array_name, extern)
-
-#define VALUE_STRING_ENUM2(             array_name) _VS_ENUM_XXX( array_name, _VS_ENUM_ENTRY2)
-#define VALUE_STRING_ARRAY2(            array_name) _VS_ARRAY_SC_XXX(array_name, _VS_ARRAY_ENTRY2, static)
-#define VALUE_STRING_ARRAY2_GLOBAL_DEF( array_name) _VS_ARRAY_XXX(array_name, _VS_ARRAY_ENTRY2)
-#define VALUE_STRING_ARRAY2_GLOBAL_DCL( array_name) _VS_ARRAY_SC_TYPE_NAME(array_name, extern)
-
-/* -- Private -- */
-#define _VS_ENUM_XXX(array_name, macro) \
-enum { \
-    array_name##_VALUE_STRING_LIST(macro) \
-    _##array_name##_ENUM_DUMMY = 0 \
-}
-
-#define _VS_ARRAY_SC_XXX(array_name, macro, sc)  \
-    _VS_ARRAY_SC_TYPE_NAME(array_name, sc) = { \
-    array_name##_VALUE_STRING_LIST(macro) \
-    { 0, NULL } \
-}
-
-#define _VS_ARRAY_XXX(array_name, macro)  \
-    _VS_ARRAY_TYPE_NAME(array_name) = { \
-    array_name##_VALUE_STRING_LIST(macro) \
-    { 0, NULL } \
-}
-
-#define _VS_ARRAY_SC_TYPE_NAME(array_name, sc) sc const value_string array_name[]
-#define _VS_ARRAY_TYPE_NAME(array_name) const value_string array_name[]
-
-#define _VS_ENUM_ENTRY( name, value, string) name = value,
-#define _VS_ARRAY_ENTRY(name, value, string) { value, string },
-
-#define _VS_ENUM_ENTRY2( name, value) name = value,
-#define _VS_ARRAY_ENTRY2(name, value) { value, #name },
-/* ----- ----- */
-
-WS_DLL_PUBLIC
-const gchar *
-val_to_str(const guint32 val, const value_string *vs, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-gchar *
-val_to_str_wmem(wmem_allocator_t *scope, const guint32 val, const value_string *vs, const char *fmt)
-G_GNUC_PRINTF(4, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-val_to_str_const(const guint32 val, const value_string *vs, const char *unknown_str);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val_to_str(const guint32 val, const value_string *vs);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val_to_str_idx(const guint32 val, const value_string *vs, gint *idx);
-
-/* 64-BIT VALUE TO STRING MATCHING */
-
-typedef struct _val64_string {
-    guint64      value;
-    const gchar *strptr;
-} val64_string;
-
-WS_DLL_PUBLIC
-const gchar *
-val64_to_str(const guint64 val, const val64_string *vs, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-val64_to_str_const(const guint64 val, const val64_string *vs, const char *unknown_str);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val64_to_str(const guint64 val, const val64_string *vs);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val64_to_str_idx(const guint64 val, const val64_string *vs, gint *idx);
-
-/* STRING TO VALUE MATCHING */
-
-WS_DLL_PUBLIC
-guint32
-str_to_val(const gchar *val, const value_string *vs, const guint32 err_val);
-
-WS_DLL_PUBLIC
-gint
-str_to_val_idx(const gchar *val, const value_string *vs);
-
-/* EXTENDED VALUE TO STRING MATCHING */
-
-typedef struct _value_string_ext value_string_ext;
-typedef const value_string *(*_value_string_match2_t)(const guint32, value_string_ext*);
-
-struct _value_string_ext {
-    _value_string_match2_t _vs_match2;
-    guint32                _vs_first_value; /* first value of the value_string array       */
-    guint                  _vs_num_entries; /* number of entries in the value_string array */
-                                            /*  (excluding final {0, NULL})                */
-    const value_string    *_vs_p;           /* the value string array address              */
-    const gchar           *_vs_name;        /* vse "Name" (for error messages)             */
-};
-
-#define VALUE_STRING_EXT_VS_P(x)           (x)->_vs_p
-#define VALUE_STRING_EXT_VS_NUM_ENTRIES(x) (x)->_vs_num_entries
-#define VALUE_STRING_EXT_VS_NAME(x)        (x)->_vs_name
-
-WS_DLL_PUBLIC
-const value_string *
-_try_val_to_str_ext_init(const guint32 val, value_string_ext *vse);
-#define VALUE_STRING_EXT_INIT(x) { _try_val_to_str_ext_init, 0, G_N_ELEMENTS(x)-1, x, #x }
-
-WS_DLL_PUBLIC
-value_string_ext *
-value_string_ext_new(const value_string *vs, guint vs_tot_num_entries, const gchar *vs_name);
-
-WS_DLL_PUBLIC
-void
-value_string_ext_free(value_string_ext *vse);
-
-WS_DLL_PUBLIC
-const gchar *
-val_to_str_ext(const guint32 val, value_string_ext *vse, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-gchar *
-val_to_str_ext_wmem(wmem_allocator_t *scope, const guint32 val, value_string_ext *vse, const char *fmt)
-G_GNUC_PRINTF(4, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-val_to_str_ext_const(const guint32 val, value_string_ext *vs, const char *unknown_str);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val_to_str_ext(const guint32 val, value_string_ext *vse);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val_to_str_idx_ext(const guint32 val, value_string_ext *vse, gint *idx);
-
-/* EXTENDED 64-BIT VALUE TO STRING MATCHING */
-
-typedef struct _val64_string_ext val64_string_ext;
-typedef const val64_string *(*_val64_string_match2_t)(const guint64, val64_string_ext*);
-
-struct _val64_string_ext {
-    _val64_string_match2_t _vs_match2;
-    guint64                _vs_first_value; /* first value of the val64_string array       */
-    guint                  _vs_num_entries; /* number of entries in the val64_string array */
-                                            /*  (excluding final {0, NULL})                */
-    const val64_string    *_vs_p;           /* the value string array address              */
-    const gchar           *_vs_name;        /* vse "Name" (for error messages)             */
-};
-
-#define VAL64_STRING_EXT_VS_P(x)           (x)->_vs_p
-#define VAL64_STRING_EXT_VS_NUM_ENTRIES(x) (x)->_vs_num_entries
-#define VAL64_STRING_EXT_VS_NAME(x)        (x)->_vs_name
-
-WS_DLL_PUBLIC
-const val64_string *
-_try_val64_to_str_ext_init(const guint64 val, val64_string_ext *vse);
-#define VAL64_STRING_EXT_INIT(x) { _try_val64_to_str_ext_init, 0, G_N_ELEMENTS(x)-1, x, #x }
-
-WS_DLL_PUBLIC
-val64_string_ext *
-val64_string_ext_new(const val64_string *vs, guint vs_tot_num_entries, const gchar *vs_name);
-
-WS_DLL_PUBLIC
-void
-val64_string_ext_free(val64_string_ext *vse);
-
-WS_DLL_PUBLIC
-const gchar *
-val64_to_str_ext(const guint64 val, val64_string_ext *vse, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-gchar *
-val64_to_str_ext_wmem(wmem_allocator_t *scope, const guint64 val, val64_string_ext *vse, const char *fmt)
-G_GNUC_PRINTF(4, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-val64_to_str_ext_const(const guint64 val, val64_string_ext *vs, const char *unknown_str);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val64_to_str_ext(const guint64 val, val64_string_ext *vse);
-
-WS_DLL_PUBLIC
-const gchar *
-try_val64_to_str_idx_ext(const guint64 val, val64_string_ext *vse, gint *idx);
-
-/* STRING TO STRING MATCHING */
-
-typedef struct _string_string {
-    const gchar *value;
-    const gchar *strptr;
-} string_string;
-
-WS_DLL_PUBLIC
-const gchar *
-str_to_str(const gchar *val, const string_string *vs, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-try_str_to_str(const gchar *val, const string_string *vs);
-
-WS_DLL_PUBLIC
-const gchar *
-try_str_to_str_idx(const gchar *val, const string_string *vs, gint *idx);
-
-/* RANGE TO STRING MATCHING */
-
-typedef struct _range_string {
-    guint32      value_min;
-    guint32      value_max;
-    const gchar *strptr;
-} range_string;
-
-WS_DLL_PUBLIC
-const gchar *
-rval_to_str(const guint32 val, const range_string *rs, const char *fmt)
-G_GNUC_PRINTF(3, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-rval_to_str_const(const guint32 val, const range_string *rs, const char *unknown_str);
-
-WS_DLL_PUBLIC
-const gchar *
-try_rval_to_str(const guint32 val, const range_string *rs);
-
-WS_DLL_PUBLIC
-const gchar *
-try_rval_to_str_idx(const guint32 val, const range_string *rs, gint *idx);
-
-WS_DLL_PUBLIC
-const gchar *
-try_rval64_to_str(const guint64 val, const range_string *rs);
-
-WS_DLL_PUBLIC
-const gchar *
-try_rval64_to_str_idx(const guint64 val, const range_string *rs, gint *idx);
-
-/* BYTES TO STRING MATCHING */
-
-typedef struct _bytes_string {
-  const guint8 *value;
-  const size_t  value_length;
-  const gchar  *strptr;
-} bytes_string;
-
-WS_DLL_PUBLIC
-const gchar *
-bytesval_to_str(const guint8 *val, const size_t val_len, const bytes_string *bs, const char *fmt)
-G_GNUC_PRINTF(4, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-try_bytesval_to_str(const guint8 *val, const size_t val_len, const bytes_string *bs);
-
-WS_DLL_PUBLIC
-const gchar *
-bytesprefix_to_str(const guint8 *haystack, const size_t haystack_len, const bytes_string *bs, const char *fmt)
-G_GNUC_PRINTF(4, 0);
-
-WS_DLL_PUBLIC
-const gchar *
-try_bytesprefix_to_str(const guint8 *haystack, const size_t haystack_len, const bytes_string *bs);
-
-/* MISC (generally do not use) */
-
-WS_DLL_LOCAL
-gboolean
-value_string_ext_validate(const value_string_ext *vse);
-
-WS_DLL_LOCAL
-const gchar *
-value_string_ext_match_type_str(const value_string_ext *vse);
-
-WS_DLL_LOCAL
-gboolean
-val64_string_ext_validate(const val64_string_ext *vse);
-
-WS_DLL_LOCAL
-const gchar *
-val64_string_ext_match_type_str(const val64_string_ext *vse);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __VALUE_STRING_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/aftypes.h */
-/* aftypes.h
- * AF_ values on various OSes; they're used in some network protocols, as
- * well as in BSD DLT_NULL and DLT_LOOP headers.
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- *
- * This file created and by Mike Hall <mlh@io.com>
- * Copyright 1998
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __AFTYPES_H__
-#define __AFTYPES_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#define COMMON_AF_UNSPEC	0
-/* Pretty much everybody uses the same value for AF_INET. */
-#define COMMON_AF_INET		2
-
-/* BSD AF_ values. */
-#define BSD_AF_INET		2
-#define BSD_AF_ISO		7
-#define BSD_AF_APPLETALK	16
-#define BSD_AF_IPX		23
-#define BSD_AF_INET6_BSD	24	/* NetBSD, OpenBSD, BSD/OS */
-#define BSD_AF_INET6_FREEBSD	28	/* FreeBSD, DragonFly BSD */
-#define BSD_AF_INET6_DARWIN	30	/* macOS, iOS, anything else Darwin-based */
-
-/* Linux AF_ values. */
-#define LINUX_AF_UNSPEC		 0
-#define LINUX_AF_LOCAL		 1
-#define LINUX_AF_INET		 2
-#define LINUX_AF_AX25		 3
-#define LINUX_AF_IPX		 4
-#define LINUX_AF_APPLETALK	 5
-#define LINUX_AF_NETROM		 6
-#define LINUX_AF_BRIDGE		 7
-#define LINUX_AF_ATMPVC		 8
-#define LINUX_AF_X25		 9
-#define LINUX_AF_INET6		10
-#define LINUX_AF_ROSE		11
-#define LINUX_AF_DECnet		12
-#define LINUX_AF_NETBEUI	13
-#define LINUX_AF_SECURITY	14
-#define LINUX_AF_KEY		15
-#define LINUX_AF_NETLINK	16
-#define LINUX_AF_PACKET		17
-#define LINUX_AF_ASH		18
-#define LINUX_AF_ECONET		19
-#define LINUX_AF_ATMSVC		20
-#define LINUX_AF_RDS		21
-#define LINUX_AF_SNA		22
-#define LINUX_AF_IRDA		23
-#define LINUX_AF_PPPOX		24
-#define LINUX_AF_WANPIPE	25
-#define LINUX_AF_LLC		26
-#define LINUX_AF_CAN		29
-#define LINUX_AF_TIPC		30
-#define LINUX_AF_BLUETOOTH	31
-#define LINUX_AF_IUCV		32
-#define LINUX_AF_RXRPC		33
-#define LINUX_AF_ISDN		34
-#define LINUX_AF_PHONET		35
-#define LINUX_AF_IEEE802154	36
-#define LINUX_AF_CAIF		37
-#define LINUX_AF_ALG		38
-#define LINUX_AF_NFC		39
-
-extern value_string_ext linux_af_vals_ext;
-
-/* Solaris AF_ values. */
-#define SOLARIS_AF_INET		2
-#define SOLARIS_AF_INET6	26
-
-/* Winsock AF_ values. */
-
-#define WINSOCK_AF_UNSPEC	0
-#define WINSOCK_AF_UNIX		1
-#define WINSOCK_AF_INET		2
-#define WINSOCK_AF_IMPLINK	3
-#define WINSOCK_AF_PUP		4
-#define WINSOCK_AF_CHAOS	5
-#define WINSOCK_AF_IPX		6
-#define WINSOCK_AF_NS		6
-#define WINSOCK_AF_ISO		7
-#define WINSOCK_AF_OSI		WINSOCK_AF_ISO
-#define WINSOCK_AF_ECMA		8
-#define WINSOCK_AF_DATAKIT	9
-#define WINSOCK_AF_CCITT	10
-#define WINSOCK_AF_SNA		11
-#define WINSOCK_AF_DECnet	12
-#define WINSOCK_AF_DLI		13
-#define WINSOCK_AF_LAT		14
-#define WINSOCK_AF_HYLINK	15
-#define WINSOCK_AF_APPLETALK	16
-#define WINSOCK_AF_NETBIOS	17
-#define WINSOCK_AF_VOICEVIEW	18
-#define WINSOCK_AF_FIREFOX	19
-#define WINSOCK_AF_UNKNOWN1	20
-#define WINSOCK_AF_BAN		21
-#define WINSOCK_AF_ATM		22
-#define WINSOCK_AF_INET6	23
-#define WINSOCK_AF_BTH		32
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* aftypes.h */
-/* End embedded header */
-
-/* Begin epan/app_mem_usage.h */
-/*
- * app_mem_usage.h
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-#ifndef __APP_MEM_USAGE_H__
-#define __APP_MEM_USAGE_H__
-
-
-typedef struct {
-	const char *name;
-	gsize (*fetch)(void);
-	void (*gc)(void);
-
-} ws_mem_usage_t;
-
-WS_DLL_PUBLIC void memory_usage_component_register(const ws_mem_usage_t *component);
-
-WS_DLL_PUBLIC void memory_usage_gc(void);
-
-WS_DLL_PUBLIC const char *memory_usage_get(guint idx, gsize *value);
-
-#endif /* APP_MEM_USAGE_H */
-/* End embedded header */
-
-/* Begin epan/arcnet_pids.h */
-/* arcnet_pids.h
- * ARCNET protocol ID values
- * Copyright 2001-2002, Peter Fales <ethereal@fales-lorenz.net>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ARCNET_PIDS_H__
-#define __ARCNET_PIDS_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/* RFC 1051 */
-#define ARCNET_PROTO_IP_1051	240
-#define ARCNET_PROTO_ARP_1051	241
-
-/* RFC 1201 */
-#define ARCNET_PROTO_IP_1201	212
-#define ARCNET_PROTO_ARP_1201	213
-#define ARCNET_PROTO_RARP_1201	214
-
-#define ARCNET_PROTO_IPX	250
-#define ARCNET_PROTO_NOVELL_EC	236
-
-#define ARCNET_PROTO_IPv6	196	/* or so BSD's arcnet.h claims */
-
-/*
- * Raw Ethernet over ARCNET - Linux's "if_arcnet.h" calls this
- * "MS LanMan/WfWg 'NDIS' encapsuation".
- */
-#define ARCNET_PROTO_ETHERNET	232
-
-#define ARCNET_PROTO_DATAPOINT_BOOT	0
-#define ARCNET_PROTO_DATAPOINT_MOUNT	1
-#define ARCNET_PROTO_POWERLAN_BEACON	8
-#define ARCNET_PROTO_POWERLAN_BEACON2	243
-#define ARCNET_PROTO_LANSOFT	251
-
-#define ARCNET_PROTO_APPLETALK	221
-#define ARCNET_PROTO_BANYAN	247	/* Banyan VINES */
-
-#define ARCNET_PROTO_DIAGNOSE	128	/* as per ANSI/ATA 878.1 */
-
-#define ARCNET_PROTO_BACNET	205
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* arcnet_pids.h */
-/* End embedded header */
-
-/* Begin epan/arptypes.h */
-/* arptypes.h
- * Declarations of ARP address types.
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ARPTYPES_H__
-#define __ARPTYPES_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/* Definitions taken from Linux "linux/if_arp.h" header file, and from
-
-	http://www.iana.org/assignments/arp-parameters
-
- */
-
-/* ARP protocol HARDWARE identifiers. */
-#define ARPHRD_NETROM	0		/* from KA9Q: NET/ROM pseudo	*/
-#define ARPHRD_ETHER 	1		/* Ethernet 10Mbps		*/
-#define	ARPHRD_EETHER	2		/* Experimental Ethernet	*/
-#define	ARPHRD_AX25	3		/* AX.25 Level 2		*/
-#define	ARPHRD_PRONET	4		/* PROnet token ring		*/
-#define	ARPHRD_CHAOS	5		/* Chaosnet			*/
-#define	ARPHRD_IEEE802	6		/* IEEE 802.2 Ethernet/TR/TB	*/
-#define	ARPHRD_ARCNET	7		/* ARCnet			*/
-#define	ARPHRD_HYPERCH	8		/* Hyperchannel			*/
-#define	ARPHRD_LANSTAR	9		/* Lanstar			*/
-#define	ARPHRD_AUTONET	10		/* Autonet Short Address	*/
-#define	ARPHRD_LOCALTLK	11		/* Localtalk			*/
-#define	ARPHRD_LOCALNET	12		/* LocalNet (IBM PCNet/Sytek LocalNET) */
-#define	ARPHRD_ULTRALNK	13		/* Ultra link			*/
-#define	ARPHRD_SMDS	14		/* SMDS				*/
-#define ARPHRD_DLCI	15		/* Frame Relay DLCI		*/
-#define ARPHRD_ATM	16		/* ATM				*/
-#define ARPHRD_HDLC	17		/* HDLC				*/
-#define ARPHRD_FIBREC	18		/* Fibre Channel		*/
-#define ARPHRD_ATM2225	19		/* ATM (RFC 2225)		*/
-#define ARPHRD_SERIAL	20		/* Serial Line			*/
-#define ARPHRD_ATM2	21		/* ATM				*/
-#define ARPHRD_MS188220	22		/* MIL-STD-188-220		*/
-#define ARPHRD_METRICOM	23		/* Metricom STRIP		*/
-#define ARPHRD_IEEE1394	24		/* IEEE 1394.1995		*/
-#define ARPHRD_MAPOS	25		/* MAPOS			*/
-#define ARPHRD_TWINAX	26		/* Twinaxial			*/
-#define ARPHRD_EUI_64	27		/* EUI-64			*/
-#define ARPHRD_HIPARP	28		/* HIPARP			*/
-#define ARPHRD_IP_ARP_ISO_7816_3	29	/* IP and ARP over ISO 7816-3	*/
-#define ARPHRD_ARPSEC			30	/* ARPSec			*/
-#define ARPHRD_IPSEC_TUNNEL		31	/* IPsec tunnel			*/
-#define ARPHRD_INFINIBAND		32	/* InfiniBand			*/
-#define ARPHRD_TIA_102_PRJ_25_CAI	33	/* TIA-102 Project 25 CAI	*/
-#define ARPHRD_WIEGAND_INTERFACE	34	/* Wiegand Interface		*/
-#define ARPHRD_PURE_IP			35	/* Pure IP			*/
-#define ARPHDR_HW_EXP1			36	/* HW_EXP1			*/
-#define ARPHDR_HFI			37	/* HFI				*/
-#define ARPHDR_HW_EXP2			256	/* HW_EXP2			*/
-
-/* Virtual ARP types for non ARP hardware used in Linux cooked mode. */
-#define ARPHRD_LOOPBACK			772	/* Loopback */
-#define ARPHRD_IPGRE			778	/* GRE over IP */
-#define ARPHRD_IEEE80211_RADIOTAP	803	/* IEEE 802.11 + radiotap header */
-#define ARPHRD_NETLINK			824	/* netlink */
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* arptypes.h */
-/* End embedded header */
-
-/* Begin epan/asn1.h */
-/* asn1.h
- * Common data for ASN.1
- * 2007  Anders Broman
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ASN1_H__
-#define __ASN1_H__
-
-
-typedef enum {
-  ASN1_ENC_BER,  /* X.690 - BER, CER, DER */
-  ASN1_ENC_PER,  /* X.691 - PER */
-  ASN1_ENC_ECN,  /* X.692 - ECN */
-  ASN1_ENC_XER,  /* X.693 - XER */
-  ASN1_ENC_OER   /* X.696 - OER */
-} asn1_enc_e;
-
-typedef enum {
-  CB_ASN1_ENC,
-  CB_NEW_DISSECTOR,
-  CB_DISSECTOR_HANDLE
-} asn1_cb_variant;
-
-typedef enum {
-  ASN1_PAR_IRR, /* irrelevant parameter */
-  /* value */
-  ASN1_PAR_BOOLEAN,
-  ASN1_PAR_INTEGER,
-  /* type */
-  ASN1_PAR_TYPE
-} asn1_par_type;
-
-typedef struct _asn1_par_def_t {
-  const gchar *name;
-  asn1_par_type ptype;
-} asn1_par_def_t;
-
-typedef struct _asn1_par_t {
-  const gchar *name;
-  asn1_par_type ptype;
-  union {
-    gboolean v_boolean;
-    gint32 v_integer;
-    void *v_type;
-  } value;
-  struct _asn1_par_t *next;
-} asn1_par_t;
-
-typedef struct _asn1_stack_frame_t {
-  const gchar *name;
-  struct _asn1_par_t *par;
-  struct _asn1_stack_frame_t *next;
-} asn1_stack_frame_t;
-
-#define ASN1_CTX_SIGNATURE 0x41435458  /* "ACTX" */
-
-typedef struct _asn1_ctx_t {
-  guint32 signature;
-  asn1_enc_e encoding;
-  gboolean aligned;
-  packet_info *pinfo;
-  proto_item *created_item;
-  struct _asn1_stack_frame_t *stack;
-  void *value_ptr;
-  void *private_data;
-  struct {
-    int hf_index;
-    gboolean data_value_descr_present;
-    gboolean direct_ref_present;
-    gboolean indirect_ref_present;
-    tvbuff_t *data_value_descriptor;
-    const char *direct_reference;
-    gint32 indirect_reference;
-    gint encoding;
-      /*
-         0 : single-ASN1-type,
-         1 : octet-aligned,
-         2 : arbitrary
-      */
-    tvbuff_t *single_asn1_type;
-    tvbuff_t *octet_aligned;
-    tvbuff_t *arbitrary;
-    union {
-      struct {
-        int (*ber_callback)(gboolean imp_tag, tvbuff_t *tvb, int offset, struct _asn1_ctx_t* ,proto_tree *tree, int hf_index );
-      } ber;
-      struct {
-        int (*type_cb)(tvbuff_t*, int, struct _asn1_ctx_t*, proto_tree*, int);
-      } per;
-    } u;
-  } external;
-  struct {
-      proto_tree *tree;
-      proto_tree *top_tree;
-      void* tree_ctx;
-  } subtree;
-  struct {
-    int hf_index;
-    gboolean data_value_descr_present;
-    tvbuff_t *data_value_descriptor;
-    gint identification;
-      /*
-         0 : syntaxes,
-         1 : syntax,
-         2 : presentation-context-id,
-         3 : context-negotiation,
-         4 : transfer-syntax,
-         5 : fixed
-      */
-    gint32 presentation_context_id;
-    const char *abstract_syntax;
-    const char *transfer_syntax;
-    tvbuff_t *data_value;
-    union {
-      struct {
-        int (*ber_callback)(gboolean imp_tag, tvbuff_t *tvb, int offset, struct _asn1_ctx_t* ,proto_tree *tree, int hf_index );
-      } ber;
-      struct {
-        int (*type_cb)(tvbuff_t*, int, struct _asn1_ctx_t*, proto_tree*, int);
-      } per;
-    } u;
-  } embedded_pdv;
-  struct _rose_ctx_t *rose_ctx;
-} asn1_ctx_t;
-
-#define ROSE_CTX_SIGNATURE 0x524F5345  /* "ROSE" */
-
-typedef struct _rose_ctx_t {
-  guint32 signature;
-  dissector_table_t arg_global_dissector_table;
-  dissector_table_t arg_local_dissector_table;
-  dissector_table_t res_global_dissector_table;
-  dissector_table_t res_local_dissector_table;
-  dissector_table_t err_global_dissector_table;
-  dissector_table_t err_local_dissector_table;
-  /* filling in description into tree, info column, any buffer */
-  int apdu_depth;
-  gboolean fillin_info;
-  gchar *fillin_ptr;
-  gsize fillin_buf_size;
-  struct {  /* "dynamic" data */
-    gint pdu;
-      /*
-         1 : invoke,
-         2 : returnResult,
-         3 : returnError,
-         4 : reject
-      */
-    gint code;
-      /*
-        -1 : none (optional in ReturnResult)
-         0 : local,
-         1 : global
-      */
-    gint32 code_local;
-    const char *code_global;
-    proto_item *code_item;
-  } d;
-  void *private_data;
-} rose_ctx_t;
-
-WS_DLL_PUBLIC void asn1_ctx_init(asn1_ctx_t *actx, asn1_enc_e encoding, gboolean aligned, packet_info *pinfo);
-extern gboolean asn1_ctx_check_signature(asn1_ctx_t *actx);
-extern void asn1_ctx_clean_external(asn1_ctx_t *actx);
-extern void asn1_ctx_clean_epdv(asn1_ctx_t *actx);
-
-extern void asn1_stack_frame_push(asn1_ctx_t *actx, const gchar *name);
-extern void asn1_stack_frame_pop(asn1_ctx_t *actx, const gchar *name);
-extern void asn1_stack_frame_check(asn1_ctx_t *actx, const gchar *name, const asn1_par_def_t *par_def);
-
-extern void asn1_param_push_boolean(asn1_ctx_t *actx, gboolean value);
-extern void asn1_param_push_integer(asn1_ctx_t *actx, gint32 value);
-extern gboolean asn1_param_get_boolean(asn1_ctx_t *actx, const gchar *name);
-extern gint32 asn1_param_get_integer(asn1_ctx_t *actx, const gchar *name);
-
-WS_DLL_PUBLIC void rose_ctx_init(rose_ctx_t *rctx);
-extern gboolean rose_ctx_check_signature(rose_ctx_t *rctx);
-WS_DLL_PUBLIC void rose_ctx_clean_data(rose_ctx_t *rctx);
-
-WS_DLL_PUBLIC asn1_ctx_t *get_asn1_ctx(void *ptr);
-WS_DLL_PUBLIC rose_ctx_t *get_rose_ctx(void *ptr);
-
-extern double asn1_get_real(const guint8 *real_ptr, gint len);
-
-/* flags */
-#define ASN1_EXT_ROOT 0x01
-#define ASN1_EXT_EXT  0x02
-#define ASN1_OPT      0x04
-#define ASN1_DFLT     0x08
-
-#define ASN1_HAS_EXT(f) ((f)&(ASN1_EXT_ROOT|ASN1_EXT_EXT))
-
-
-#endif  /* __ASN1_H__ */
-/* End embedded header */
-
-/* Begin epan/ax25_pids.h */
-/* ax25_pids.h
- *
- * Protocol IDs for Amateur Packet Radio protocol dissection
- * Copyright 2005,2006,2007,2008,2009,2010,2012 R.W. Stearn <richard@rns-stearn.demon.co.uk>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __AX25_PIDS_H__
-#define __AX25_PIDS_H__
-
-/* AX.25 Layer 3 Protocol ID's (pid) */
-#define AX25_P_ROSE	0x01	/* ISO 8208 / CCITT X.25 PLP */
-#define AX25_P_RFC1144C	0x06	/* Compressed TCP/IP packet. Van Jacobson RFC1144 */
-#define AX25_P_RFC1144	0x07	/* Uncompressed TCP/IP packet. Van Jacobson RFC1144 */
-#define AX25_P_SEGMENT	0x08	/* segmentation fragment */
-#define AX25_P_TEXNET	0xC3	/* TEXNET datagram */
-#define AX25_P_LCP	0xC4	/* Link Quality Protocol */
-#define AX25_P_ATALK	0xCA	/* AppleTalk */
-#define AX25_P_ATALKARP	0xCB	/* AppleTalk ARP */
-#define AX25_P_IP	0xCC	/* ARPA Internet Protocol */
-#define AX25_P_ARP	0xCD	/* ARPA Address Resolution Protocol */
-#define AX25_P_FLEXNET 	0xCE	/* FlexNet */
-#define AX25_P_NETROM 	0xCF	/* NET/ROM */
-#define AX25_P_NO_L3 	0xF0	/* No layer 3 protocol */
-#define AX25_P_L3_ESC 	0xFF	/* Escape character. Next octet contains more layer 3 protocol info */
-
-#endif /* __AX25_PIDS_H__ */
-/* End embedded header */
-
-/* Begin epan/bridged_pids.h */
-/* bridged_pids.h
- * Definitions of protocol IDs for the 00-80-C2 OUI, used for
- * bridging various networks over ATM (RFC 2684) or Frame Relay (RFC 2427).
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 - 2000 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __BRIDGED_PID_H__
-#define __BRIDGED_PID_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#define BPID_ETH_WITH_FCS	0x0001	/* 802.3/Ethernet with preserved FCS */
-#define BPID_ETH_WITHOUT_FCS	0x0007	/* 802.3/Ethernet without preserved FCS */
-
-#define BPID_802_4_WITH_FCS	0x0002	/* 802.4 with preserved FCS */
-#define BPID_802_4_WITHOUT_FCS	0x0008	/* 802.4 without preserved FCS */
-
-#define BPID_802_5_WITH_FCS	0x0003	/* 802.5 with preserved FCS */
-#define BPID_802_5_WITHOUT_FCS	0x0009	/* 802.5 without preserved FCS */
-
-#define BPID_FDDI_WITH_FCS	0x0004	/* FDDI with preserved FCS */
-#define BPID_FDDI_WITHOUT_FCS	0x000A	/* FDDI without preserved FCS */
-
-#define BPID_802_6_WITH_FCS	0x0005	/* 802.6 with preserved FCS */
-#define BPID_802_6_WITHOUT_FCS	0x000B	/* 802.6 without preserved FCS */
-
-#define BPID_FRAGMENTS		0x000D
-
-#define BPID_BPDU		0x000E	/* 802.1(d) or 802.1(g) BPDUs */
-
-#define BPID_SR_BPDU		0x000F	/* Source Routing BPDUs */
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* bridged_pid.h */
-/* End embedded header */
-
-/* Begin epan/capture_dissectors.h */
-/* capture_dissectors.h
- * Routines for handling capture dissectors
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __CAPTURE_DISSECTORS_H__
-#define __CAPTURE_DISSECTORS_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/** @file
- */
-
-/** Table of counts of packets of various types. */
-typedef struct {
-    GHashTable*       counts_hash; /* packet counters keyed by proto */
-    gint              other;       /* Packets not counted in the hash total */
-    gint              total;       /* Cache of total packets */
-} packet_counts;
-
-typedef struct _capture_packet_info {
-    GHashTable *counts;
-} capture_packet_info_t;
-
-typedef struct capture_dissector_handle* capture_dissector_handle_t;
-
-/** callback function definition for capture dissectors */
-typedef gboolean (*capture_dissector_t)(const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
-
-/* a protocol uses the function to register a capture sub-dissector table
- * @param[in] name Name of capture sub-dissector table.
- * @param[in] ui_name Name string used when referring to capture sub-dissector table in UI.
- */
-WS_DLL_PUBLIC void register_capture_dissector_table(const char *name, const char *ui_name);
-
-/* Create an anonymous handle for a capture dissector
- * @param[in] dissector capture dissector function.
- * @param[in] proto Protocol associated with capture dissector function.
- * @return  Handle created for capture dissector
- */
-WS_DLL_PUBLIC capture_dissector_handle_t create_capture_dissector_handle(capture_dissector_t dissector, const int proto);
-
-/* Find a dissector by name
- * @param[in] name Name of capture dissector
- * @return  Handle for capture dissector if found, NULL otherwise
- */
-WS_DLL_PUBLIC capture_dissector_handle_t find_capture_dissector(const char *name);
-
-/* Register a new capture dissector
- * @param[in] name Name of capture dissector function.
- * @param[in] dissector capture dissector function.
- * @param[in] proto Protocol associated with capture dissector function.
- * @return  Handle created for capture dissector
- */
-WS_DLL_PUBLIC capture_dissector_handle_t register_capture_dissector(const char *name, capture_dissector_t dissector, int proto);
-
-/* Add an entry to a uint capture dissector table
- * @param[in] name Name of capture dissector table
- * @param[in] pattern Numerical value associated with capture dissector
- * @param[in] handle Handle to capture dissector
- */
-WS_DLL_PUBLIC void capture_dissector_add_uint(const char *name, const guint32 pattern, capture_dissector_handle_t handle);
-
-/* Look for a given value in a given uint capture dissector table and, if found,
- * call the dissector with the arguments supplied, and return TRUE,
- * otherwise return FALSE
- * @param[in] name Name of capture dissector table
- * @param[in] pattern Numerical value associated with capture dissector
- * @param[in] pd Data buffer of captured bytes
- * @param[in] offset Current offset into pd
- * @param[in] len Length of pd
- * @param[in] cpinfo Capture statistics
- * @param[in] pseudo_header Wiretap pseudo header information
- */
-WS_DLL_PUBLIC gboolean try_capture_dissector(const char* name, const guint32 pattern, const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
-
-/* Call a capture dissector through a handle. If handle is value return TRUE,
- * otherwise return FALSE
- * @param[in] handle Capture dissector handle
- * @param[in] pd Data buffer of captured bytes
- * @param[in] offset Current offset into pd
- * @param[in] len Length of pd
- * @param[in] cpinfo Capture statistics
- * @param[in] pseudo_header Wiretap pseudo header information
- */
-WS_DLL_PUBLIC gboolean call_capture_dissector(capture_dissector_handle_t handle, const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
-
-/* Get current capture packet count for a particular protocol
- * @param[in] counts Packet count structure
- * @param[in] proto Protocol to retrieve packet count from
- * @return Number of packets captured for a particular protocol
- */
-WS_DLL_PUBLIC guint32 capture_dissector_get_count(packet_counts* counts, const int proto);
-
-/* Increment packet capture count by 1 for a particular protocol.
- * @param[in] cpinfo Capture statistics
- * @param[in] proto Protocol to increment packet count
- */
-WS_DLL_PUBLIC void capture_dissector_increment_count(capture_packet_info_t *cpinfo, const int proto);
-
-extern void capture_dissector_init(void);
-extern void capture_dissector_cleanup(void);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* capture_dissectors.h */
-/* End embedded header */
-
-/* Begin epan/charsets.h */
-/* charsets.h
- * Routines for handling character sets
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-#ifndef __CHARSETS_H__
-#define __CHARSETS_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * Translation tables that map the upper 128 code points in single-byte
- * "extended ASCII" character encodings to Unicode code points in the
- * Basic Multilingual Plane.
- */
-
-/* Table for windows-1250 */
-extern const gunichar2 charset_table_cp1250[0x80];
-/* Table for windows-1251 */
-extern const gunichar2 charset_table_cp1251[0x80];
-/* Table for windows-1252 */
-extern const gunichar2 charset_table_cp1252[0x80];
-
-/* Tables for ISO-8859-X */
-extern const gunichar2 charset_table_iso_8859_2[0x80];
-extern const gunichar2 charset_table_iso_8859_3[0x80];
-extern const gunichar2 charset_table_iso_8859_4[0x80];
-extern const gunichar2 charset_table_iso_8859_5[0x80];
-extern const gunichar2 charset_table_iso_8859_6[0x80];
-extern const gunichar2 charset_table_iso_8859_7[0x80];
-extern const gunichar2 charset_table_iso_8859_8[0x80];
-extern const gunichar2 charset_table_iso_8859_9[0x80];
-extern const gunichar2 charset_table_iso_8859_10[0x80];
-extern const gunichar2 charset_table_iso_8859_11[0x80];
-extern const gunichar2 charset_table_iso_8859_13[0x80];
-extern const gunichar2 charset_table_iso_8859_14[0x80];
-extern const gunichar2 charset_table_iso_8859_15[0x80];
-extern const gunichar2 charset_table_iso_8859_16[0x80];
-
-/* Tables for Mac character sets */
-extern const gunichar2 charset_table_mac_roman[0x80];
-
-/* Tables for DOS code pages */
-extern const gunichar2 charset_table_cp437[0x80];
-extern const gunichar2 charset_table_cp855[0x80];
-extern const gunichar2 charset_table_cp866[0x80];
-
-/*
- * Translation tables that map the lower 128 code points in single-byte
- * ISO 646-based character encodings to Unicode code points in the
- * Basic Multilingual Plane.
- */
-extern const gunichar2 charset_table_iso_646_basic[0x80];
-
-/* Tables for EBCDIC code pages */
-extern const gunichar2 charset_table_ebcdic[256];
-extern const gunichar2 charset_table_ebcdic_cp037[256];
-
-/*
- * Given a wmem scope, a pointer, and a length, treat the string of bytes
- * referred to by the pointer and length as an ASCII string, with all bytes
- * with the high-order bit set being invalid, and return a pointer to a
- * UTF-8 string, allocated using the wmem scope.
- *
- * Octets with the highest bit set will be converted to the Unicode
- * REPLACEMENT CHARACTER.
- */
-WS_DLL_PUBLIC guint8 *
-get_ascii_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
-
-/*
- * Given a wmem scope, a pointer, a length, and a translation table,
- * treat the string of bytes referred to by the pointer and length as a
- * string encoded using one octet per character, with octets with the
- * high-order bit clear being mapped by the translation table to 2-byte
- * Unicode Basic Multilingual Plane characters (including REPLACEMENT
- * CHARACTER) and octets with the high-order bit set being mapped to
- * REPLACEMENT CHARACTER, and return a pointer to a UTF-8 string,
- * allocated using the wmem scope.
- */
-WS_DLL_PUBLIC guint8 *
-get_iso_646_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[0x80]);
-
-/*
- * Given a wmem scope, a pointer, and a length, treat the string of bytes
- * referred to by the pointer and length as an ISO 8859/1 string, and
- * return a pointer to a UTF-8 string, allocated using the wmem scope.
- */
-WS_DLL_PUBLIC guint8 *
-get_8859_1_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
-
-/*
- * Given a wmem scope, a pointer, a length, and a translation table with
- * 128 entries, treat the string of bytes referred to by the pointer and
- * length as a string encoded using one octet per character, with octets
- * with the high-order bit clear being ASCII and octets with the high-order
- * bit set being mapped by the translation table to 2-byte Unicode Basic
- * Multilingual Plane characters (including REPLACEMENT CHARACTER), and
- * return a pointer to a UTF-8 string, allocated using the wmem scope.
- */
-WS_DLL_PUBLIC guint8 *
-get_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[0x80]);
-
-/*
- * Given a wmem scope, a pointer, and a length, treat the string of bytes
- * referred to by the pointer and length as a UCS-2 encoded string
- * containing characters from the Basic Multilingual Plane (plane 0) of
- * Unicode, and return a pointer to a UTF-8 string, allocated with the
- * wmem scope.
- *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
- *
- * Specify length in bytes.
- *
- * XXX - should map lead and trail surrogate values to REPLACEMENT
- * CHARACTERs (0xFFFD)?
- * XXX - if there are an odd number of bytes, should put a
- * REPLACEMENT CHARACTER at the end.
- */
-WS_DLL_PUBLIC guint8 *
-get_ucs_2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
-
-/*
- * Given a wmem scope, a pointer, and a length, treat the string of bytes
- * referred to by the pointer and length as a UTF-16 encoded string, and
- * return a pointer to a UTF-8 string, allocated with the wmem scope.
- *
- * See RFC 2781 section 2.2.
- *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
- *
- * Specify length in bytes.
- *
- * XXX - should map surrogate errors to REPLACEMENT CHARACTERs (0xFFFD).
- * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
- * XXX - if there are an odd number of bytes, should put a
- * REPLACEMENT CHARACTER at the end.
- */
-WS_DLL_PUBLIC guint8 *
-get_utf_16_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
-
-/*
- * Given a wmem scope, a pointer, and a length, treat the string of bytes
- * referred to by the pointer and length as a UCS-4 encoded string, and
- * return a pointer to a UTF-8 string, allocated with the wmem scope.
- *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN
- *
- * Specify length in bytes
- *
- * XXX - should map lead and trail surrogate values to a "substitute"
- * UTF-8 character?
- * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
- * XXX - if the number of bytes isn't a multiple of 4, should put a
- * REPLACEMENT CHARACTER at the end.
- */
-WS_DLL_PUBLIC guint8 *
-get_ucs_4_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
-
-WS_DLL_PUBLIC guint8 *
-get_ts_23_038_7bits_string(wmem_allocator_t *scope, const guint8 *ptr,
-        const gint bit_offset, gint no_of_chars);
-
-WS_DLL_PUBLIC guint8 *
-get_ascii_7bits_string(wmem_allocator_t *scope, const guint8 *ptr,
-        const gint bit_offset, gint no_of_chars);
-
-/*
- * Given a wmem scope, a pointer, a length, and a translation table with
- * 256 entries, treat the string of bytes referred to by the pointer and
- * length as a string encoded using one octet per character, with octets
- * being mapped by the translation table to 2-byte Unicode Basic Multilingual
- * Plane characters (including REPLACEMENT CHARACTER), and return a
- * pointer to a UTF-8 string, allocated using the wmem scope.
- */
-WS_DLL_PUBLIC guint8 *
-get_nonascii_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[256]);
-
-WS_DLL_PUBLIC guint8 *
-get_t61_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
-
-#if 0
-void ASCII_to_EBCDIC(guint8 *buf, guint bytes);
-guint8 ASCII_to_EBCDIC1(guint8 c);
-#endif
-WS_DLL_PUBLIC
-void EBCDIC_to_ASCII(guint8 *buf, guint bytes);
-WS_DLL_PUBLIC
-guint8 EBCDIC_to_ASCII1(guint8 c);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __CHARSETS_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/chdlctypes.h */
-/* chdlctypes.h
- * Defines Cisco HDLC packet types that aren't just Ethernet types
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __CHDLCTYPES_H__
-#define __CHDLCTYPES_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#define CHDLCTYPE_FRARP		0x0808	/* Frame Relay ARP */
-#define CHDLCTYPE_BPDU		0x4242	/* IEEE spanning tree protocol */
-#define CHDLCTYPE_OSI 	        0xfefe  /* ISO network-layer protocols */
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* chdlctypes.h */
-/* End embedded header */
-
-/* Begin wsutil/color.h */
-/* color.h
- * Definitions for colors
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-#ifndef  __COLOR_H__
-#define  __COLOR_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * Data structure holding RGB value for a color, 16 bits per channel.
- */
-typedef struct {
-    guint16 red;
-    guint16 green;
-    guint16 blue;
-} color_t;
-
-/*
- * Convert a color_t to a 24-bit RGB value, reducing each channel to
- * 8 bits and combining them.
- */
-inline static unsigned int
-color_t_to_rgb(const color_t *color) {
-    return (((color->red >> 8) << 16)
-          | ((color->green >> 8) << 8)
-          | (color->blue >> 8));
-}
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/color_filters.h */
-/* color_filters.h
- * Definitions for color filters
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-#ifndef  __COLOR_FILTERS_H__
-#define  __COLOR_FILTERS_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-
-struct epan_dissect;
-
-#define COLORFILTERS_FILE_NAME          "colorfilters"
-
-#define CONVERSATION_COLOR_PREFIX       "___conversation_color_filter___"
-/** @file
- *  Color filters.
- */
-
-/* Data for a color filter. */
-typedef struct _color_filter {
-    gchar     *filter_name;         /* name of the filter */
-    gchar     *filter_text;         /* text of the filter expression */
-    color_t    bg_color;            /* background color for packets that match */
-    color_t    fg_color;            /* foreground color for packets that match */
-    gboolean   disabled;            /* set if the filter is disabled */
-
-                                    /* only used inside of color_filters.c */
-    struct epan_dfilter *c_colorfilter;  /* compiled filter expression */
-
-                                    /* only used outside of color_filters.c (beside init) */
-} color_filter_t;
-
-/** A color filter was added (while importing).
- * (color_filters.c calls this for every filter coming in)
- *
- * @param colorf the new color filter
- * @param user_data from caller
- */
-typedef void (*color_filter_add_cb_func)(color_filter_t *colorf, gpointer user_data);
-
-/** Init the color filters (incl. initial read from file). */
-WS_DLL_PUBLIC gboolean color_filters_init(gchar** err_msg, color_filter_add_cb_func add_cb);
-
-/** Reload the color filters */
-WS_DLL_PUBLIC gboolean color_filters_reload(gchar** err_msg, color_filter_add_cb_func add_cb);
-
-/** Cleanup remaining color filter zombies */
-WS_DLL_PUBLIC void color_filters_cleanup(void);
-
-/** Color filters currently used?
- *
- * @return TRUE, if filters are used
- */
-WS_DLL_PUBLIC gboolean color_filters_used(void);
-
-/** Are there any temporary coloring filters used?
- *
- * @return TRUE, if temporary coloring filters are used
- */
-WS_DLL_PUBLIC gboolean tmp_color_filters_used(void);
-
-/** Set the filter string of a temporary color filter
- *
- * @param filt_nr a number 1-10 pointing to a temporary color
- * @param filter the new filter-string
- * @param disabled whether the filter-rule should be disabled
- * @param err_msg a string with error message
- */
-WS_DLL_PUBLIC gboolean
-color_filters_set_tmp(guint8 filt_nr, const gchar *filter, gboolean disabled, gchar **err_msg);
-
-/** Get a temporary color filter.
- *
- * @param filter_num A number from 1 to 10 specifying the color to fetch.
- * @return The corresponding color or NULL.
- */
-WS_DLL_PUBLIC const color_filter_t *
-color_filters_tmp_color(guint8 filter_num);
-
-/** Reset the temporary color filters
- *
- */
-WS_DLL_PUBLIC gboolean
-color_filters_reset_tmp(gchar **err_msg);
-
-/* Prime the epan_dissect_t with all the compiler
- * color filters of the current filter list.
- *
- * @param the epan dissector details
- */
-WS_DLL_PUBLIC void color_filters_prime_edt(struct epan_dissect *edt);
-
-/** Colorize a specific packet.
- *
- * @param edt the dissected packet
- * @return the matching color filter or NULL
- */
-WS_DLL_PUBLIC const color_filter_t *
-color_filters_colorize_packet(struct epan_dissect *edt);
-
-/** Clone the currently active filter list.
- *
- * @param user_data will be returned by each call to to color_filter_add_cb()
- * @param add_cb the callback function to add color filter
- */
-WS_DLL_PUBLIC void color_filters_clone(gpointer user_data, color_filter_add_cb_func add_cb);
-
-/** Load filters (import) from some other filter file.
- *
- * @param path the path to the import file
- * @param user_data will be returned by each call to to color_filter_add_cb()
- * @param err_msg a string with error message
- * @param add_cb the callback function to add color filter
- * @return TRUE, if read succeeded
- */
-WS_DLL_PUBLIC gboolean color_filters_import(const gchar *path, gpointer user_data, gchar **err_msg, color_filter_add_cb_func add_cb);
-
-/** Read filters from the global filter file (not the users file).
- *
- * @param user_data will be returned by each call to to color_filter_add_cb()
- * @param err_msg a string with error message
- * @param add_cb the callback function to add color filter
- * @return TRUE, if read succeeded
- */
-WS_DLL_PUBLIC gboolean color_filters_read_globals(gpointer user_data, gchar** err_msg, color_filter_add_cb_func add_cb);
-
-
-/** Apply a changed filter list.
- *
- * @param tmp_cfl the temporary color filter list to apply
- * @param edit_cfl the edited permanent color filter list to apply
- * @param err_msg a string with error message
- */
-WS_DLL_PUBLIC gboolean color_filters_apply(GSList *tmp_cfl, GSList *edit_cfl, gchar** err_msg);
-
-/** Save filters in users filter file.
- *
- * @param cfl the filter list to write
- * @param err_msg a string with error message
- * @return TRUE if write succeeded
- */
-WS_DLL_PUBLIC gboolean color_filters_write(GSList *cfl, gchar** err_msg);
-
-/** Save filters (export) to some other filter file.
- *
- * @param path the path to the filter file
- * @param cfl the filter list to write
- * @param only_selected TRUE if only the selected filters should be saved
- * @param err_msg a string with error message
- * @return TRUE, if write succeeded
- */
-WS_DLL_PUBLIC gboolean color_filters_export(const gchar *path, GSList *cfl, gboolean only_selected, gchar** err_msg);
-
-/** Create a new color filter (g_malloc'ed).
- *
- * @param name the name of the filter
- * @param filter_string the filter string
- * @param bg_color background color
- * @param fg_color foreground color
- * @param disabled gboolean
- * @return the new color filter
- */
-WS_DLL_PUBLIC color_filter_t *color_filter_new(
-    const gchar *name, const gchar *filter_string,
-    color_t *bg_color, color_t *fg_color, gboolean disabled);
-
-/** Delete a single color filter (g_free'ed).
- *
- * @param colorf the color filter to be removed
- */
-WS_DLL_PUBLIC void color_filter_delete(color_filter_t *colorf);
-
-/** Delete a filter list including all entries.
- *
- * @param cfl the filter list to delete
- */
-WS_DLL_PUBLIC void color_filter_list_delete(GSList **cfl);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/column-utils.h */
-/* column-utils.h
- * Definitions for column utility structures and routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __COLUMN_UTILS_H__
-#define __COLUMN_UTILS_H__
-
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-struct epan_dissect;
-
-/**
- *  Helper routines for column utility structures and routines.
- */
-
-struct epan_column_info;
-typedef struct epan_column_info column_info;
-
-/**
- * All of the possible columns in summary listing.
- *
- * NOTE1: The entries MUST remain in this order, or else you need to reorder
- *        the slist[] and dlist[] arrays in column.c to match!
- *
- * NOTE2: Please add the COL_XYZ entry in the appropriate spot, such that the
- *        dlist[] array remains in alphabetical order!
- */
-enum {
-  COL_8021Q_VLAN_ID,  /**< 0) 802.1Q vlan ID */
-  COL_ABS_YMD_TIME,   /**< 1) Absolute date, as YYYY-MM-DD, and time */
-  COL_ABS_YDOY_TIME,  /**< 2) Absolute date, as YYYY/DOY, and time */
-  COL_ABS_TIME,       /**< 3) Absolute time */
-  COL_VSAN,           /**< 4) VSAN - Cisco MDS-specific */
-  COL_CUMULATIVE_BYTES, /**< 5) Cumulative number of bytes */
-  COL_CUSTOM,         /**< 6) Custom column (any filter name's contents) */
-  COL_DCE_CALL,       /**< 7) DCE/RPC connection oriented call id OR datagram sequence number */
-  COL_DELTA_TIME,     /**< 8) Delta time */
-  COL_DELTA_TIME_DIS, /**< 9) Delta time displayed*/
-  COL_RES_DST,        /**< 10) Resolved dest */
-  COL_UNRES_DST,      /**< 11) Unresolved dest */
-  COL_RES_DST_PORT,   /**< 12) Resolved dest port */
-  COL_UNRES_DST_PORT, /**< 13) Unresolved dest port */
-  COL_DEF_DST,        /**< 14) Destination address */
-  COL_DEF_DST_PORT,   /**< 15) Destination port */
-  COL_EXPERT,         /**< 16) Expert Info */
-  COL_IF_DIR,         /**< 17) FW-1 monitor interface/direction */
-  COL_FREQ_CHAN,      /**< 18) IEEE 802.11 (and WiMax?) - Channel */
-  COL_DEF_DL_DST,     /**< 19) Data link layer dest address */
-  COL_DEF_DL_SRC,     /**< 20) Data link layer source address */
-  COL_RES_DL_DST,     /**< 21) Resolved DL dest */
-  COL_UNRES_DL_DST,   /**< 22) Unresolved DL dest */
-  COL_RES_DL_SRC,     /**< 23) Resolved DL source */
-  COL_UNRES_DL_SRC,   /**< 24) Unresolved DL source */
-  COL_RSSI,           /**< 25) IEEE 802.11 - received signal strength */
-  COL_TX_RATE,        /**< 26) IEEE 802.11 - TX rate in Mbps */
-  COL_DSCP_VALUE,     /**< 27) IP DSCP Value */
-  COL_INFO,           /**< 28) Description */
-  COL_RES_NET_DST,    /**< 29) Resolved net dest */
-  COL_UNRES_NET_DST,  /**< 30) Unresolved net dest */
-  COL_RES_NET_SRC,    /**< 31) Resolved net source */
-  COL_UNRES_NET_SRC,  /**< 32) Unresolved net source */
-  COL_DEF_NET_DST,    /**< 33) Network layer dest address */
-  COL_DEF_NET_SRC,    /**< 34) Network layer source address */
-  COL_NUMBER,         /**< 35) Packet list item number */
-  COL_PACKET_LENGTH,  /**< 36) Packet length in bytes */
-  COL_PROTOCOL,       /**< 37) Protocol */
-  COL_REL_TIME,       /**< 38) Relative time */
-  COL_DEF_SRC,        /**< 39) Source address */
-  COL_DEF_SRC_PORT,   /**< 40) Source port */
-  COL_RES_SRC,        /**< 41) Resolved source */
-  COL_UNRES_SRC,      /**< 42) Unresolved source */
-  COL_RES_SRC_PORT,   /**< 43) Resolved source port */
-  COL_UNRES_SRC_PORT, /**< 44) Unresolved source port */
-  COL_TEI,            /**< 45) Q.921 TEI */
-  COL_UTC_YMD_TIME,   /**< 46) UTC date, as YYYY-MM-DD, and time */
-  COL_UTC_YDOY_TIME,  /**< 47) UTC date, as YYYY/DOY, and time */
-  COL_UTC_TIME,       /**< 48) UTC time */
-  COL_CLS_TIME,       /**< 49) Command line-specified time (default relative) */
-  NUM_COL_FMTS        /**< 50) Should always be last */
-};
-
-/** Allocate all the data structures for constructing column data, given
- * the number of columns.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC void col_setup(column_info *cinfo, const gint num_cols);
-
-/** Cleanup all the data structures for constructing column data;
- * undoes the alocations that col_setup() does.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC void col_cleanup(column_info *cinfo);
-
-/** Initialize the data structures for constructing column data.
- *
- * Internal, don't use this in dissectors!
- */
-extern void col_init(column_info *cinfo, const struct epan_session *epan);
-
-/** Fill in all columns of the given packet which are based on values from frame_data.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC void col_fill_in_frame_data(const frame_data *fd, column_info *cinfo, const gint col, gboolean const fill_col_exprs);
-
-/** Fill in all columns of the given packet.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC void col_fill_in(packet_info *pinfo, const gboolean fill_col_exprs, const gboolean fill_fd_colums);
-
-/** Fill in columns if we got an error reading the packet.
- * We set most columns to "???", and set the Info column to an error
- * message.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC void col_fill_in_error(column_info *cinfo, frame_data *fdata, const gboolean fill_col_exprs, const gboolean fill_fd_colums);
-
-/** Check to see if our column data has changed, e.g. we have new request/response info.
- *
- * Internal, don't use this in dissectors!
- */
-WS_DLL_PUBLIC gboolean	col_data_changed(void);
-
-/* Utility routines used by packet*.c */
-
-/** Are the columns writable?
- *
- * @param cinfo the current packet row
- * @param col the writable column, -1 for checking the state of all columns
- * @return TRUE if it's writable, FALSE if not
- */
-WS_DLL_PUBLIC gboolean	col_get_writable(column_info *cinfo, const gint col);
-
-/** Set the columns writable.
- *
- * @param cinfo the current packet row
- * @param col the column to set, -1 for all
- * @param writable TRUE if it's writable, FALSE if not
- */
-WS_DLL_PUBLIC void col_set_writable(column_info *cinfo, const gint col, const gboolean writable);
-
-/** Sets a fence for the current column content,
- * so this content won't be affected by further col_... function calls.
- *
- * This can be useful if a protocol is more than once in a single packet,
- * e.g. multiple HTTP calls in a single TCP packet.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_set_fence(column_info *cinfo, const gint col);
-
-/** Clears a fence for the current column content
- *
- * This can be useful if a protocol wants to remove whatever
- * a previous protocol has added to the column.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_clear_fence(column_info *cinfo, const gint col);
-
-/** Gets the text of a column element.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- *
- * @return the text string
- */
-WS_DLL_PUBLIC const gchar *col_get_text(column_info *cinfo, const gint col);
-
-/** Clears the text of a column element.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_clear(column_info *cinfo, const gint col);
-
-/** Set (replace) the text of a column element, the text won't be copied.
- *
- * Usually used to set const strings!
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to set
- */
-WS_DLL_PUBLIC void col_set_str(column_info *cinfo, const gint col, const gchar * str);
-
-/** Add (replace) the text of a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to add
- */
-WS_DLL_PUBLIC void col_add_str(column_info *cinfo, const gint col, const gchar *str);
-
-/* terminator argument for col_add_lstr() function */
-#define COL_ADD_LSTR_TERMINATOR (const char *) -1
-WS_DLL_PUBLIC void col_add_lstr(column_info *cinfo, const gint el, const gchar *str, ...);
-
-/** Add (replace) the text of a column element, the text will be formatted and copied.
- *
- * Same function as col_add_str() but using a printf-like format string.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_add_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-void col_custom_set_edt(struct epan_dissect *edt, column_info *cinfo);
-
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-WS_DLL_PUBLIC
-void col_custom_prime_edt(struct epan_dissect *edt, column_info *cinfo);
-
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-WS_DLL_PUBLIC
-gboolean have_custom_cols(column_info *cinfo);
-
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-WS_DLL_PUBLIC
-gboolean have_field_extractors(void);
-
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-WS_DLL_PUBLIC
-gboolean col_has_time_fmt(column_info *cinfo, const gint col);
-/** For internal Wireshark use only.  Not to be called from dissectors. */
-WS_DLL_PUBLIC
-gboolean col_based_on_frame_data(column_info *cinfo, const gint col);
-
-/** Append the given text to a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to append
- */
-WS_DLL_PUBLIC void col_append_str(column_info *cinfo, const gint col, const gchar *str);
-
-/** Append <abbrev>=<val> to a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param abbrev the string to append
- * @param val the value to append
- * @param sep an optional separator to _prepend_ to abbrev
- */
-WS_DLL_PUBLIC void col_append_str_uint(column_info *cinfo, const gint col, const gchar *abbrev, guint32 val, const gchar *sep);
-
-/** Append a transport port pair to a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param typ the port type to resolve, e.g. PT_UDP
- * @param src the source port value to append
- * @param dst the destination port value to append
- */
-WS_DLL_PUBLIC void col_append_ports(column_info *cinfo, const gint col, port_type typ, guint16 src, guint16 dst);
-
-/** Append a frame number and signal that we have updated
- * column information.
- *
- * @param pinfo the current packet info
- * @param col the column to use, e.g. COL_INFO
- * @param fmt_str format string, e.g. "reassembled in %u".
- * @param frame_num frame number
- */
-WS_DLL_PUBLIC void col_append_frame_number(packet_info *pinfo, const gint col, const gchar *fmt_str, guint frame_num);
-
-/* Append the given strings (terminated by COL_ADD_LSTR_TERMINATOR) to a column element,
- *
- * Same result as col_append_str() called for every string element.
- */
-WS_DLL_PUBLIC void col_append_lstr(column_info *cinfo, const gint el, const gchar *str, ...);
-
-/** Append the given text to a column element, the text will be formatted and copied.
- *
- * Same function as col_append_str() but using a printf-like format string.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_append_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Prepend the given text to a column element, the text will be formatted and copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_prepend_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/**Prepend the given text to a column element, the text will be formatted and copied.
- * This function is similar to col_prepend_fstr() but this function will
- * unconditionally set a fence to the end of the prepended data even if there
- * were no fence before.
- * The col_prepend_fstr() will only prepend the data before the fence IF
- * there is already a fence created. This function will create a fence in case
- * it does not yet exist.
- */
-WS_DLL_PUBLIC void col_prepend_fence_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Append the given text (prepended by a separator) to a column element.
- *
- * Much like col_append_str() but will prepend the given separator if the column isn't empty.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param sep the separator string or NULL for default: ", "
- * @param str the string to append
- */
-WS_DLL_PUBLIC void col_append_sep_str(column_info *cinfo, const gint col, const gchar *sep,
-		const gchar *str);
-
-/** Append the given text (prepended by a separator) to a column element.
- *
- * Much like col_append_fstr() but will prepend the given separator if the column isn't empty.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param sep the separator string or NULL for default: ", "
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_append_sep_fstr(column_info *cinfo, const gint col, const gchar *sep,
-		const gchar *format, ...)
-    G_GNUC_PRINTF(4, 5);
-
-/** Set the given (relative) time to a column element.
- *
- * Used by dissectors to set the time in a column
- *
- * @param cinfo		the current packet row
- * @param col		the column to use, e.g. COL_INFO
- * @param ts		the time to set in the column
- * @param fieldname	the fieldname to use for creating a filter (when
- *			  applying/preparing/copying as filter)
- */
-WS_DLL_PUBLIC void 	col_set_time(column_info *cinfo, const int col,
-			const nstime_t *ts, const char *fieldname);
-
-WS_DLL_PUBLIC void set_fd_time(const struct epan_session *epan, frame_data *fd, gchar *buf);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __COLUMN_UTILS_H__ */
-/* End embedded header */
-
-/* Begin epan/column-info.h */
-/* column-info.h
- * Definitions for column structures and routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __COLUMN_INFO_H__
-#define __COLUMN_INFO_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/** @file
- * Column info.
- */
-
-#define COL_MAX_LEN 256
-#define COL_MAX_INFO_LEN 4096
-#define COL_CUSTOM_PRIME_REGEX " *([^ \\|]+) *(?:(?:\\|\\|)|(?:or)| *$){1}"
-
-/** Column expression */
-typedef struct {
-  const gchar **col_expr;     /**< Filter expression */
-  gchar      **col_expr_val;  /**< Value for filter expression */
-} col_expr_t;
-
-/** Individual column info */
-typedef struct {
-  gint                col_fmt;              /**< Format of column */
-  gboolean           *fmt_matx;             /**< Specifies which formats apply to a column */
-  gchar              *col_title;            /**< Column titles */
-  gchar              *col_custom_fields;    /**< Custom column fields */
-  gint                col_custom_occurrence;/**< Custom column field occurrence */
-  GSList             *col_custom_fields_ids;/**< Custom column fields id */
-  struct epan_dfilter *col_custom_dfilter;  /**< Compiled custom column field */
-  const gchar        *col_data;             /**< Column data */
-  gchar              *col_buf;              /**< Buffer into which to copy data for column */
-  int                 col_fence;            /**< Stuff in column buffer before this index is immutable */
-  gboolean            writable;             /**< writable or not */
-} col_item_t;
-
-/** Column info */
-struct epan_column_info {
-  const struct epan_session *epan;
-  gint                num_cols;             /**< Number of columns */
-  col_item_t         *columns;              /**< All column data */
-  gint               *col_first;            /**< First column number with a given format */
-  gint               *col_last;             /**< Last column number with a given format */
-  col_expr_t          col_expr;             /**< Column expressions and values */
-  gboolean            writable;             /**< writable or not @todo Are we still writing to the columns? */
-  GRegex             *prime_regex;          /**< Used to prime custom columns */
-};
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __COLUMN_INFO_H__ */
-/* End embedded header */
-
-/* Begin epan/column.h */
-/* column.h
- * Definitions for column handling routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __COLUMN_H__
-#define __COLUMN_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-typedef struct _fmt_data {
-  gchar *title;            /* title of the column */
-  int fmt;                 /* format of column */
-  gchar *custom_fields;    /* fields names for COL_CUSTOM */
-  gint custom_occurrence;  /* optional ordinal of occurrence of that field */
-  gboolean visible;        /* if FALSE, hide this column */
-  gboolean resolved;       /* if TRUE, show a more human-readable name */
-} fmt_data;
-
-WS_DLL_PUBLIC
-const gchar         *col_format_to_string(const gint);
-WS_DLL_PUBLIC
-const gchar         *col_format_desc(const gint);
-WS_DLL_PUBLIC
-gint                 get_column_format(const gint);
-WS_DLL_PUBLIC
-void                 set_column_format(const gint, const gint);
-WS_DLL_PUBLIC
-void                 get_column_format_matches(gboolean *, const gint);
-WS_DLL_PUBLIC
-gint                 get_column_format_from_str(const gchar *);
-WS_DLL_PUBLIC
-gchar               *get_column_title(const gint);
-WS_DLL_PUBLIC
-void                 set_column_title(const gint, const gchar *);
-WS_DLL_PUBLIC
-gboolean             get_column_visible(const gint);
-WS_DLL_PUBLIC
-void                 set_column_visible(const gint, gboolean);
-WS_DLL_PUBLIC
-gboolean             get_column_resolved(const gint);
-WS_DLL_PUBLIC
-void                 set_column_resolved(const gint, gboolean);
-WS_DLL_PUBLIC
-const gchar         *get_column_custom_fields(const gint);
-WS_DLL_PUBLIC
-void                 set_column_custom_fields(const gint, const char *);
-WS_DLL_PUBLIC
-gint                 get_column_custom_occurrence(const gint);
-WS_DLL_PUBLIC
-void                 set_column_custom_occurrence(const gint, const gint);
-WS_DLL_PUBLIC
-const gchar         *get_column_width_string(const gint, const gint);
-WS_DLL_PUBLIC
-gint                 get_column_char_width(const gint format);
-WS_DLL_PUBLIC
-gchar               *get_column_tooltip(const gint col);
-
-WS_DLL_PUBLIC
-void
-col_finalize(column_info *cinfo);
-
-WS_DLL_PUBLIC
-void
-build_column_format_array(column_info *cinfo, const gint num_cols, const gboolean reset_fences);
-
-WS_DLL_PUBLIC
-void                 column_dump_column_formats(void);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* column.h */
-/* End embedded header */
-
-/* Begin epan/ipv4.h */
-/* ipv4.h
- * Definitions of IPv4 address-and-mask structure, which is what an
- * FT_IPV4 value is (even if there's no mask in a packet, those
- * values can be compared against an address+mask in a filter
- * expression).
- *
- * Gilbert Ramirez <gram@alumni.rice.edu>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __IPV4_H__
-#define __IPV4_H__
-
-
-typedef struct {
-	guint32	addr;	/* stored in host order */
-	guint32	nmask;	/* stored in host order */
-} ipv4_addr_and_mask;
-
-#endif
-/* End embedded header */
-
-/* Begin epan/tfs.h */
-/* tfs.h
- * true_false strings
- * Copyright 2007, Jaap Keuter <jaap.keuter@xs4all.nl>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __TFS_H__
-#define __TFS_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/** @file
- * true_false strings
- */
-
-/** Struct for boolean enumerations */
-typedef struct true_false_string {
-        const char      *true_string;   /**< The string presented when true  */
-        const char      *false_string;  /**< The string presented when false */
-} true_false_string;
-
-/*
- * A default set of true/false strings that dissectors can use for
- * FT_BOOLEAN header fields.
- */
-WS_DLL_PUBLIC const true_false_string tfs_true_false;
-WS_DLL_PUBLIC const true_false_string tfs_yes_no;
-WS_DLL_PUBLIC const true_false_string tfs_no_yes;
-WS_DLL_PUBLIC const true_false_string tfs_set_notset;
-WS_DLL_PUBLIC const true_false_string tfs_enabled_disabled;
-WS_DLL_PUBLIC const true_false_string tfs_disabled_enabled;
-WS_DLL_PUBLIC const true_false_string tfs_ok_error;
-WS_DLL_PUBLIC const true_false_string tfs_error_ok;
-WS_DLL_PUBLIC const true_false_string tfs_success_fail;
-WS_DLL_PUBLIC const true_false_string tfs_fail_success;
-WS_DLL_PUBLIC const true_false_string tfs_on_off;
-WS_DLL_PUBLIC const true_false_string tfs_ack_nack;
-WS_DLL_PUBLIC const true_false_string tfs_odd_even;
-WS_DLL_PUBLIC const true_false_string tfs_allow_block;
-WS_DLL_PUBLIC const true_false_string tfs_restricted_allowed;
-WS_DLL_PUBLIC const true_false_string tfs_restricted_not_restricted;
-WS_DLL_PUBLIC const true_false_string tfs_accept_reject;
-WS_DLL_PUBLIC const true_false_string tfs_more_nomore;
-WS_DLL_PUBLIC const true_false_string tfs_present_absent;
-WS_DLL_PUBLIC const true_false_string tfs_present_not_present;
-WS_DLL_PUBLIC const true_false_string tfs_active_inactive;
-WS_DLL_PUBLIC const true_false_string tfs_activated_deactivated;
-WS_DLL_PUBLIC const true_false_string tfs_found_not_found;
-WS_DLL_PUBLIC const true_false_string tfs_command_response;
-WS_DLL_PUBLIC const true_false_string tfs_response_command;
-WS_DLL_PUBLIC const true_false_string tfs_capable_not_capable;
-WS_DLL_PUBLIC const true_false_string tfs_supported_not_supported;
-WS_DLL_PUBLIC const true_false_string tfs_not_supported_supported;
-WS_DLL_PUBLIC const true_false_string tfs_used_notused;
-WS_DLL_PUBLIC const true_false_string tfs_high_low;
-WS_DLL_PUBLIC const true_false_string tfs_high_normal;
-WS_DLL_PUBLIC const true_false_string tfs_low_normal;
-WS_DLL_PUBLIC const true_false_string tfs_pressed_not_pressed;
-WS_DLL_PUBLIC const true_false_string tfs_implemented_not_implemented;
-WS_DLL_PUBLIC const true_false_string tfs_requested_not_requested;
-WS_DLL_PUBLIC const true_false_string tfs_reliable_not_reliable;
-WS_DLL_PUBLIC const true_false_string tfs_allowed_not_allowed;
-WS_DLL_PUBLIC const true_false_string tfs_not_allowed_allowed;
-WS_DLL_PUBLIC const true_false_string tfs_accepted_not_accepted;
-WS_DLL_PUBLIC const true_false_string tfs_detected_not_detected;
-WS_DLL_PUBLIC const true_false_string tfs_available_not_available;
-WS_DLL_PUBLIC const true_false_string tfs_shared_independent;
-WS_DLL_PUBLIC const true_false_string tfs_valid_invalid;
-WS_DLL_PUBLIC const true_false_string tfs_invalid_valid;
-WS_DLL_PUBLIC const true_false_string tfs_group_unique_name;
-WS_DLL_PUBLIC const true_false_string tfs_inuse_not_inuse;
-WS_DLL_PUBLIC const true_false_string tfs_critical_not_critical;
-WS_DLL_PUBLIC const true_false_string tfs_complete_incomplete;
-WS_DLL_PUBLIC const true_false_string tfs_valid_not_valid;
-WS_DLL_PUBLIC const true_false_string tfs_do_not_clear_clear;
-WS_DLL_PUBLIC const true_false_string tfs_confirmed_unconfirmed;
-WS_DLL_PUBLIC const true_false_string tfs_enforced_not_enforced;
-WS_DLL_PUBLIC const true_false_string tfs_possible_not_possible;
-WS_DLL_PUBLIC const true_false_string tfs_required_not_required;
-WS_DLL_PUBLIC const true_false_string tfs_registered_not_registered;
-WS_DLL_PUBLIC const true_false_string tfs_provisioned_not_provisioned;
-WS_DLL_PUBLIC const true_false_string tfs_included_not_included;
-WS_DLL_PUBLIC const true_false_string tfs_allocated_by_receiver_sender;
-WS_DLL_PUBLIC const true_false_string tfs_asynchronous_synchronous;
-WS_DLL_PUBLIC const true_false_string tfs_protocol_sensative_bit_transparent;
-WS_DLL_PUBLIC const true_false_string tfs_full_half;
-WS_DLL_PUBLIC const true_false_string tfs_acknowledged_not_acknowledged;
-WS_DLL_PUBLIC const true_false_string tfs_segmentation_no_segmentation;
-WS_DLL_PUBLIC const true_false_string tfs_response_request;
-WS_DLL_PUBLIC const true_false_string tfs_defined_not_defined;
-WS_DLL_PUBLIC const true_false_string tfs_constructed_primitive;
-WS_DLL_PUBLIC const true_false_string tfs_client_server;
-WS_DLL_PUBLIC const true_false_string tfs_server_client;
-WS_DLL_PUBLIC const true_false_string tfs_preferred_no_preference;
-WS_DLL_PUBLIC const true_false_string tfs_encrypt_do_not_encrypt;
-WS_DLL_PUBLIC const true_false_string tfs_down_up;
-WS_DLL_PUBLIC const true_false_string tfs_up_down;
-WS_DLL_PUBLIC const true_false_string tfs_downlink_uplink;
-WS_DLL_PUBLIC const true_false_string tfs_uplink_downlink;
-WS_DLL_PUBLIC const true_false_string tfs_s2c_c2s;
-WS_DLL_PUBLIC const true_false_string tfs_c2s_s2c;
-WS_DLL_PUBLIC const true_false_string tfs_open_closed;
-WS_DLL_PUBLIC const true_false_string tfs_external_internal;
-WS_DLL_PUBLIC const true_false_string tfs_changed_not_changed;
-WS_DLL_PUBLIC const true_false_string tfs_needed_not_needed;
-WS_DLL_PUBLIC const true_false_string tfs_selected_not_selected;
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __TFS_H__ */
 /* End embedded header */
 
 /* Begin epan/dfilter/drange.h */
@@ -14733,6 +12183,63 @@ WS_DLL_PUBLIC range_t *range_copy(wmem_allocator_t *scope, range_t *src);
 #endif /* __RANGE_H__ */
 /* End embedded header */
 
+/* Begin wsutil/color.h */
+/* color.h
+ * Definitions for colors
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#ifndef  __COLOR_H__
+#define  __COLOR_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Data structure holding RGB value for a color, 16 bits per channel.
+ */
+typedef struct {
+    guint16 red;
+    guint16 green;
+    guint16 blue;
+} color_t;
+
+/*
+ * Convert a color_t to a 24-bit RGB value, reducing each channel to
+ * 8 bits and combining them.
+ */
+inline static unsigned int
+color_t_to_rgb(const color_t *color) {
+    return (((color->red >> 8) << 16)
+          | ((color->green >> 8) << 8)
+          | (color->blue >> 8));
+}
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
 /* Begin epan/prefs.h */
 /* prefs.h
  * Definitions for preference handling routines
@@ -15667,6 +13174,380 @@ epan_get_runtime_version_info(GString *str);
 #endif /* __cplusplus */
 
 #endif /* __EPAN_H__ */
+/* End embedded header */
+
+/* Begin epan/column-utils.h */
+/* column-utils.h
+ * Definitions for column utility structures and routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __COLUMN_UTILS_H__
+#define __COLUMN_UTILS_H__
+
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+struct epan_dissect;
+
+/**
+ *  Helper routines for column utility structures and routines.
+ */
+
+struct epan_column_info;
+typedef struct epan_column_info column_info;
+
+/**
+ * All of the possible columns in summary listing.
+ *
+ * NOTE1: The entries MUST remain in this order, or else you need to reorder
+ *        the slist[] and dlist[] arrays in column.c to match!
+ *
+ * NOTE2: Please add the COL_XYZ entry in the appropriate spot, such that the
+ *        dlist[] array remains in alphabetical order!
+ */
+enum {
+  COL_8021Q_VLAN_ID,  /**< 0) 802.1Q vlan ID */
+  COL_ABS_YMD_TIME,   /**< 1) Absolute date, as YYYY-MM-DD, and time */
+  COL_ABS_YDOY_TIME,  /**< 2) Absolute date, as YYYY/DOY, and time */
+  COL_ABS_TIME,       /**< 3) Absolute time */
+  COL_VSAN,           /**< 4) VSAN - Cisco MDS-specific */
+  COL_CUMULATIVE_BYTES, /**< 5) Cumulative number of bytes */
+  COL_CUSTOM,         /**< 6) Custom column (any filter name's contents) */
+  COL_DCE_CALL,       /**< 7) DCE/RPC connection oriented call id OR datagram sequence number */
+  COL_DELTA_TIME,     /**< 8) Delta time */
+  COL_DELTA_TIME_DIS, /**< 9) Delta time displayed*/
+  COL_RES_DST,        /**< 10) Resolved dest */
+  COL_UNRES_DST,      /**< 11) Unresolved dest */
+  COL_RES_DST_PORT,   /**< 12) Resolved dest port */
+  COL_UNRES_DST_PORT, /**< 13) Unresolved dest port */
+  COL_DEF_DST,        /**< 14) Destination address */
+  COL_DEF_DST_PORT,   /**< 15) Destination port */
+  COL_EXPERT,         /**< 16) Expert Info */
+  COL_IF_DIR,         /**< 17) FW-1 monitor interface/direction */
+  COL_FREQ_CHAN,      /**< 18) IEEE 802.11 (and WiMax?) - Channel */
+  COL_DEF_DL_DST,     /**< 19) Data link layer dest address */
+  COL_DEF_DL_SRC,     /**< 20) Data link layer source address */
+  COL_RES_DL_DST,     /**< 21) Resolved DL dest */
+  COL_UNRES_DL_DST,   /**< 22) Unresolved DL dest */
+  COL_RES_DL_SRC,     /**< 23) Resolved DL source */
+  COL_UNRES_DL_SRC,   /**< 24) Unresolved DL source */
+  COL_RSSI,           /**< 25) IEEE 802.11 - received signal strength */
+  COL_TX_RATE,        /**< 26) IEEE 802.11 - TX rate in Mbps */
+  COL_DSCP_VALUE,     /**< 27) IP DSCP Value */
+  COL_INFO,           /**< 28) Description */
+  COL_RES_NET_DST,    /**< 29) Resolved net dest */
+  COL_UNRES_NET_DST,  /**< 30) Unresolved net dest */
+  COL_RES_NET_SRC,    /**< 31) Resolved net source */
+  COL_UNRES_NET_SRC,  /**< 32) Unresolved net source */
+  COL_DEF_NET_DST,    /**< 33) Network layer dest address */
+  COL_DEF_NET_SRC,    /**< 34) Network layer source address */
+  COL_NUMBER,         /**< 35) Packet list item number */
+  COL_PACKET_LENGTH,  /**< 36) Packet length in bytes */
+  COL_PROTOCOL,       /**< 37) Protocol */
+  COL_REL_TIME,       /**< 38) Relative time */
+  COL_DEF_SRC,        /**< 39) Source address */
+  COL_DEF_SRC_PORT,   /**< 40) Source port */
+  COL_RES_SRC,        /**< 41) Resolved source */
+  COL_UNRES_SRC,      /**< 42) Unresolved source */
+  COL_RES_SRC_PORT,   /**< 43) Resolved source port */
+  COL_UNRES_SRC_PORT, /**< 44) Unresolved source port */
+  COL_TEI,            /**< 45) Q.921 TEI */
+  COL_UTC_YMD_TIME,   /**< 46) UTC date, as YYYY-MM-DD, and time */
+  COL_UTC_YDOY_TIME,  /**< 47) UTC date, as YYYY/DOY, and time */
+  COL_UTC_TIME,       /**< 48) UTC time */
+  COL_CLS_TIME,       /**< 49) Command line-specified time (default relative) */
+  NUM_COL_FMTS        /**< 50) Should always be last */
+};
+
+/** Allocate all the data structures for constructing column data, given
+ * the number of columns.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC void col_setup(column_info *cinfo, const gint num_cols);
+
+/** Cleanup all the data structures for constructing column data;
+ * undoes the alocations that col_setup() does.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC void col_cleanup(column_info *cinfo);
+
+/** Initialize the data structures for constructing column data.
+ *
+ * Internal, don't use this in dissectors!
+ */
+extern void col_init(column_info *cinfo, const struct epan_session *epan);
+
+/** Fill in all columns of the given packet which are based on values from frame_data.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC void col_fill_in_frame_data(const frame_data *fd, column_info *cinfo, const gint col, gboolean const fill_col_exprs);
+
+/** Fill in all columns of the given packet.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC void col_fill_in(packet_info *pinfo, const gboolean fill_col_exprs, const gboolean fill_fd_colums);
+
+/** Fill in columns if we got an error reading the packet.
+ * We set most columns to "???", and set the Info column to an error
+ * message.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC void col_fill_in_error(column_info *cinfo, frame_data *fdata, const gboolean fill_col_exprs, const gboolean fill_fd_colums);
+
+/** Check to see if our column data has changed, e.g. we have new request/response info.
+ *
+ * Internal, don't use this in dissectors!
+ */
+WS_DLL_PUBLIC gboolean	col_data_changed(void);
+
+/* Utility routines used by packet*.c */
+
+/** Are the columns writable?
+ *
+ * @param cinfo the current packet row
+ * @param col the writable column, -1 for checking the state of all columns
+ * @return TRUE if it's writable, FALSE if not
+ */
+WS_DLL_PUBLIC gboolean	col_get_writable(column_info *cinfo, const gint col);
+
+/** Set the columns writable.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to set, -1 for all
+ * @param writable TRUE if it's writable, FALSE if not
+ */
+WS_DLL_PUBLIC void col_set_writable(column_info *cinfo, const gint col, const gboolean writable);
+
+/** Sets a fence for the current column content,
+ * so this content won't be affected by further col_... function calls.
+ *
+ * This can be useful if a protocol is more than once in a single packet,
+ * e.g. multiple HTTP calls in a single TCP packet.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_set_fence(column_info *cinfo, const gint col);
+
+/** Clears a fence for the current column content
+ *
+ * This can be useful if a protocol wants to remove whatever
+ * a previous protocol has added to the column.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_clear_fence(column_info *cinfo, const gint col);
+
+/** Gets the text of a column element.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ *
+ * @return the text string
+ */
+WS_DLL_PUBLIC const gchar *col_get_text(column_info *cinfo, const gint col);
+
+/** Clears the text of a column element.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_clear(column_info *cinfo, const gint col);
+
+/** Set (replace) the text of a column element, the text won't be copied.
+ *
+ * Usually used to set const strings!
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to set
+ */
+WS_DLL_PUBLIC void col_set_str(column_info *cinfo, const gint col, const gchar * str);
+
+/** Add (replace) the text of a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to add
+ */
+WS_DLL_PUBLIC void col_add_str(column_info *cinfo, const gint col, const gchar *str);
+
+/* terminator argument for col_add_lstr() function */
+#define COL_ADD_LSTR_TERMINATOR (const char *) -1
+WS_DLL_PUBLIC void col_add_lstr(column_info *cinfo, const gint el, const gchar *str, ...);
+
+/** Add (replace) the text of a column element, the text will be formatted and copied.
+ *
+ * Same function as col_add_str() but using a printf-like format string.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_add_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+void col_custom_set_edt(struct epan_dissect *edt, column_info *cinfo);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+void col_custom_prime_edt(struct epan_dissect *edt, column_info *cinfo);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+gboolean have_custom_cols(column_info *cinfo);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+gboolean have_field_extractors(void);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+gboolean col_has_time_fmt(column_info *cinfo, const gint col);
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+gboolean col_based_on_frame_data(column_info *cinfo, const gint col);
+
+/** Append the given text to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to append
+ */
+WS_DLL_PUBLIC void col_append_str(column_info *cinfo, const gint col, const gchar *str);
+
+/** Append <abbrev>=<val> to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param abbrev the string to append
+ * @param val the value to append
+ * @param sep an optional separator to _prepend_ to abbrev
+ */
+WS_DLL_PUBLIC void col_append_str_uint(column_info *cinfo, const gint col, const gchar *abbrev, guint32 val, const gchar *sep);
+
+/** Append a transport port pair to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param typ the port type to resolve, e.g. PT_UDP
+ * @param src the source port value to append
+ * @param dst the destination port value to append
+ */
+WS_DLL_PUBLIC void col_append_ports(column_info *cinfo, const gint col, port_type typ, guint16 src, guint16 dst);
+
+/** Append a frame number and signal that we have updated
+ * column information.
+ *
+ * @param pinfo the current packet info
+ * @param col the column to use, e.g. COL_INFO
+ * @param fmt_str format string, e.g. "reassembled in %u".
+ * @param frame_num frame number
+ */
+WS_DLL_PUBLIC void col_append_frame_number(packet_info *pinfo, const gint col, const gchar *fmt_str, guint frame_num);
+
+/* Append the given strings (terminated by COL_ADD_LSTR_TERMINATOR) to a column element,
+ *
+ * Same result as col_append_str() called for every string element.
+ */
+WS_DLL_PUBLIC void col_append_lstr(column_info *cinfo, const gint el, const gchar *str, ...);
+
+/** Append the given text to a column element, the text will be formatted and copied.
+ *
+ * Same function as col_append_str() but using a printf-like format string.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_append_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Prepend the given text to a column element, the text will be formatted and copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_prepend_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/**Prepend the given text to a column element, the text will be formatted and copied.
+ * This function is similar to col_prepend_fstr() but this function will
+ * unconditionally set a fence to the end of the prepended data even if there
+ * were no fence before.
+ * The col_prepend_fstr() will only prepend the data before the fence IF
+ * there is already a fence created. This function will create a fence in case
+ * it does not yet exist.
+ */
+WS_DLL_PUBLIC void col_prepend_fence_fstr(column_info *cinfo, const gint col, const gchar *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Append the given text (prepended by a separator) to a column element.
+ *
+ * Much like col_append_str() but will prepend the given separator if the column isn't empty.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param sep the separator string or NULL for default: ", "
+ * @param str the string to append
+ */
+WS_DLL_PUBLIC void col_append_sep_str(column_info *cinfo, const gint col, const gchar *sep,
+		const gchar *str);
+
+/** Append the given text (prepended by a separator) to a column element.
+ *
+ * Much like col_append_fstr() but will prepend the given separator if the column isn't empty.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param sep the separator string or NULL for default: ", "
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_append_sep_fstr(column_info *cinfo, const gint col, const gchar *sep,
+		const gchar *format, ...)
+    G_GNUC_PRINTF(4, 5);
+
+/** Set the given (relative) time to a column element.
+ *
+ * Used by dissectors to set the time in a column
+ *
+ * @param cinfo		the current packet row
+ * @param col		the column to use, e.g. COL_INFO
+ * @param ts		the time to set in the column
+ * @param fieldname	the fieldname to use for creating a filter (when
+ *			  applying/preparing/copying as filter)
+ */
+WS_DLL_PUBLIC void 	col_set_time(column_info *cinfo, const int col,
+			const nstime_t *ts, const char *fieldname);
+
+WS_DLL_PUBLIC void set_fd_time(const struct epan_session *epan, frame_data *fd, gchar *buf);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __COLUMN_UTILS_H__ */
 /* End embedded header */
 
 /* Begin epan/unit_strings.h */
@@ -16631,6 +14512,2125 @@ prime_epan_dissect_with_postdissector_wanted_hfids(epan_dissect_t *edt);
 #endif /* __cplusplus */
 
 #endif /* packet.h */
+/* End embedded header */
+
+/* Begin epan/addr_and_mask.h */
+/* addr_and_mask.h
+ * Declarations of routines to fetch IPv4 and IPv6 addresses from a tvbuff
+ * and then mask out bits other than those covered by a prefix length
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ADDR_AND_MASK_H__
+#define __ADDR_AND_MASK_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * These routines return PREFIX_LEN_OK on success, PREFIX_LEN_TOO_LONG if
+ * the prefix length is too long, and PREFIX_LEN_ZERO if the prefix length
+ * is 0.
+ */
+
+#define PREFIX_LEN_OK		0
+#define PREFIX_LEN_TOO_LONG	1
+#define PREFIX_LEN_ZERO		2
+
+extern int tvb_get_ipv4_addr_with_prefix_len(tvbuff_t *tvb, int offset,
+    guint8 *addr, guint32 prefix_len);
+
+extern int tvb_get_ipv6_addr_with_prefix_len(tvbuff_t *tvb, int offset,
+    ws_in6_addr *addr, guint32 prefix_len);
+
+guint32 ip_get_subnet_mask(const guint32 mask_length);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __ADDR_AND_MASK_H__  */
+/* End embedded header */
+
+/* Begin epan/to_str.h */
+/* to_str.h
+ * Definitions for utilities to convert various other types to strings.
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __TO_STR_H__
+#define __TO_STR_H__
+
+
+
+#define GUID_STR_LEN     37
+#define MAX_ADDR_STR_LEN 256
+#define VINES_ADDR_LEN   6
+#define EUI64_STR_LEN    24
+#define AX25_ADDR_LEN    7
+#define FCWWN_ADDR_LEN   8
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * These are utility functions which convert various types to strings,
+ * but for which no more specific module applies.
+ */
+
+WS_DLL_PUBLIC gchar* address_to_str(wmem_allocator_t *scope, const address *addr);
+WS_DLL_PUBLIC gchar* address_with_resolution_to_str(wmem_allocator_t *scope, const address *addr);
+WS_DLL_PUBLIC gchar* tvb_address_with_resolution_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, int type, const gint offset);
+
+/*
+ * address_to_name takes as input an "address", as defined in address.h.
+ *
+ * If the address is of a type that can be translated into a name, and the
+ * user has activated name resolution, and the name can be resolved, it
+ * returns a string containing the translated name.
+ *
+ * Otherwise, it returns NULL.
+ */
+WS_DLL_PUBLIC const gchar *address_to_name(const address *addr);
+
+/*
+ * address_to_display takes as input an "address", as defined in address.h .
+ *
+ * If the address is of a type that can be translated into a name, and the
+ * user has activated name resolution, and the name can be resolved, it
+ * returns a string containing the translated name.
+ *
+ * Otherwise, if the address is of type AT_NONE, it returns "NONE".
+ *
+ * Otherwise, it returns a string containing the result of address_to_str
+ * on the argument, which should be a string representation for the address,
+ * e.g. "10.10.10.10" for IPv4 address 10.10.10.10.
+ */
+WS_DLL_PUBLIC
+gchar *address_to_display(wmem_allocator_t *allocator, const address *addr);
+
+WS_DLL_PUBLIC void     address_to_str_buf(const address *addr, gchar *buf, int buf_len);
+
+#define tvb_ether_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_ETHER, offset)
+#define tvb_ip_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv4, offset)
+#define tvb_ip6_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv6, offset)
+#define tvb_fcwwn_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_FCWWN, offset)
+#define tvb_fc_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_FC, offset)
+#define tvb_eui64_to_str(tvb, offset) tvb_address_to_str(wmem_packet_scope(), tvb, AT_EUI64, offset)
+
+void	ip_to_str_buf(const guint8 *ad, gchar *buf, const int buf_len);
+
+/* Returns length of the result. */
+int ip6_to_str_buf(const ws_in6_addr *ad, gchar *buf, int buf_size);
+
+/* Returns length of the result. Takes a prefix to be inserted before the address. */
+int ip6_to_str_buf_with_pfx(const ws_in6_addr *ad, gchar *buf, int buf_size, const char *prefix);
+
+extern gchar*	ipxnet_to_str_punct(wmem_allocator_t *scope, const guint32 ad, const char punct);
+WS_DLL_PUBLIC gchar*	eui64_to_str(wmem_allocator_t *scope, const guint64 ad);
+
+WS_DLL_PUBLIC gchar*	abs_time_to_str(wmem_allocator_t *scope, const nstime_t*, const absolute_time_display_e fmt,
+    gboolean show_zone);
+WS_DLL_PUBLIC gchar*	abs_time_secs_to_str(wmem_allocator_t *scope, const time_t, const absolute_time_display_e fmt,
+    gboolean show_zone);
+WS_DLL_PUBLIC void	display_epoch_time(gchar *, int, const time_t,  gint32, const to_str_time_res_t);
+
+WS_DLL_PUBLIC void	display_signed_time(gchar *, int, const gint32, gint32, const to_str_time_res_t);
+
+WS_DLL_PUBLIC gchar*	signed_time_secs_to_str(wmem_allocator_t *scope, const gint32 time_val);
+WS_DLL_PUBLIC gchar*	unsigned_time_secs_to_str(wmem_allocator_t *scope, const guint32);
+WS_DLL_PUBLIC gchar*	signed_time_msecs_to_str(wmem_allocator_t *scope, gint32 time_val);
+
+WS_DLL_PUBLIC void guint32_to_str_buf(guint32 u, gchar *buf, int buf_len);
+WS_DLL_PUBLIC void guint64_to_str_buf(guint64 u, gchar *buf, int buf_len);
+
+WS_DLL_PUBLIC gchar*	rel_time_to_str(wmem_allocator_t *scope, const nstime_t*);
+WS_DLL_PUBLIC gchar*	rel_time_to_secs_str(wmem_allocator_t *scope, const nstime_t*);
+WS_DLL_PUBLIC gchar*	guid_to_str(wmem_allocator_t *scope, const e_guid_t*);
+gchar*	guid_to_str_buf(const e_guid_t*, gchar*, int);
+
+WS_DLL_PUBLIC char *decode_bits_in_field(const guint bit_offset, const gint no_of_bits, const guint64 value);
+
+WS_DLL_PUBLIC const gchar* port_type_to_str (port_type type);
+
+/** Turn an address type retrieved from a tvb into a string.
+ *
+ * @param scope memory allocation scheme used
+ * @param tvb tvbuff to retrieve address
+ * @param type address type to retrieve
+ * @param offset offset into tvb to retrieve address
+ * @return A pointer to the formatted string
+ *
+ */
+WS_DLL_PUBLIC gchar* tvb_address_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, int type, const gint offset);
+
+/** Turn an address type retrieved from a tvb into a string.
+ *
+ * @param scope memory allocation scheme used
+ * @param tvb tvbuff to retrieve address
+ * @param type address type to retrieve
+ * @param offset offset into tvb to retrieve address
+ * @param length The length of the string
+ * @return A pointer to the formatted string
+ *
+ */
+WS_DLL_PUBLIC gchar* tvb_address_var_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, address_type type, const gint offset, int length);
+
+/**
+ * guint8_to_hex()
+ *
+ * Output guint8 hex represetation to 'out', and return pointer after last character (out + 4).
+ * It always output full representation (padded with 0).
+ *
+ * String is not NUL terminated by this routine.
+ * There needs to be at least 2 bytes in the buffer.
+ */
+WS_DLL_PUBLIC char *guint8_to_hex(char *out, guint8 val);
+
+/**
+ * word_to_hex()
+ *
+ * Output guint16 hex represetation to 'out', and return pointer after last character (out + 4).
+ * It always output full representation (padded with 0).
+ *
+ * String is not NUL terminated by this routine.
+ * There needs to be at least 4 bytes in the buffer.
+ */
+WS_DLL_PUBLIC char *word_to_hex(char *out, guint16 word);
+
+/**
+ * dword_to_hex()
+ *
+ * Output guint32 hex represetation to 'out', and return pointer after last character.
+ * It always output full representation (padded with 0).
+ *
+ * String is not NUL terminated by this routine.
+ * There needs to be at least 8 bytes in the buffer.
+ */
+WS_DLL_PUBLIC char *dword_to_hex(char *out, guint32 dword);
+
+/** Turn an array of bytes into a string showing the bytes in hex.
+ *
+ * @param scope memory allocation scheme used
+ * @param bd A pointer to the byte array
+ * @param bd_len The length of the byte array
+ * @return A pointer to the formatted string
+ */
+WS_DLL_PUBLIC char *bytes_to_str(wmem_allocator_t *scope, const guint8 *bd, int bd_len);
+
+/** Turn an array of bytes into a string showing the bytes in hex,
+ *  separated by a punctuation character.
+ *
+ * @param scope memory allocation scheme used
+ * @param ad A pointer to the byte array
+ * @param len The length of the byte array
+ * @param punct The punctuation character
+ * @return A pointer to the formatted string
+ *
+ * @see bytes_to_str()
+ */
+WS_DLL_PUBLIC gchar *bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, const char punct);
+
+/**
+ * bytes_to_hexstr()
+ *
+ * Output hex represetation of guint8 ad array, and return pointer after last character.
+ * It always output full representation (padded with 0).
+ *
+ * String is not NUL terminated by this routine.
+ * There needs to be at least len * 2 bytes in the buffer.
+ */
+WS_DLL_PUBLIC char *bytes_to_hexstr(char *out, const guint8 *ad, guint32 len);
+
+/**
+ * uint_to_str_back()
+ *
+ * Output guint32 decimal representation backward (last character will be written on ptr - 1),
+ * and return pointer to first character.
+ *
+ * String is not NUL terminated by this routine.
+ * There needs to be at least 10 bytes in the buffer.
+ */
+WS_DLL_PUBLIC char *uint_to_str_back(char *ptr, guint32 value);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __TO_STR_H__  */
+/* End embedded header */
+
+/* Begin epan/addr_resolv.h */
+/* addr_resolv.h
+ * Definitions for network object lookup
+ *
+ * Laurent Deniel <laurent.deniel@free.fr>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+/* The buffers returned by these functions are all allocated with a
+ * packet lifetime and does not have have to be freed.
+ * However, take into account that when the packet dissection
+ * completes, these buffers will be automatically reclaimed/freed.
+ * If you need the buffer to remain for a longer scope than packet lifetime
+ * you must copy the content to an wmem_file_scope() buffer.
+ */
+
+#ifndef __RESOLV_H__
+#define __RESOLV_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#ifndef MAXNAMELEN
+#define MAXNAMELEN  	64	/* max name length (hostname and port name) */
+#endif
+
+#ifndef MAXVLANNAMELEN
+#define MAXVLANNAMELEN  	128	/* max vlan name length */
+#endif
+
+#define BASE_ENTERPRISES     BASE_CUSTOM
+#define STRINGS_ENTERPRISES  CF_FUNC(enterprises_base_custom)
+
+/**
+ * @brief Flags to control name resolution.
+ */
+typedef struct _e_addr_resolve {
+  gboolean mac_name;                          /**< Whether to resolve Ethernet MAC to manufacturer names */
+  gboolean network_name;                      /**< Whether to resolve IPv4, IPv6, and IPX addresses into host names */
+  gboolean transport_name;                    /**< Whether to resolve TCP/UDP/DCCP/SCTP ports into service names */
+  gboolean dns_pkt_addr_resolution;           /**< Whether to resolve addresses using captured DNS packets */
+  gboolean use_external_net_name_resolver;    /**< Whether to system's configured DNS server to resolve names */
+  gboolean load_hosts_file_from_profile_only; /**< Whether to only load the hosts in the current profile, not hosts files */
+  gboolean vlan_name;                         /**< Whether to resolve VLAN IDs to names */
+  gboolean ss7pc_name;                        /**< Whether to resolve SS7 Point Codes to names */
+} e_addr_resolve;
+
+#define ADDR_RESOLV_MACADDR(at) \
+    (((at)->type == AT_ETHER))
+
+#define ADDR_RESOLV_NETADDR(at) \
+    (((at)->type == AT_IPv4) || ((at)->type == AT_IPv6) || ((at)->type == AT_IPX))
+
+struct hashether;
+typedef struct hashether hashether_t;
+
+struct hashmanuf;
+typedef struct hashmanuf hashmanuf_t;
+
+typedef struct serv_port {
+  gchar            *udp_name;
+  gchar            *tcp_name;
+  gchar            *sctp_name;
+  gchar            *dccp_name;
+  gchar            *numeric;
+} serv_port_t;
+
+/*
+ * Flags for various IPv4/IPv6 hash table entries.
+ */
+#define TRIED_RESOLVE_ADDRESS    (1U<<0)  /* XXX - what does this bit *really* mean? */
+#define NAME_RESOLVED            (1U<<1)  /* the name field contains a host name, not a printable address */
+#define RESOLVED_ADDRESS_USED    (1U<<2)  /* a get_hostname* call returned the host name */
+
+#define TRIED_OR_RESOLVED_MASK   (TRIED_RESOLVE_ADDRESS | NAME_RESOLVED)
+#define USED_AND_RESOLVED_MASK   (NAME_RESOLVED | RESOLVED_ADDRESS_USED)
+
+/*
+ * Flag controlling what names to resolve.
+ */
+WS_DLL_PUBLIC e_addr_resolve gbl_resolv_flags;
+
+/* global variables */
+
+extern gchar *g_ethers_path;
+extern gchar *g_ipxnets_path;
+extern gchar *g_pethers_path;
+extern gchar *g_pipxnets_path;
+
+/* Functions in addr_resolv.c */
+
+/*
+ * udp_port_to_display() returns the port name corresponding to that UDP port,
+ * or the port number as a string if not found.
+ */
+WS_DLL_PUBLIC gchar *udp_port_to_display(wmem_allocator_t *allocator, guint port);
+
+/*
+ * tcp_port_to_display() returns the port name corresponding to that TCP port,
+ * or the port number as a string if not found.
+ */
+WS_DLL_PUBLIC gchar *tcp_port_to_display(wmem_allocator_t *allocator, guint port);
+
+/*
+ * dccp_port_to_display() returns the port name corresponding to that DCCP port,
+ * or the port number as a string if not found.
+ */
+extern gchar *dccp_port_to_display(wmem_allocator_t *allocator, guint port);
+
+/*
+ * sctp_port_to_display() returns the port name corresponding to that SCTP port,
+ * or the port number as a string if not found.
+ */
+WS_DLL_PUBLIC gchar *sctp_port_to_display(wmem_allocator_t *allocator, guint port);
+
+/*
+ * serv_name_lookup() returns the well known service name string, or numeric
+ * representation if one doesn't exist.
+ */
+WS_DLL_PUBLIC const gchar *serv_name_lookup(port_type proto, guint port);
+
+/*
+ * enterprises_lookup() returns the private enterprise code string, or 'unknown_str'
+ * if one doesn't exist, or "<Unknown>" if that is NULL.
+ */
+WS_DLL_PUBLIC const gchar *enterprises_lookup(guint32 value, const char *unknown_str);
+
+/*
+ * try_enterprises_lookup() returns the private enterprise code string, or NULL if not found.
+ */
+WS_DLL_PUBLIC const gchar *try_enterprises_lookup(guint32 value);
+
+/*
+ * enterprises_base_custom() prints the "name (decimal)" string to 'buf'.
+ * (Used with BASE_CUSTOM field display).
+ */
+WS_DLL_PUBLIC void enterprises_base_custom(char *buf, guint32 value);
+
+/*
+ * try_serv_name_lookup() returns the well known service name string, or NULL if
+ * one doesn't exist.
+ */
+WS_DLL_PUBLIC const gchar *try_serv_name_lookup(port_type proto, guint port);
+
+/*
+ * port_with_resolution_to_str() prints the "<resolved> (<numerical>)" port
+ * string.
+ */
+WS_DLL_PUBLIC gchar *port_with_resolution_to_str(wmem_allocator_t *scope,
+                                        port_type proto, guint port);
+
+/*
+ * port_with_resolution_to_str_buf() prints the "<resolved> (<numerical>)" port
+ * string to 'buf'. Return value is the same as g_snprintf().
+ */
+WS_DLL_PUBLIC int port_with_resolution_to_str_buf(gchar *buf, gulong buf_size,
+                                        port_type proto, guint port);
+
+/*
+ * Asynchronous host name lookup initialization, processing, and cleanup
+ */
+
+/* Setup name resolution preferences */
+struct pref_module;
+extern void addr_resolve_pref_init(struct pref_module *nameres);
+extern void addr_resolve_pref_apply(void);
+
+/*
+ * disable_name_resolution() sets all relevant gbl_resolv_flags to FALSE.
+ */
+WS_DLL_PUBLIC void disable_name_resolution(void);
+
+/** If we're using c-ares process outstanding host name lookups.
+ *  This is called from a GLIB timeout in Wireshark and before processing
+ *  each packet in TShark.
+ *
+ * @return True if any new objects have been resolved since the previous
+ * call. This can be used to trigger a display update, e.g. in Wireshark.
+ */
+WS_DLL_PUBLIC gboolean host_name_lookup_process(void);
+
+/* get_hostname returns the host name or "%d.%d.%d.%d" if not found */
+WS_DLL_PUBLIC const gchar *get_hostname(const guint addr);
+
+/* get_hostname6 returns the host name, or numeric addr if not found */
+WS_DLL_PUBLIC const gchar *get_hostname6(const ws_in6_addr *ad);
+
+/* get_ether_name returns the logical name if found in ethers files else
+   "<vendor>_%02x:%02x:%02x" if the vendor code is known else
+   "%02x:%02x:%02x:%02x:%02x:%02x" */
+WS_DLL_PUBLIC const gchar *get_ether_name(const guint8 *addr);
+
+/* get_hostname_ss7pc returns the logical name if found in ss7pcs file else
+   '\0' on the first call or the unresolved Point Code in the subsequent calls */
+const gchar *get_hostname_ss7pc(const guint8 ni, const guint32 pc);
+
+/* fill_unresolved_ss7pc initializes the unresolved Point Code Address string in the hashtable */
+void fill_unresolved_ss7pc(const gchar * pc_addr, const guint8 ni, const guint32 pc);
+
+
+/* Same as get_ether_name with tvb support */
+WS_DLL_PUBLIC const gchar *tvb_get_ether_name(tvbuff_t *tvb, gint offset);
+
+/* get_ether_name_if_known returns the logical name if found in ethers files else NULL */
+const gchar *get_ether_name_if_known(const guint8 *addr);
+
+/*
+ * Given a sequence of 3 octets containing an OID, get_manuf_name()
+ * returns the vendor name, or "%02x:%02x:%02x" if not known.
+ */
+extern const gchar *get_manuf_name(const guint8 *addr);
+
+/*
+ * Given a sequence of 3 octets containing an OID, get_manuf_name_if_known()
+ * returns the vendor name, or NULL if not known.
+ */
+WS_DLL_PUBLIC const gchar *get_manuf_name_if_known(const guint8 *addr);
+
+/*
+ * Given an integer containing a 24-bit OID, uint_get_manuf_name_if_known()
+ * returns the vendor name, or NULL if not known.
+ */
+extern const gchar *uint_get_manuf_name_if_known(const guint oid);
+
+/*
+ * Given a tvbuff and an offset in that tvbuff for a 3-octet OID,
+ * tvb_get_manuf_name() returns the vendor name, or "%02x:%02x:%02x"
+ * if not known.
+ */
+WS_DLL_PUBLIC const gchar *tvb_get_manuf_name(tvbuff_t *tvb, gint offset);
+
+/*
+ * Given a tvbuff and an offset in that tvbuff for a 3-octet OID,
+ * tvb_get_manuf_name_if_known() returns the vendor name, or NULL
+ * if not known.
+ */
+WS_DLL_PUBLIC const gchar *tvb_get_manuf_name_if_known(tvbuff_t *tvb, gint offset);
+
+/* eui64_to_display returns "<vendor>_%02x:%02x:%02x:%02x:%02x:%02x" if the vendor code is known
+   "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x" */
+extern gchar *eui64_to_display(wmem_allocator_t *allocator, const guint64 addr);
+
+/* get_ipxnet_name returns the logical name if found in an ipxnets file,
+ * or a string formatted with "%X" if not */
+extern gchar *get_ipxnet_name(wmem_allocator_t *allocator, const guint32 addr);
+
+/* get_vlan_name returns the logical name if found in a vlans file,
+ * or the VLAN ID itself as a string if not found*/
+extern gchar *get_vlan_name(wmem_allocator_t *allocator, const guint16 id);
+
+WS_DLL_PUBLIC guint get_hash_ether_status(hashether_t* ether);
+WS_DLL_PUBLIC char* get_hash_ether_hexaddr(hashether_t* ether);
+WS_DLL_PUBLIC char* get_hash_ether_resolved_name(hashether_t* ether);
+
+WS_DLL_PUBLIC char* get_hash_manuf_resolved_name(hashmanuf_t* manuf);
+
+
+/* adds a hostname/IPv4 in the hash table */
+WS_DLL_PUBLIC void add_ipv4_name(const guint addr, const gchar *name);
+
+/* adds a hostname/IPv6 in the hash table */
+WS_DLL_PUBLIC void add_ipv6_name(const ws_in6_addr *addr, const gchar *name);
+
+/** Add an additional "hosts" file for IPv4 and IPv6 name resolution.
+ *
+ * The file can be added before host_name_lookup_init() is called and
+ * will be re-read each time host_name_lookup_init() is called.
+ *
+ * @param hosts_file Absolute path to the hosts file.
+ *
+ * @return TRUE if the hosts file can be read.
+ */
+WS_DLL_PUBLIC gboolean add_hosts_file (const char *hosts_file);
+
+/* adds a hostname in the hash table */
+WS_DLL_PUBLIC gboolean add_ip_name_from_string (const char *addr, const char *name);
+
+
+/** Get lists of host name to address mappings we know about.
+ *
+ * The struct contains two g_lists one with hashipv4_t entries and one with hashipv6_t entries.
+ *
+ * @return a struct with lists of known addresses(IPv4 and IPv6). May be NULL.
+ */
+WS_DLL_PUBLIC addrinfo_lists_t *get_addrinfo_list(void);
+
+/* add ethernet address / name corresponding to IP address  */
+extern void add_ether_byip(const guint ip, const guint8 *eth);
+
+/** Translates a string representing a hostname or dotted-decimal IPv4 address
+ *  into a numeric IPv4 address value in network byte order. If compiled with
+ *  c-ares, the request will wait a maximum of 250ms for the request to finish.
+ *  Otherwise the wait time will be system-dependent, ususally much longer.
+ *  Immediately returns FALSE for hostnames if network name resolution is
+ *  disabled.
+ *
+ * @param[in] host The hostname.
+ * @param[out] addrp The numeric IPv4 address in network byte order.
+ * @return TRUE on success, FALSE on failure, timeout.
+ */
+WS_DLL_PUBLIC
+gboolean get_host_ipaddr(const char *host, guint32 *addrp);
+
+/** Translates a string representing a hostname or colon-hex IPv6 address
+ *  into a numeric IPv6 address value in network byte order. If compiled with
+ *  c-ares, the request will wait a maximum of 250ms for the request to finish.
+ *  Otherwise the wait time will be system-dependent, usually much longer.
+ *  Immediately returns FALSE for hostnames if network name resolution is
+ *  disabled.
+ *
+ * @param[in] host The hostname.
+ * @param[out] addrp The numeric IPv6 address in network byte order.
+ * @return TRUE on success, FALSE on failure or timeout.
+ */
+WS_DLL_PUBLIC
+gboolean get_host_ipaddr6(const char *host, ws_in6_addr *addrp);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_manuf_hashtable(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_wka_hashtable(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_eth_hashtable(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_serv_port_hashtable(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_ipxnet_hash_table(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_vlan_hash_table(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_ipv4_hash_table(void);
+
+WS_DLL_PUBLIC
+wmem_map_t *get_ipv6_hash_table(void);
+
+/*
+ * XXX - if we ever have per-session host name etc. information, we
+ * should probably have the "resolve synchronously or asynchronously"
+ * flag be per-session, set with an epan API.
+ */
+WS_DLL_PUBLIC
+void set_resolution_synchrony(gboolean synchronous);
+
+/*
+ * private functions (should only be called by epan directly)
+ */
+
+WS_DLL_LOCAL
+void name_resolver_init(void);
+
+/* Reinitialize hostname resolution subsystem */
+WS_DLL_LOCAL
+void host_name_lookup_reset(void);
+
+WS_DLL_LOCAL
+void addr_resolv_init(void);
+
+WS_DLL_LOCAL
+void addr_resolv_cleanup(void);
+
+WS_DLL_PUBLIC
+void manually_resolve_cleanup(void);
+
+WS_DLL_PUBLIC
+gboolean str_to_ip(const char *str, void *dst);
+
+WS_DLL_PUBLIC
+gboolean str_to_ip6(const char *str, void *dst);
+
+WS_DLL_LOCAL
+gboolean str_to_eth(const char *str, char *eth_bytes);
+
+WS_DLL_LOCAL
+guint ipv6_oat_hash(gconstpointer key);
+
+WS_DLL_LOCAL
+gboolean ipv6_equal(gconstpointer v1, gconstpointer v2);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __RESOLV_H__ */
+/* End embedded header */
+
+/* Begin epan/address_types.h */
+/* address_types.h
+ * Definitions for address types
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ADDRESS_TYPES_H__
+#define __ADDRESS_TYPES_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+typedef int (*AddrValueToString)(const address* addr, gchar *buf, int buf_len);
+typedef int (*AddrValueToStringLen)(const address* addr);
+typedef guint (*AddrValueToByte)(const address* addr, guint8 *buf, guint buf_len);
+typedef int (*AddrFixedLen)(void);
+typedef const char* (*AddrColFilterString)(const address* addr, gboolean src);
+typedef int (*AddrNameResolutionLen)(void);
+typedef const gchar* (*AddrNameResolutionToString)(const address* addr);
+
+struct _address_type_t;
+typedef struct _address_type_t address_type_t;
+
+WS_DLL_PUBLIC int address_type_dissector_register(const char* name, const char* pretty_name,
+                                    AddrValueToString to_str_func, AddrValueToStringLen str_len_func,
+                                    AddrValueToByte to_bytes_func, AddrColFilterString col_filter_str_func, AddrFixedLen fixed_len_func,
+                                    AddrNameResolutionToString name_res_str_func, AddrNameResolutionLen name_res_len_func);
+
+WS_DLL_PUBLIC int address_type_get_by_name(const char* name);
+
+void address_types_initialize(void);
+
+/* Address type functions used by multiple (dissector) address types */
+int none_addr_to_str(const address* addr, gchar *buf, int buf_len);
+int none_addr_str_len(const address* addr);
+int none_addr_len(void);
+
+int ether_to_str(const address* addr, gchar *buf, int buf_len);
+int ether_str_len(const address* addr);
+int ether_len(void);
+const gchar* ether_name_resolution_str(const address* addr);
+int ether_name_resolution_len(void);
+
+
+
+/* XXX - Temporary?  Here at least until all of the address type handling is finalized
+ * Otherwise should be folded into address_types.c or just be handled with function pointers
+ */
+const char* address_type_column_filter_string(const address* addr, gboolean src);
+
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __ADDRESS_TYPES_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/afn.h */
+/* afn.h
+ * RFC 1700 address family numbers
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __AFN_H__
+#define __AFN_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Address family numbers, from
+ *
+ *  http://www.iana.org/assignments/address-family-numbers
+ */
+#define AFNUM_RESERVED          0       /* Reserved */
+#define AFNUM_INET              1       /* IP (IP version 4) */
+#define AFNUM_INET6             2       /* IP6 (IP version 6) */
+#define AFNUM_NSAP              3       /* NSAP */
+#define AFNUM_HDLC              4       /* HDLC (8-bit multidrop) */
+#define AFNUM_BBN1822           5       /* BBN 1822 */
+#define AFNUM_802               6       /* 802 (includes all 802 media plus Ethernet "canonical format") */
+#define AFNUM_E163              7       /* E.163 */
+#define AFNUM_E164              8       /* E.164 (SMDS, Frame Relay, ATM) */
+#define AFNUM_F69               9       /* F.69 (Telex) */
+#define AFNUM_X121              10      /* X.121 (X.25, Frame Relay) */
+#define AFNUM_IPX               11      /* IPX */
+#define AFNUM_ATALK             12      /* Appletalk */
+#define AFNUM_DECNET            13      /* Decnet IV */
+#define AFNUM_BANYAN            14      /* Banyan Vines */
+#define AFNUM_E164NSAP          15      /* E.164 with NSAP format subaddress */
+#define AFNUM_DNS               16      /* DNS (Domain Name System) */
+#define AFNUM_DISTNAME          17      /* Distinguished Name */
+#define AFNUM_AS_NUMBER         18      /* AS Number */
+#define AFNUM_XTP_IP4           19      /* XTP over IP version 4 */
+#define AFNUM_XTP_IP6           20      /* XTP over IP version 6 */
+#define AFNUM_XTP               21      /* XTP native mode XTP */
+#define AFNUM_FC_WWPN           22      /* Fibre Channel World-Wide Port Name */
+#define AFNUM_FC_WWNN           23      /* Fibre Channel World-Wide Node Name */
+#define AFNUM_GWID              24      /* GWID */
+#define AFNUM_L2VPN             25      /* RFC4761 RFC6074 */
+#define AFNUM_L2VPN_OLD        196
+#define AFNUM_MPLS_TP_SEI       26      /* MPLS-TP Section Endpoint Identifier, RFC7212 */
+#define AFNUM_MPLS_TP_LSPEI     27      /* MPLS-TP LSP Endpoint Identifier, RFC7212 */
+#define AFNUM_MPLS_TP_PEI       28      /* MPLS-TP Pseudowire Endpoint Identifier, RFC7212 */
+#define AFNUM_MT_IP             29      /* MT IP: Multi-Topology IP version 4, RFC7307 */
+#define AFNUM_MT_IPV6           30      /* MT IPv6: Multi-Topology IP version 6, RFC7307 */
+#define AFNUM_EIGRP_COMMON      16384   /* EIGRP Common Service Family, Donnie Savage */
+#define AFNUM_EIGRP_IPV4        16385   /* EIGRP IPv4 Service Family, Donnie Savage */
+#define AFNUM_EIGRP_IPV6        16386   /* EIGRP IPv6 Service Family, Donnie Savage */
+#define AFNUM_LCAF              16387   /* LISP Canonical Address Format, David Meyer */
+#define AFNUM_BGP_LS            16388   /* BGP-LS, RFC7752 */
+#define AFNUM_EUI48             16389   /* 48-bit MAC, RFC7042 */
+#define AFNUM_EUI64             16390   /* 64-bit MAC, RFC7042 */
+#define AFNUM_OUI               16391   /* OUI, RFC7961 */
+#define AFNUM_MAC_24            16392   /* MAC/24, RFC7961 */
+#define AFNUM_MAC_40            16393   /* MAC/40, RFC7961 */
+#define AFNUM_IPv6_64           16394   /* IPv6/64, RFC7961 */
+#define AFNUM_RB_PID            16395   /* RBridge Port ID, RFC7961 */
+#define AFNUM_TRILL_NICKNAME    16396   /* TRILL Nickname, RFC7455 */
+extern const value_string afn_vals[];
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __AFN_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/aftypes.h */
+/* aftypes.h
+ * AF_ values on various OSes; they're used in some network protocols, as
+ * well as in BSD DLT_NULL and DLT_LOOP headers.
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ *
+ * This file created and by Mike Hall <mlh@io.com>
+ * Copyright 1998
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __AFTYPES_H__
+#define __AFTYPES_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#define COMMON_AF_UNSPEC	0
+/* Pretty much everybody uses the same value for AF_INET. */
+#define COMMON_AF_INET		2
+
+/* BSD AF_ values. */
+#define BSD_AF_INET		2
+#define BSD_AF_ISO		7
+#define BSD_AF_APPLETALK	16
+#define BSD_AF_IPX		23
+#define BSD_AF_INET6_BSD	24	/* NetBSD, OpenBSD, BSD/OS */
+#define BSD_AF_INET6_FREEBSD	28	/* FreeBSD, DragonFly BSD */
+#define BSD_AF_INET6_DARWIN	30	/* macOS, iOS, anything else Darwin-based */
+
+/* Linux AF_ values. */
+#define LINUX_AF_UNSPEC		 0
+#define LINUX_AF_LOCAL		 1
+#define LINUX_AF_INET		 2
+#define LINUX_AF_AX25		 3
+#define LINUX_AF_IPX		 4
+#define LINUX_AF_APPLETALK	 5
+#define LINUX_AF_NETROM		 6
+#define LINUX_AF_BRIDGE		 7
+#define LINUX_AF_ATMPVC		 8
+#define LINUX_AF_X25		 9
+#define LINUX_AF_INET6		10
+#define LINUX_AF_ROSE		11
+#define LINUX_AF_DECnet		12
+#define LINUX_AF_NETBEUI	13
+#define LINUX_AF_SECURITY	14
+#define LINUX_AF_KEY		15
+#define LINUX_AF_NETLINK	16
+#define LINUX_AF_PACKET		17
+#define LINUX_AF_ASH		18
+#define LINUX_AF_ECONET		19
+#define LINUX_AF_ATMSVC		20
+#define LINUX_AF_RDS		21
+#define LINUX_AF_SNA		22
+#define LINUX_AF_IRDA		23
+#define LINUX_AF_PPPOX		24
+#define LINUX_AF_WANPIPE	25
+#define LINUX_AF_LLC		26
+#define LINUX_AF_CAN		29
+#define LINUX_AF_TIPC		30
+#define LINUX_AF_BLUETOOTH	31
+#define LINUX_AF_IUCV		32
+#define LINUX_AF_RXRPC		33
+#define LINUX_AF_ISDN		34
+#define LINUX_AF_PHONET		35
+#define LINUX_AF_IEEE802154	36
+#define LINUX_AF_CAIF		37
+#define LINUX_AF_ALG		38
+#define LINUX_AF_NFC		39
+
+extern value_string_ext linux_af_vals_ext;
+
+/* Solaris AF_ values. */
+#define SOLARIS_AF_INET		2
+#define SOLARIS_AF_INET6	26
+
+/* Winsock AF_ values. */
+
+#define WINSOCK_AF_UNSPEC	0
+#define WINSOCK_AF_UNIX		1
+#define WINSOCK_AF_INET		2
+#define WINSOCK_AF_IMPLINK	3
+#define WINSOCK_AF_PUP		4
+#define WINSOCK_AF_CHAOS	5
+#define WINSOCK_AF_IPX		6
+#define WINSOCK_AF_NS		6
+#define WINSOCK_AF_ISO		7
+#define WINSOCK_AF_OSI		WINSOCK_AF_ISO
+#define WINSOCK_AF_ECMA		8
+#define WINSOCK_AF_DATAKIT	9
+#define WINSOCK_AF_CCITT	10
+#define WINSOCK_AF_SNA		11
+#define WINSOCK_AF_DECnet	12
+#define WINSOCK_AF_DLI		13
+#define WINSOCK_AF_LAT		14
+#define WINSOCK_AF_HYLINK	15
+#define WINSOCK_AF_APPLETALK	16
+#define WINSOCK_AF_NETBIOS	17
+#define WINSOCK_AF_VOICEVIEW	18
+#define WINSOCK_AF_FIREFOX	19
+#define WINSOCK_AF_UNKNOWN1	20
+#define WINSOCK_AF_BAN		21
+#define WINSOCK_AF_ATM		22
+#define WINSOCK_AF_INET6	23
+#define WINSOCK_AF_BTH		32
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* aftypes.h */
+/* End embedded header */
+
+/* Begin epan/app_mem_usage.h */
+/*
+ * app_mem_usage.h
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#ifndef __APP_MEM_USAGE_H__
+#define __APP_MEM_USAGE_H__
+
+
+typedef struct {
+	const char *name;
+	gsize (*fetch)(void);
+	void (*gc)(void);
+
+} ws_mem_usage_t;
+
+WS_DLL_PUBLIC void memory_usage_component_register(const ws_mem_usage_t *component);
+
+WS_DLL_PUBLIC void memory_usage_gc(void);
+
+WS_DLL_PUBLIC const char *memory_usage_get(guint idx, gsize *value);
+
+#endif /* APP_MEM_USAGE_H */
+/* End embedded header */
+
+/* Begin epan/arcnet_pids.h */
+/* arcnet_pids.h
+ * ARCNET protocol ID values
+ * Copyright 2001-2002, Peter Fales <ethereal@fales-lorenz.net>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ARCNET_PIDS_H__
+#define __ARCNET_PIDS_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/* RFC 1051 */
+#define ARCNET_PROTO_IP_1051	240
+#define ARCNET_PROTO_ARP_1051	241
+
+/* RFC 1201 */
+#define ARCNET_PROTO_IP_1201	212
+#define ARCNET_PROTO_ARP_1201	213
+#define ARCNET_PROTO_RARP_1201	214
+
+#define ARCNET_PROTO_IPX	250
+#define ARCNET_PROTO_NOVELL_EC	236
+
+#define ARCNET_PROTO_IPv6	196	/* or so BSD's arcnet.h claims */
+
+/*
+ * Raw Ethernet over ARCNET - Linux's "if_arcnet.h" calls this
+ * "MS LanMan/WfWg 'NDIS' encapsuation".
+ */
+#define ARCNET_PROTO_ETHERNET	232
+
+#define ARCNET_PROTO_DATAPOINT_BOOT	0
+#define ARCNET_PROTO_DATAPOINT_MOUNT	1
+#define ARCNET_PROTO_POWERLAN_BEACON	8
+#define ARCNET_PROTO_POWERLAN_BEACON2	243
+#define ARCNET_PROTO_LANSOFT	251
+
+#define ARCNET_PROTO_APPLETALK	221
+#define ARCNET_PROTO_BANYAN	247	/* Banyan VINES */
+
+#define ARCNET_PROTO_DIAGNOSE	128	/* as per ANSI/ATA 878.1 */
+
+#define ARCNET_PROTO_BACNET	205
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* arcnet_pids.h */
+/* End embedded header */
+
+/* Begin epan/arptypes.h */
+/* arptypes.h
+ * Declarations of ARP address types.
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ARPTYPES_H__
+#define __ARPTYPES_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/* Definitions taken from Linux "linux/if_arp.h" header file, and from
+
+	http://www.iana.org/assignments/arp-parameters
+
+ */
+
+/* ARP protocol HARDWARE identifiers. */
+#define ARPHRD_NETROM	0		/* from KA9Q: NET/ROM pseudo	*/
+#define ARPHRD_ETHER 	1		/* Ethernet 10Mbps		*/
+#define	ARPHRD_EETHER	2		/* Experimental Ethernet	*/
+#define	ARPHRD_AX25	3		/* AX.25 Level 2		*/
+#define	ARPHRD_PRONET	4		/* PROnet token ring		*/
+#define	ARPHRD_CHAOS	5		/* Chaosnet			*/
+#define	ARPHRD_IEEE802	6		/* IEEE 802.2 Ethernet/TR/TB	*/
+#define	ARPHRD_ARCNET	7		/* ARCnet			*/
+#define	ARPHRD_HYPERCH	8		/* Hyperchannel			*/
+#define	ARPHRD_LANSTAR	9		/* Lanstar			*/
+#define	ARPHRD_AUTONET	10		/* Autonet Short Address	*/
+#define	ARPHRD_LOCALTLK	11		/* Localtalk			*/
+#define	ARPHRD_LOCALNET	12		/* LocalNet (IBM PCNet/Sytek LocalNET) */
+#define	ARPHRD_ULTRALNK	13		/* Ultra link			*/
+#define	ARPHRD_SMDS	14		/* SMDS				*/
+#define ARPHRD_DLCI	15		/* Frame Relay DLCI		*/
+#define ARPHRD_ATM	16		/* ATM				*/
+#define ARPHRD_HDLC	17		/* HDLC				*/
+#define ARPHRD_FIBREC	18		/* Fibre Channel		*/
+#define ARPHRD_ATM2225	19		/* ATM (RFC 2225)		*/
+#define ARPHRD_SERIAL	20		/* Serial Line			*/
+#define ARPHRD_ATM2	21		/* ATM				*/
+#define ARPHRD_MS188220	22		/* MIL-STD-188-220		*/
+#define ARPHRD_METRICOM	23		/* Metricom STRIP		*/
+#define ARPHRD_IEEE1394	24		/* IEEE 1394.1995		*/
+#define ARPHRD_MAPOS	25		/* MAPOS			*/
+#define ARPHRD_TWINAX	26		/* Twinaxial			*/
+#define ARPHRD_EUI_64	27		/* EUI-64			*/
+#define ARPHRD_HIPARP	28		/* HIPARP			*/
+#define ARPHRD_IP_ARP_ISO_7816_3	29	/* IP and ARP over ISO 7816-3	*/
+#define ARPHRD_ARPSEC			30	/* ARPSec			*/
+#define ARPHRD_IPSEC_TUNNEL		31	/* IPsec tunnel			*/
+#define ARPHRD_INFINIBAND		32	/* InfiniBand			*/
+#define ARPHRD_TIA_102_PRJ_25_CAI	33	/* TIA-102 Project 25 CAI	*/
+#define ARPHRD_WIEGAND_INTERFACE	34	/* Wiegand Interface		*/
+#define ARPHRD_PURE_IP			35	/* Pure IP			*/
+#define ARPHDR_HW_EXP1			36	/* HW_EXP1			*/
+#define ARPHDR_HFI			37	/* HFI				*/
+#define ARPHDR_HW_EXP2			256	/* HW_EXP2			*/
+
+/* Virtual ARP types for non ARP hardware used in Linux cooked mode. */
+#define ARPHRD_LOOPBACK			772	/* Loopback */
+#define ARPHRD_IPGRE			778	/* GRE over IP */
+#define ARPHRD_IEEE80211_RADIOTAP	803	/* IEEE 802.11 + radiotap header */
+#define ARPHRD_NETLINK			824	/* netlink */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* arptypes.h */
+/* End embedded header */
+
+/* Begin epan/asn1.h */
+/* asn1.h
+ * Common data for ASN.1
+ * 2007  Anders Broman
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ASN1_H__
+#define __ASN1_H__
+
+
+typedef enum {
+  ASN1_ENC_BER,  /* X.690 - BER, CER, DER */
+  ASN1_ENC_PER,  /* X.691 - PER */
+  ASN1_ENC_ECN,  /* X.692 - ECN */
+  ASN1_ENC_XER,  /* X.693 - XER */
+  ASN1_ENC_OER   /* X.696 - OER */
+} asn1_enc_e;
+
+typedef enum {
+  CB_ASN1_ENC,
+  CB_NEW_DISSECTOR,
+  CB_DISSECTOR_HANDLE
+} asn1_cb_variant;
+
+typedef enum {
+  ASN1_PAR_IRR, /* irrelevant parameter */
+  /* value */
+  ASN1_PAR_BOOLEAN,
+  ASN1_PAR_INTEGER,
+  /* type */
+  ASN1_PAR_TYPE
+} asn1_par_type;
+
+typedef struct _asn1_par_def_t {
+  const gchar *name;
+  asn1_par_type ptype;
+} asn1_par_def_t;
+
+typedef struct _asn1_par_t {
+  const gchar *name;
+  asn1_par_type ptype;
+  union {
+    gboolean v_boolean;
+    gint32 v_integer;
+    void *v_type;
+  } value;
+  struct _asn1_par_t *next;
+} asn1_par_t;
+
+typedef struct _asn1_stack_frame_t {
+  const gchar *name;
+  struct _asn1_par_t *par;
+  struct _asn1_stack_frame_t *next;
+} asn1_stack_frame_t;
+
+#define ASN1_CTX_SIGNATURE 0x41435458  /* "ACTX" */
+
+typedef struct _asn1_ctx_t {
+  guint32 signature;
+  asn1_enc_e encoding;
+  gboolean aligned;
+  packet_info *pinfo;
+  proto_item *created_item;
+  struct _asn1_stack_frame_t *stack;
+  void *value_ptr;
+  void *private_data;
+  struct {
+    int hf_index;
+    gboolean data_value_descr_present;
+    gboolean direct_ref_present;
+    gboolean indirect_ref_present;
+    tvbuff_t *data_value_descriptor;
+    const char *direct_reference;
+    gint32 indirect_reference;
+    gint encoding;
+      /*
+         0 : single-ASN1-type,
+         1 : octet-aligned,
+         2 : arbitrary
+      */
+    tvbuff_t *single_asn1_type;
+    tvbuff_t *octet_aligned;
+    tvbuff_t *arbitrary;
+    union {
+      struct {
+        int (*ber_callback)(gboolean imp_tag, tvbuff_t *tvb, int offset, struct _asn1_ctx_t* ,proto_tree *tree, int hf_index );
+      } ber;
+      struct {
+        int (*type_cb)(tvbuff_t*, int, struct _asn1_ctx_t*, proto_tree*, int);
+      } per;
+    } u;
+  } external;
+  struct {
+      proto_tree *tree;
+      proto_tree *top_tree;
+      void* tree_ctx;
+  } subtree;
+  struct {
+    int hf_index;
+    gboolean data_value_descr_present;
+    tvbuff_t *data_value_descriptor;
+    gint identification;
+      /*
+         0 : syntaxes,
+         1 : syntax,
+         2 : presentation-context-id,
+         3 : context-negotiation,
+         4 : transfer-syntax,
+         5 : fixed
+      */
+    gint32 presentation_context_id;
+    const char *abstract_syntax;
+    const char *transfer_syntax;
+    tvbuff_t *data_value;
+    union {
+      struct {
+        int (*ber_callback)(gboolean imp_tag, tvbuff_t *tvb, int offset, struct _asn1_ctx_t* ,proto_tree *tree, int hf_index );
+      } ber;
+      struct {
+        int (*type_cb)(tvbuff_t*, int, struct _asn1_ctx_t*, proto_tree*, int);
+      } per;
+    } u;
+  } embedded_pdv;
+  struct _rose_ctx_t *rose_ctx;
+} asn1_ctx_t;
+
+#define ROSE_CTX_SIGNATURE 0x524F5345  /* "ROSE" */
+
+typedef struct _rose_ctx_t {
+  guint32 signature;
+  dissector_table_t arg_global_dissector_table;
+  dissector_table_t arg_local_dissector_table;
+  dissector_table_t res_global_dissector_table;
+  dissector_table_t res_local_dissector_table;
+  dissector_table_t err_global_dissector_table;
+  dissector_table_t err_local_dissector_table;
+  /* filling in description into tree, info column, any buffer */
+  int apdu_depth;
+  gboolean fillin_info;
+  gchar *fillin_ptr;
+  gsize fillin_buf_size;
+  struct {  /* "dynamic" data */
+    gint pdu;
+      /*
+         1 : invoke,
+         2 : returnResult,
+         3 : returnError,
+         4 : reject
+      */
+    gint code;
+      /*
+        -1 : none (optional in ReturnResult)
+         0 : local,
+         1 : global
+      */
+    gint32 code_local;
+    const char *code_global;
+    proto_item *code_item;
+  } d;
+  void *private_data;
+} rose_ctx_t;
+
+WS_DLL_PUBLIC void asn1_ctx_init(asn1_ctx_t *actx, asn1_enc_e encoding, gboolean aligned, packet_info *pinfo);
+extern gboolean asn1_ctx_check_signature(asn1_ctx_t *actx);
+extern void asn1_ctx_clean_external(asn1_ctx_t *actx);
+extern void asn1_ctx_clean_epdv(asn1_ctx_t *actx);
+
+extern void asn1_stack_frame_push(asn1_ctx_t *actx, const gchar *name);
+extern void asn1_stack_frame_pop(asn1_ctx_t *actx, const gchar *name);
+extern void asn1_stack_frame_check(asn1_ctx_t *actx, const gchar *name, const asn1_par_def_t *par_def);
+
+extern void asn1_param_push_boolean(asn1_ctx_t *actx, gboolean value);
+extern void asn1_param_push_integer(asn1_ctx_t *actx, gint32 value);
+extern gboolean asn1_param_get_boolean(asn1_ctx_t *actx, const gchar *name);
+extern gint32 asn1_param_get_integer(asn1_ctx_t *actx, const gchar *name);
+
+WS_DLL_PUBLIC void rose_ctx_init(rose_ctx_t *rctx);
+extern gboolean rose_ctx_check_signature(rose_ctx_t *rctx);
+WS_DLL_PUBLIC void rose_ctx_clean_data(rose_ctx_t *rctx);
+
+WS_DLL_PUBLIC asn1_ctx_t *get_asn1_ctx(void *ptr);
+WS_DLL_PUBLIC rose_ctx_t *get_rose_ctx(void *ptr);
+
+extern double asn1_get_real(const guint8 *real_ptr, gint len);
+
+/* flags */
+#define ASN1_EXT_ROOT 0x01
+#define ASN1_EXT_EXT  0x02
+#define ASN1_OPT      0x04
+#define ASN1_DFLT     0x08
+
+#define ASN1_HAS_EXT(f) ((f)&(ASN1_EXT_ROOT|ASN1_EXT_EXT))
+
+
+#endif  /* __ASN1_H__ */
+/* End embedded header */
+
+/* Begin epan/ax25_pids.h */
+/* ax25_pids.h
+ *
+ * Protocol IDs for Amateur Packet Radio protocol dissection
+ * Copyright 2005,2006,2007,2008,2009,2010,2012 R.W. Stearn <richard@rns-stearn.demon.co.uk>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __AX25_PIDS_H__
+#define __AX25_PIDS_H__
+
+/* AX.25 Layer 3 Protocol ID's (pid) */
+#define AX25_P_ROSE	0x01	/* ISO 8208 / CCITT X.25 PLP */
+#define AX25_P_RFC1144C	0x06	/* Compressed TCP/IP packet. Van Jacobson RFC1144 */
+#define AX25_P_RFC1144	0x07	/* Uncompressed TCP/IP packet. Van Jacobson RFC1144 */
+#define AX25_P_SEGMENT	0x08	/* segmentation fragment */
+#define AX25_P_TEXNET	0xC3	/* TEXNET datagram */
+#define AX25_P_LCP	0xC4	/* Link Quality Protocol */
+#define AX25_P_ATALK	0xCA	/* AppleTalk */
+#define AX25_P_ATALKARP	0xCB	/* AppleTalk ARP */
+#define AX25_P_IP	0xCC	/* ARPA Internet Protocol */
+#define AX25_P_ARP	0xCD	/* ARPA Address Resolution Protocol */
+#define AX25_P_FLEXNET 	0xCE	/* FlexNet */
+#define AX25_P_NETROM 	0xCF	/* NET/ROM */
+#define AX25_P_NO_L3 	0xF0	/* No layer 3 protocol */
+#define AX25_P_L3_ESC 	0xFF	/* Escape character. Next octet contains more layer 3 protocol info */
+
+#endif /* __AX25_PIDS_H__ */
+/* End embedded header */
+
+/* Begin epan/bridged_pids.h */
+/* bridged_pids.h
+ * Definitions of protocol IDs for the 00-80-C2 OUI, used for
+ * bridging various networks over ATM (RFC 2684) or Frame Relay (RFC 2427).
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 - 2000 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __BRIDGED_PID_H__
+#define __BRIDGED_PID_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#define BPID_ETH_WITH_FCS	0x0001	/* 802.3/Ethernet with preserved FCS */
+#define BPID_ETH_WITHOUT_FCS	0x0007	/* 802.3/Ethernet without preserved FCS */
+
+#define BPID_802_4_WITH_FCS	0x0002	/* 802.4 with preserved FCS */
+#define BPID_802_4_WITHOUT_FCS	0x0008	/* 802.4 without preserved FCS */
+
+#define BPID_802_5_WITH_FCS	0x0003	/* 802.5 with preserved FCS */
+#define BPID_802_5_WITHOUT_FCS	0x0009	/* 802.5 without preserved FCS */
+
+#define BPID_FDDI_WITH_FCS	0x0004	/* FDDI with preserved FCS */
+#define BPID_FDDI_WITHOUT_FCS	0x000A	/* FDDI without preserved FCS */
+
+#define BPID_802_6_WITH_FCS	0x0005	/* 802.6 with preserved FCS */
+#define BPID_802_6_WITHOUT_FCS	0x000B	/* 802.6 without preserved FCS */
+
+#define BPID_FRAGMENTS		0x000D
+
+#define BPID_BPDU		0x000E	/* 802.1(d) or 802.1(g) BPDUs */
+
+#define BPID_SR_BPDU		0x000F	/* Source Routing BPDUs */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* bridged_pid.h */
+/* End embedded header */
+
+/* Begin epan/capture_dissectors.h */
+/* capture_dissectors.h
+ * Routines for handling capture dissectors
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __CAPTURE_DISSECTORS_H__
+#define __CAPTURE_DISSECTORS_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/** @file
+ */
+
+/** Table of counts of packets of various types. */
+typedef struct {
+    GHashTable*       counts_hash; /* packet counters keyed by proto */
+    gint              other;       /* Packets not counted in the hash total */
+    gint              total;       /* Cache of total packets */
+} packet_counts;
+
+typedef struct _capture_packet_info {
+    GHashTable *counts;
+} capture_packet_info_t;
+
+typedef struct capture_dissector_handle* capture_dissector_handle_t;
+
+/** callback function definition for capture dissectors */
+typedef gboolean (*capture_dissector_t)(const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
+
+/* a protocol uses the function to register a capture sub-dissector table
+ * @param[in] name Name of capture sub-dissector table.
+ * @param[in] ui_name Name string used when referring to capture sub-dissector table in UI.
+ */
+WS_DLL_PUBLIC void register_capture_dissector_table(const char *name, const char *ui_name);
+
+/* Create an anonymous handle for a capture dissector
+ * @param[in] dissector capture dissector function.
+ * @param[in] proto Protocol associated with capture dissector function.
+ * @return  Handle created for capture dissector
+ */
+WS_DLL_PUBLIC capture_dissector_handle_t create_capture_dissector_handle(capture_dissector_t dissector, const int proto);
+
+/* Find a dissector by name
+ * @param[in] name Name of capture dissector
+ * @return  Handle for capture dissector if found, NULL otherwise
+ */
+WS_DLL_PUBLIC capture_dissector_handle_t find_capture_dissector(const char *name);
+
+/* Register a new capture dissector
+ * @param[in] name Name of capture dissector function.
+ * @param[in] dissector capture dissector function.
+ * @param[in] proto Protocol associated with capture dissector function.
+ * @return  Handle created for capture dissector
+ */
+WS_DLL_PUBLIC capture_dissector_handle_t register_capture_dissector(const char *name, capture_dissector_t dissector, int proto);
+
+/* Add an entry to a uint capture dissector table
+ * @param[in] name Name of capture dissector table
+ * @param[in] pattern Numerical value associated with capture dissector
+ * @param[in] handle Handle to capture dissector
+ */
+WS_DLL_PUBLIC void capture_dissector_add_uint(const char *name, const guint32 pattern, capture_dissector_handle_t handle);
+
+/* Look for a given value in a given uint capture dissector table and, if found,
+ * call the dissector with the arguments supplied, and return TRUE,
+ * otherwise return FALSE
+ * @param[in] name Name of capture dissector table
+ * @param[in] pattern Numerical value associated with capture dissector
+ * @param[in] pd Data buffer of captured bytes
+ * @param[in] offset Current offset into pd
+ * @param[in] len Length of pd
+ * @param[in] cpinfo Capture statistics
+ * @param[in] pseudo_header Wiretap pseudo header information
+ */
+WS_DLL_PUBLIC gboolean try_capture_dissector(const char* name, const guint32 pattern, const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
+
+/* Call a capture dissector through a handle. If handle is value return TRUE,
+ * otherwise return FALSE
+ * @param[in] handle Capture dissector handle
+ * @param[in] pd Data buffer of captured bytes
+ * @param[in] offset Current offset into pd
+ * @param[in] len Length of pd
+ * @param[in] cpinfo Capture statistics
+ * @param[in] pseudo_header Wiretap pseudo header information
+ */
+WS_DLL_PUBLIC gboolean call_capture_dissector(capture_dissector_handle_t handle, const guint8 *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
+
+/* Get current capture packet count for a particular protocol
+ * @param[in] counts Packet count structure
+ * @param[in] proto Protocol to retrieve packet count from
+ * @return Number of packets captured for a particular protocol
+ */
+WS_DLL_PUBLIC guint32 capture_dissector_get_count(packet_counts* counts, const int proto);
+
+/* Increment packet capture count by 1 for a particular protocol.
+ * @param[in] cpinfo Capture statistics
+ * @param[in] proto Protocol to increment packet count
+ */
+WS_DLL_PUBLIC void capture_dissector_increment_count(capture_packet_info_t *cpinfo, const int proto);
+
+extern void capture_dissector_init(void);
+extern void capture_dissector_cleanup(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* capture_dissectors.h */
+/* End embedded header */
+
+/* Begin epan/charsets.h */
+/* charsets.h
+ * Routines for handling character sets
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#ifndef __CHARSETS_H__
+#define __CHARSETS_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Translation tables that map the upper 128 code points in single-byte
+ * "extended ASCII" character encodings to Unicode code points in the
+ * Basic Multilingual Plane.
+ */
+
+/* Table for windows-1250 */
+extern const gunichar2 charset_table_cp1250[0x80];
+/* Table for windows-1251 */
+extern const gunichar2 charset_table_cp1251[0x80];
+/* Table for windows-1252 */
+extern const gunichar2 charset_table_cp1252[0x80];
+
+/* Tables for ISO-8859-X */
+extern const gunichar2 charset_table_iso_8859_2[0x80];
+extern const gunichar2 charset_table_iso_8859_3[0x80];
+extern const gunichar2 charset_table_iso_8859_4[0x80];
+extern const gunichar2 charset_table_iso_8859_5[0x80];
+extern const gunichar2 charset_table_iso_8859_6[0x80];
+extern const gunichar2 charset_table_iso_8859_7[0x80];
+extern const gunichar2 charset_table_iso_8859_8[0x80];
+extern const gunichar2 charset_table_iso_8859_9[0x80];
+extern const gunichar2 charset_table_iso_8859_10[0x80];
+extern const gunichar2 charset_table_iso_8859_11[0x80];
+extern const gunichar2 charset_table_iso_8859_13[0x80];
+extern const gunichar2 charset_table_iso_8859_14[0x80];
+extern const gunichar2 charset_table_iso_8859_15[0x80];
+extern const gunichar2 charset_table_iso_8859_16[0x80];
+
+/* Tables for Mac character sets */
+extern const gunichar2 charset_table_mac_roman[0x80];
+
+/* Tables for DOS code pages */
+extern const gunichar2 charset_table_cp437[0x80];
+extern const gunichar2 charset_table_cp855[0x80];
+extern const gunichar2 charset_table_cp866[0x80];
+
+/*
+ * Translation tables that map the lower 128 code points in single-byte
+ * ISO 646-based character encodings to Unicode code points in the
+ * Basic Multilingual Plane.
+ */
+extern const gunichar2 charset_table_iso_646_basic[0x80];
+
+/* Tables for EBCDIC code pages */
+extern const gunichar2 charset_table_ebcdic[256];
+extern const gunichar2 charset_table_ebcdic_cp037[256];
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as an ASCII string, with all bytes
+ * with the high-order bit set being invalid, and return a pointer to a
+ * UTF-8 string, allocated using the wmem scope.
+ *
+ * Octets with the highest bit set will be converted to the Unicode
+ * REPLACEMENT CHARACTER.
+ */
+WS_DLL_PUBLIC guint8 *
+get_ascii_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
+/*
+ * Given a wmem scope, a pointer, a length, and a translation table,
+ * treat the string of bytes referred to by the pointer and length as a
+ * string encoded using one octet per character, with octets with the
+ * high-order bit clear being mapped by the translation table to 2-byte
+ * Unicode Basic Multilingual Plane characters (including REPLACEMENT
+ * CHARACTER) and octets with the high-order bit set being mapped to
+ * REPLACEMENT CHARACTER, and return a pointer to a UTF-8 string,
+ * allocated using the wmem scope.
+ */
+WS_DLL_PUBLIC guint8 *
+get_iso_646_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[0x80]);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as an ISO 8859/1 string, and
+ * return a pointer to a UTF-8 string, allocated using the wmem scope.
+ */
+WS_DLL_PUBLIC guint8 *
+get_8859_1_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
+/*
+ * Given a wmem scope, a pointer, a length, and a translation table with
+ * 128 entries, treat the string of bytes referred to by the pointer and
+ * length as a string encoded using one octet per character, with octets
+ * with the high-order bit clear being ASCII and octets with the high-order
+ * bit set being mapped by the translation table to 2-byte Unicode Basic
+ * Multilingual Plane characters (including REPLACEMENT CHARACTER), and
+ * return a pointer to a UTF-8 string, allocated using the wmem scope.
+ */
+WS_DLL_PUBLIC guint8 *
+get_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[0x80]);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as a UCS-2 encoded string
+ * containing characters from the Basic Multilingual Plane (plane 0) of
+ * Unicode, and return a pointer to a UTF-8 string, allocated with the
+ * wmem scope.
+ *
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
+ *
+ * Specify length in bytes.
+ *
+ * XXX - should map lead and trail surrogate values to REPLACEMENT
+ * CHARACTERs (0xFFFD)?
+ * XXX - if there are an odd number of bytes, should put a
+ * REPLACEMENT CHARACTER at the end.
+ */
+WS_DLL_PUBLIC guint8 *
+get_ucs_2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as a UTF-16 encoded string, and
+ * return a pointer to a UTF-8 string, allocated with the wmem scope.
+ *
+ * See RFC 2781 section 2.2.
+ *
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
+ *
+ * Specify length in bytes.
+ *
+ * XXX - should map surrogate errors to REPLACEMENT CHARACTERs (0xFFFD).
+ * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
+ * XXX - if there are an odd number of bytes, should put a
+ * REPLACEMENT CHARACTER at the end.
+ */
+WS_DLL_PUBLIC guint8 *
+get_utf_16_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as a UCS-4 encoded string, and
+ * return a pointer to a UTF-8 string, allocated with the wmem scope.
+ *
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN
+ *
+ * Specify length in bytes
+ *
+ * XXX - should map lead and trail surrogate values to a "substitute"
+ * UTF-8 character?
+ * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
+ * XXX - if the number of bytes isn't a multiple of 4, should put a
+ * REPLACEMENT CHARACTER at the end.
+ */
+WS_DLL_PUBLIC guint8 *
+get_ucs_4_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+
+WS_DLL_PUBLIC guint8 *
+get_ts_23_038_7bits_string(wmem_allocator_t *scope, const guint8 *ptr,
+        const gint bit_offset, gint no_of_chars);
+
+WS_DLL_PUBLIC guint8 *
+get_ascii_7bits_string(wmem_allocator_t *scope, const guint8 *ptr,
+        const gint bit_offset, gint no_of_chars);
+
+/*
+ * Given a wmem scope, a pointer, a length, and a translation table with
+ * 256 entries, treat the string of bytes referred to by the pointer and
+ * length as a string encoded using one octet per character, with octets
+ * being mapped by the translation table to 2-byte Unicode Basic Multilingual
+ * Plane characters (including REPLACEMENT CHARACTER), and return a
+ * pointer to a UTF-8 string, allocated using the wmem scope.
+ */
+WS_DLL_PUBLIC guint8 *
+get_nonascii_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[256]);
+
+WS_DLL_PUBLIC guint8 *
+get_t61_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
+#if 0
+void ASCII_to_EBCDIC(guint8 *buf, guint bytes);
+guint8 ASCII_to_EBCDIC1(guint8 c);
+#endif
+WS_DLL_PUBLIC
+void EBCDIC_to_ASCII(guint8 *buf, guint bytes);
+WS_DLL_PUBLIC
+guint8 EBCDIC_to_ASCII1(guint8 c);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __CHARSETS_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/chdlctypes.h */
+/* chdlctypes.h
+ * Defines Cisco HDLC packet types that aren't just Ethernet types
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __CHDLCTYPES_H__
+#define __CHDLCTYPES_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#define CHDLCTYPE_FRARP		0x0808	/* Frame Relay ARP */
+#define CHDLCTYPE_BPDU		0x4242	/* IEEE spanning tree protocol */
+#define CHDLCTYPE_OSI 	        0xfefe  /* ISO network-layer protocols */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* chdlctypes.h */
+/* End embedded header */
+
+/* Begin epan/color_filters.h */
+/* color_filters.h
+ * Definitions for color filters
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#ifndef  __COLOR_FILTERS_H__
+#define  __COLOR_FILTERS_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+
+struct epan_dissect;
+
+#define COLORFILTERS_FILE_NAME          "colorfilters"
+
+#define CONVERSATION_COLOR_PREFIX       "___conversation_color_filter___"
+/** @file
+ *  Color filters.
+ */
+
+/* Data for a color filter. */
+typedef struct _color_filter {
+    gchar     *filter_name;         /* name of the filter */
+    gchar     *filter_text;         /* text of the filter expression */
+    color_t    bg_color;            /* background color for packets that match */
+    color_t    fg_color;            /* foreground color for packets that match */
+    gboolean   disabled;            /* set if the filter is disabled */
+
+                                    /* only used inside of color_filters.c */
+    struct epan_dfilter *c_colorfilter;  /* compiled filter expression */
+
+                                    /* only used outside of color_filters.c (beside init) */
+} color_filter_t;
+
+/** A color filter was added (while importing).
+ * (color_filters.c calls this for every filter coming in)
+ *
+ * @param colorf the new color filter
+ * @param user_data from caller
+ */
+typedef void (*color_filter_add_cb_func)(color_filter_t *colorf, gpointer user_data);
+
+/** Init the color filters (incl. initial read from file). */
+WS_DLL_PUBLIC gboolean color_filters_init(gchar** err_msg, color_filter_add_cb_func add_cb);
+
+/** Reload the color filters */
+WS_DLL_PUBLIC gboolean color_filters_reload(gchar** err_msg, color_filter_add_cb_func add_cb);
+
+/** Cleanup remaining color filter zombies */
+WS_DLL_PUBLIC void color_filters_cleanup(void);
+
+/** Color filters currently used?
+ *
+ * @return TRUE, if filters are used
+ */
+WS_DLL_PUBLIC gboolean color_filters_used(void);
+
+/** Are there any temporary coloring filters used?
+ *
+ * @return TRUE, if temporary coloring filters are used
+ */
+WS_DLL_PUBLIC gboolean tmp_color_filters_used(void);
+
+/** Set the filter string of a temporary color filter
+ *
+ * @param filt_nr a number 1-10 pointing to a temporary color
+ * @param filter the new filter-string
+ * @param disabled whether the filter-rule should be disabled
+ * @param err_msg a string with error message
+ */
+WS_DLL_PUBLIC gboolean
+color_filters_set_tmp(guint8 filt_nr, const gchar *filter, gboolean disabled, gchar **err_msg);
+
+/** Get a temporary color filter.
+ *
+ * @param filter_num A number from 1 to 10 specifying the color to fetch.
+ * @return The corresponding color or NULL.
+ */
+WS_DLL_PUBLIC const color_filter_t *
+color_filters_tmp_color(guint8 filter_num);
+
+/** Reset the temporary color filters
+ *
+ */
+WS_DLL_PUBLIC gboolean
+color_filters_reset_tmp(gchar **err_msg);
+
+/* Prime the epan_dissect_t with all the compiler
+ * color filters of the current filter list.
+ *
+ * @param the epan dissector details
+ */
+WS_DLL_PUBLIC void color_filters_prime_edt(struct epan_dissect *edt);
+
+/** Colorize a specific packet.
+ *
+ * @param edt the dissected packet
+ * @return the matching color filter or NULL
+ */
+WS_DLL_PUBLIC const color_filter_t *
+color_filters_colorize_packet(struct epan_dissect *edt);
+
+/** Clone the currently active filter list.
+ *
+ * @param user_data will be returned by each call to to color_filter_add_cb()
+ * @param add_cb the callback function to add color filter
+ */
+WS_DLL_PUBLIC void color_filters_clone(gpointer user_data, color_filter_add_cb_func add_cb);
+
+/** Load filters (import) from some other filter file.
+ *
+ * @param path the path to the import file
+ * @param user_data will be returned by each call to to color_filter_add_cb()
+ * @param err_msg a string with error message
+ * @param add_cb the callback function to add color filter
+ * @return TRUE, if read succeeded
+ */
+WS_DLL_PUBLIC gboolean color_filters_import(const gchar *path, gpointer user_data, gchar **err_msg, color_filter_add_cb_func add_cb);
+
+/** Read filters from the global filter file (not the users file).
+ *
+ * @param user_data will be returned by each call to to color_filter_add_cb()
+ * @param err_msg a string with error message
+ * @param add_cb the callback function to add color filter
+ * @return TRUE, if read succeeded
+ */
+WS_DLL_PUBLIC gboolean color_filters_read_globals(gpointer user_data, gchar** err_msg, color_filter_add_cb_func add_cb);
+
+
+/** Apply a changed filter list.
+ *
+ * @param tmp_cfl the temporary color filter list to apply
+ * @param edit_cfl the edited permanent color filter list to apply
+ * @param err_msg a string with error message
+ */
+WS_DLL_PUBLIC gboolean color_filters_apply(GSList *tmp_cfl, GSList *edit_cfl, gchar** err_msg);
+
+/** Save filters in users filter file.
+ *
+ * @param cfl the filter list to write
+ * @param err_msg a string with error message
+ * @return TRUE if write succeeded
+ */
+WS_DLL_PUBLIC gboolean color_filters_write(GSList *cfl, gchar** err_msg);
+
+/** Save filters (export) to some other filter file.
+ *
+ * @param path the path to the filter file
+ * @param cfl the filter list to write
+ * @param only_selected TRUE if only the selected filters should be saved
+ * @param err_msg a string with error message
+ * @return TRUE, if write succeeded
+ */
+WS_DLL_PUBLIC gboolean color_filters_export(const gchar *path, GSList *cfl, gboolean only_selected, gchar** err_msg);
+
+/** Create a new color filter (g_malloc'ed).
+ *
+ * @param name the name of the filter
+ * @param filter_string the filter string
+ * @param bg_color background color
+ * @param fg_color foreground color
+ * @param disabled gboolean
+ * @return the new color filter
+ */
+WS_DLL_PUBLIC color_filter_t *color_filter_new(
+    const gchar *name, const gchar *filter_string,
+    color_t *bg_color, color_t *fg_color, gboolean disabled);
+
+/** Delete a single color filter (g_free'ed).
+ *
+ * @param colorf the color filter to be removed
+ */
+WS_DLL_PUBLIC void color_filter_delete(color_filter_t *colorf);
+
+/** Delete a filter list including all entries.
+ *
+ * @param cfl the filter list to delete
+ */
+WS_DLL_PUBLIC void color_filter_list_delete(GSList **cfl);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/column-info.h */
+/* column-info.h
+ * Definitions for column structures and routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __COLUMN_INFO_H__
+#define __COLUMN_INFO_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/** @file
+ * Column info.
+ */
+
+#define COL_MAX_LEN 256
+#define COL_MAX_INFO_LEN 4096
+#define COL_CUSTOM_PRIME_REGEX " *([^ \\|]+) *(?:(?:\\|\\|)|(?:or)| *$){1}"
+
+/** Column expression */
+typedef struct {
+  const gchar **col_expr;     /**< Filter expression */
+  gchar      **col_expr_val;  /**< Value for filter expression */
+} col_expr_t;
+
+/** Individual column info */
+typedef struct {
+  gint                col_fmt;              /**< Format of column */
+  gboolean           *fmt_matx;             /**< Specifies which formats apply to a column */
+  gchar              *col_title;            /**< Column titles */
+  gchar              *col_custom_fields;    /**< Custom column fields */
+  gint                col_custom_occurrence;/**< Custom column field occurrence */
+  GSList             *col_custom_fields_ids;/**< Custom column fields id */
+  struct epan_dfilter *col_custom_dfilter;  /**< Compiled custom column field */
+  const gchar        *col_data;             /**< Column data */
+  gchar              *col_buf;              /**< Buffer into which to copy data for column */
+  int                 col_fence;            /**< Stuff in column buffer before this index is immutable */
+  gboolean            writable;             /**< writable or not */
+} col_item_t;
+
+/** Column info */
+struct epan_column_info {
+  const struct epan_session *epan;
+  gint                num_cols;             /**< Number of columns */
+  col_item_t         *columns;              /**< All column data */
+  gint               *col_first;            /**< First column number with a given format */
+  gint               *col_last;             /**< Last column number with a given format */
+  col_expr_t          col_expr;             /**< Column expressions and values */
+  gboolean            writable;             /**< writable or not @todo Are we still writing to the columns? */
+  GRegex             *prime_regex;          /**< Used to prime custom columns */
+};
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __COLUMN_INFO_H__ */
+/* End embedded header */
+
+/* Begin epan/column.h */
+/* column.h
+ * Definitions for column handling routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __COLUMN_H__
+#define __COLUMN_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+typedef struct _fmt_data {
+  gchar *title;            /* title of the column */
+  int fmt;                 /* format of column */
+  gchar *custom_fields;    /* fields names for COL_CUSTOM */
+  gint custom_occurrence;  /* optional ordinal of occurrence of that field */
+  gboolean visible;        /* if FALSE, hide this column */
+  gboolean resolved;       /* if TRUE, show a more human-readable name */
+} fmt_data;
+
+WS_DLL_PUBLIC
+const gchar         *col_format_to_string(const gint);
+WS_DLL_PUBLIC
+const gchar         *col_format_desc(const gint);
+WS_DLL_PUBLIC
+gint                 get_column_format(const gint);
+WS_DLL_PUBLIC
+void                 set_column_format(const gint, const gint);
+WS_DLL_PUBLIC
+void                 get_column_format_matches(gboolean *, const gint);
+WS_DLL_PUBLIC
+gint                 get_column_format_from_str(const gchar *);
+WS_DLL_PUBLIC
+gchar               *get_column_title(const gint);
+WS_DLL_PUBLIC
+void                 set_column_title(const gint, const gchar *);
+WS_DLL_PUBLIC
+gboolean             get_column_visible(const gint);
+WS_DLL_PUBLIC
+void                 set_column_visible(const gint, gboolean);
+WS_DLL_PUBLIC
+gboolean             get_column_resolved(const gint);
+WS_DLL_PUBLIC
+void                 set_column_resolved(const gint, gboolean);
+WS_DLL_PUBLIC
+const gchar         *get_column_custom_fields(const gint);
+WS_DLL_PUBLIC
+void                 set_column_custom_fields(const gint, const char *);
+WS_DLL_PUBLIC
+gint                 get_column_custom_occurrence(const gint);
+WS_DLL_PUBLIC
+void                 set_column_custom_occurrence(const gint, const gint);
+WS_DLL_PUBLIC
+const gchar         *get_column_width_string(const gint, const gint);
+WS_DLL_PUBLIC
+gint                 get_column_char_width(const gint format);
+WS_DLL_PUBLIC
+gchar               *get_column_tooltip(const gint col);
+
+WS_DLL_PUBLIC
+void
+col_finalize(column_info *cinfo);
+
+WS_DLL_PUBLIC
+void
+build_column_format_array(column_info *cinfo, const gint num_cols, const gboolean reset_fences);
+
+WS_DLL_PUBLIC
+void                 column_dump_column_formats(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* column.h */
 /* End embedded header */
 
 /* Begin epan/conversation.h */

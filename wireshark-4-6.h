@@ -31,6 +31,33 @@ typedef struct _dcerpc_info dcerpc_info;
 #define WIRESHARK_VERSION_MICRO 0
 #endif
 
+/* Begin wsutil/array.h */
+/** @file
+ * Utility functions/macros for handling arrays, C and/or glib.
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WSUTIL_ARRAY_H__
+#define __WSUTIL_ARRAY_H__
+
+#include <stdlib.h>
+
+/** Useful when you have an array whose size is known at compile-time. */
+#define array_length(x)	(sizeof (x) / sizeof (x)[0])
+
+/** glib doesn't have g_ptr_array_len, of all things! */
+#ifndef g_ptr_array_len
+#define g_ptr_array_len(a)      ((a) ? (a)->len : 0)
+#endif
+
+#endif /* __WSUTIL_ARRAY_H__ */
+/* End embedded header */
+
 /* Begin include/ws_compiler_tests.h */
 /* ws_compiler_tests.h
  *
@@ -545,6 +572,322 @@ extern "C" {
 #endif /* __WS_ATTRIBUTES_H__ */
 /* End embedded header */
 
+/* Begin include/ws_diag_control.h */
+/* ws_diag_control.h
+ * Turn compiler diagnostic messages on and off.
+ *
+ * From FreeRADIUS build.h.
+ *
+ * @copyright 2013 The FreeRADIUS server project
+ *
+ * That project is covered by the GPLv2, so:
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WS_DIAG_CONTROL_H__
+#define __WS_DIAG_CONTROL_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define XSTRINGIFY(x) #x
+
+/*
+ *	Macros for controlling warnings in various compilers.
+ */
+#define DIAG_JOINSTR(x,y) XSTRINGIFY(x ## y)
+
+/*
+ * XXX - this is only for GCC or GCC-compatible compilers, and we only use
+ * it to have a macro that takes a warning as an argument and turns it
+ * off in the appropriate fashion for Clang and GCC; it should only be
+ * used internally in this header.
+ */
+#define DIAG_DO_PRAGMA(x) _Pragma (#x)
+
+#if defined(__clang__)
+  /*
+   * Clang, so we'd use _Pragma("clang diagnostic XXX"), if it's
+   * supported.
+   */
+  #if WS_IS_AT_LEAST_CLANG_VERSION(2,8)
+    /*
+     * This is Clang 2.8 or later: we can use "clang diagnostic ignored -Wxxx"
+     * and "clang diagnostic push/pop".
+     */
+    #define DIAG_PRAGMA(x) DIAG_DO_PRAGMA(clang diagnostic x)
+    #define DIAG_OFF(x) DIAG_PRAGMA(push) DIAG_PRAGMA(ignored DIAG_JOINSTR(-W,x))
+    #define DIAG_WARN(x) DIAG_PRAGMA(push) DIAG_PRAGMA(warning DIAG_JOINSTR(-W,x))
+    #define DIAG_ON(x) DIAG_PRAGMA(pop)
+  #endif
+
+  /*
+   * Not all versions of Clang understand -Wpedantic.  Clang 4.0 appears
+   * to be the first version to do so.
+   */
+  #if WS_IS_AT_LEAST_CLANG_VERSION(4,0)
+    #define DIAG_OFF_PEDANTIC DIAG_OFF(pedantic)
+    #define DIAG_ON_PEDANTIC DIAG_ON(pedantic)
+  #else
+    #define DIAG_OFF_PEDANTIC
+    #define DIAG_ON_PEDANTIC
+  #endif
+
+  /*
+   * Do any pre-5.0 versions of Clang understand -Winitializer-overrides?
+   */
+  #if WS_IS_AT_LEAST_CLANG_VERSION(4,0)
+    #define DIAG_OFF_INIT_TWICE DIAG_OFF(initializer-overrides)
+    #define DIAG_ON_INIT_TWICE DIAG_ON(initializer-overrides)
+  #else
+    #define DIAG_OFF_INIT_TWICE
+    #define DIAG_ON_INIT_TWICE
+  #endif
+#elif defined(__GNUC__)
+  /*
+   * GCC, or a compiler (other than Clang) that claims to be GCC.
+   * We assume that the compiler accepts _Pragma("GCC diagnostic xxx")
+   * even if it's only claiming to be GCC.
+   */
+  #if WS_IS_AT_LEAST_GNUC_VERSION(4,8)
+    /*
+     * This is GCC 4.8 or later, or a compiler claiming to be that.
+     * We can use "GCC diagnostic ignored -Wxxx" (introduced in 4.2)
+     * and "GCC diagnostic push/pop" (introduced in 4.6), *and* gcc
+     * supports "-Wpedantic" (introduced in 4.8), allowing us to
+     * turn off pedantic warnings with DIAG_OFF().
+     */
+    #define DIAG_PRAGMA(x) DIAG_DO_PRAGMA(GCC diagnostic x)
+    #define DIAG_OFF(x) DIAG_PRAGMA(push) DIAG_PRAGMA(ignored DIAG_JOINSTR(-W,x))
+    #define DIAG_WARN(x) DIAG_PRAGMA(push) DIAG_PRAGMA(warning DIAG_JOINSTR(-W,x))
+    #define DIAG_ON(x) DIAG_PRAGMA(pop)
+
+    /*
+     * We assume GCC 4.8 and later understand -Wpedantic.
+     */
+    #define DIAG_OFF_PEDANTIC DIAG_OFF(pedantic)
+    #define DIAG_ON_PEDANTIC DIAG_ON(pedantic)
+
+    /*
+     * GCC 4.2 and later understand -Woverride-init.
+     */
+    #define DIAG_OFF_INIT_TWICE DIAG_OFF(override-init)
+    #define DIAG_ON_INIT_TWICE DIAG_ON(override-init)
+  #else
+    #define DIAG_OFF_PEDANTIC
+    #define DIAG_ON_PEDANTIC
+
+    #define DIAG_OFF_INIT_TWICE
+    #define DIAG_ON_INIT_TWICE
+  #endif
+#endif
+
+/* This applies to both Clang and GCC, and any other compiler that claims
+ * GNU C support. The version is GCC specific, we just assume Clang understands
+ * this warning. */
+#if defined(__clang__) || WS_IS_AT_LEAST_GNUC_VERSION(14,1)
+  #define DIAG_OFF_TYPE_LIMITS() DIAG_OFF(type-limits)
+  #define DIAG_ON_TYPE_LIMITS() DIAG_ON(type-limits)
+#else
+  #define DIAG_OFF_TYPE_LIMITS()
+  #define DIAG_ON_TYPE_LIMITS()
+#endif
+
+#ifndef DIAG_OFF
+  /*
+   * This is none of the above; we don't have any way to turn diagnostics
+   * on or off.
+   *
+   * XXX - you can do that in MSVC, but it's done differently; we'd
+   * have to have macros for *particular* diagnostics, using the
+   * warning flag for GCC and Clang and the error number for MSVC.
+   */
+  #define DIAG_OFF(x)
+  #define DIAG_WARN(x)
+  #define DIAG_ON(x)
+  #define DIAG_OFF_PEDANTIC
+  #define DIAG_ON_PEDANTIC
+  #define DIAG_OFF_INIT_TWICE
+  #define DIAG_ON_INIT_TWICE
+#endif
+
+/* Use for clang specific pragmas, so we can keep -Wpragmas enabled */
+#ifdef __clang__
+#  define DIAG_OFF_CLANG(x) DIAG_OFF(x)
+#  define DIAG_WARN_CLANG(x) DIAG_WARN(x)
+#  define DIAG_ON_CLANG(x)  DIAG_ON(x)
+#else
+#  define DIAG_OFF_CLANG(x)
+#  define DIAG_ON_CLANG(x)
+#endif
+
+/*
+ * Suppress complaints about narrowing conversations and about signed vs.
+ * unsigned comparison.
+ *
+ * XXX - this is done solely to squelch complaints from code generated
+ * by Flex, but newer versions of Flex might fix the code; can we
+ * check the version of Flex and suppress only the checks that code
+ * generated by that version of Flex triggers?
+ */
+#if defined(_MSC_VER)
+  /*
+   * Suppress:
+   *
+   *   warning C4018: signed/unsigned mismatch
+   *   warning C4244: 'initializing' : conversion from '__int64' to 'int', possible loss of data
+   *   warning C4267: 'argument' : conversion from 'size_t' to 'int', possible loss of data
+   *
+   * as well as Visual Studio Code Analyzer warnings:
+   *
+   *   warning C6011: Dereferencing NULL pointer
+   *   warning C6308: 'realloc' might return null pointer
+   *   warning C6386: Buffer overrun
+   *   warning C6387: 'XXX' could be '0'
+   *   warning C28182: Dereferencing NULL pointer
+   */
+  #define DIAG_OFF_FLEX() \
+    __pragma(warning(push)) \
+    __pragma(warning(disable:4018)) \
+    __pragma(warning(disable:4244)) \
+    __pragma(warning(disable:4267)) \
+    __pragma(warning(disable:6011)) \
+    __pragma(warning(disable:6308)) \
+    __pragma(warning(disable:6386)) \
+    __pragma(warning(disable:6387)) \
+    __pragma(warning(disable:28182))
+  #define DIAG_ON_FLEX() \
+    __pragma(warning(pop))
+#else
+  /*
+   * Suppress:
+   *
+   *   -Wsigned-compare warnings
+   *   -Wshorten-64-to-32 warnings, if the compiler *has* -Wshorten-64-to-32
+   *   -Wunreachable-code warnings
+   * The version of Flex in the macOS Intel build bots triggers documentation warnings.
+   *   -Wdocumentation
+   *
+   * We use DIAG_OFF() and DIAG_ON(), so we only use features that the
+   * compiler supports.
+   *
+   * We disable -Wshorten-64-to-32 if we're using Clang, or if __APPLE__
+   * is defined; that option was originally added to an Apple version of
+   * GCC, and at least some versions of Clang support it - given that
+   * the Clang work started at Apple, it may be in all versions of Clang.
+   *
+   * (Does no version of GCC or Clang support the same generic "you're
+   * narrowing a value, and you didn't throw in a cast to assert that
+   * you know what you're doing" warning that MSVC does?)
+   */
+  #if defined(__clang__) || defined(__APPLE__)
+    #define DIAG_OFF_FLEX() \
+      DIAG_OFF(sign-compare) \
+      DIAG_OFF(unused-parameter) \
+      DIAG_OFF(shorten-64-to-32) \
+      DIAG_OFF(unreachable-code) \
+      DIAG_OFF(documentation)
+    #define DIAG_ON_FLEX() \
+      DIAG_ON(documentation)    \
+      DIAG_ON(unreachable-code) \
+      DIAG_ON(shorten-64-to-32) \
+      DIAG_ON(unused-parameter) \
+      DIAG_ON(sign-compare)
+  #else
+    #define DIAG_OFF_FLEX() \
+      DIAG_OFF(sign-compare) \
+      DIAG_OFF(unused-parameter)
+    #define DIAG_ON_FLEX() \
+      DIAG_ON(unused-parameter) \
+      DIAG_ON(sign-compare)
+  #endif
+#endif
+
+/* Disable Lemon warnings. */
+#if defined(_MSC_VER)
+  /*
+   * Suppress:
+   *
+   *   warning C4100: unreferenced formal parameter
+   *
+   * Note https://gitlab.kitware.com/cmake/cmake/-/issues/18736
+   * makes it better to suppress MSVC warnings here than in CMake.
+   */
+  #define DIAG_OFF_LEMON() \
+    __pragma(warning(push)) \
+    __pragma(warning(disable:4100))
+  #define DIAG_ON_LEMON() \
+    __pragma(warning(pop))
+#else
+  #define DIAG_OFF_LEMON() \
+    DIAG_OFF_CLANG(unreachable-code) \
+    DIAG_OFF_TYPE_LIMITS() \
+    DIAG_OFF(unused-parameter)
+  #define DIAG_ON_LEMON() \
+    DIAG_ON_CLANG(unreachable-code) \
+    DIAG_ON_TYPE_LIMITS() \
+    DIAG_ON(unused-parameter)
+#endif
+
+/*
+ * Suppress warnings about casting away constness.
+ * Do this only if you know that the pointer is to something that can
+ * be written and, in this context, should be writable.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+  /*
+   * GCC or a compiler that claims to be GCC-compatible.
+   * We throw in Clang just in case clang-cl doesn't define
+   * __GNUC__; if it does, __GNUC__ should suffice.
+   */
+  #define DIAG_OFF_CAST_AWAY_CONST DIAG_OFF(cast-qual)
+  #define DIAG_ON_CAST_AWAY_CONST DIAG_OFF(cast-qual)
+#elif defined(_MSC_VER)
+  #define DIAG_OFF_CAST_AWAY_CONST
+  #define DIAG_ON_CAST_AWAY_CONST
+#else
+  #define DIAG_OFF_CAST_AWAY_CONST
+  #define DIAG_ON_CAST_AWAY_CONST
+#endif
+
+/*
+ * This warning is only supported by GCC since version 7.1 (and not
+ * Clang or other compilers that claim GNU C support).
+ */
+#if WS_GCC_VERSION >= 70100
+  #define DIAG_OFF_STRINGOP_OVERFLOW() DIAG_OFF(stringop-overflow=)
+  #define DIAG_ON_STRINGOP_OVERFLOW() DIAG_ON(stringop-overflow=)
+#else
+  #define DIAG_OFF_STRINGOP_OVERFLOW()
+  #define DIAG_ON_STRINGOP_OVERFLOW()
+#endif
+
+/*
+ *	For dealing with APIs which are only deprecated in macOS (like the
+ *	OpenSSL and MIT/Heimdal Kerberos APIs).
+ *
+ *	Dear Apple: this is a cross-platform program, and we're not
+ *	going to use your Shiny New Frameworks on macOS unless there's
+ *	a sufficiently clear benefit to make it worth our while to have
+ *	both macOS and non-macOS versions of the code.
+ */
+#ifdef __APPLE__
+#  define USES_APPLE_DEPRECATED_API DIAG_OFF(deprecated-declarations)
+#  define USES_APPLE_RST DIAG_ON(deprecated-declarations)
+#else
+#  define USES_APPLE_DEPRECATED_API
+#  define USES_APPLE_RST
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* __WS_DIAG_CONTROL_H__ */
+/* End embedded header */
+
 /* Begin include/ws_posix_compat.h */
 /* ws_posix_compat.h
  * Definitions for POSIX compatibility.
@@ -579,6 +922,645 @@ typedef SSIZE_T ssize_t;
 #endif /* !HAVE_SSIZE_T */
 
 #endif /* __POSIX_COMPAT_H__ */
+/* End embedded header */
+
+/* Begin include/ws_log_defs.h */
+/* ws_log_defs.h
+ * log domain definitions
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WS_LOG_DOMAINS_H__
+#define __WS_LOG_DOMAINS_H__
+
+/*
+ * Which log domain to use is a matter of policy. Any string is valid.
+ * There are no hard rules but using a pre-defined log domain is a good
+ * rule of thumb (there is no pre-defined domain below for dissectors
+ * though).
+ */
+
+/* Main execution domain (wireshark, tshark, etc) */
+#define LOG_DOMAIN_MAIN       "Main"
+
+/* Capture domain (except for capture child, see below) */
+#define LOG_DOMAIN_CAPTURE    "Capture"
+
+/* Capture child domain (the capture child might also contain
+ * file domain messages!) */
+#define LOG_DOMAIN_CAPCHILD   "Capchild"
+
+#define LOG_DOMAIN_WIRETAP    "Wiretap"
+
+#define LOG_DOMAIN_EPAN       "Epan"
+
+#define LOG_DOMAIN_DFILTER    "DFilter"
+
+#define LOG_DOMAIN_WSUTIL     "WSUtil"
+
+#define LOG_DOMAIN_QTUI       "GUI"
+
+#define LOG_DOMAIN_UAT        "UAT"
+
+#define LOG_DOMAIN_EXTCAP     "Extcap"
+
+#define LOG_DOMAIN_UTF_8      "UTF-8"
+
+#define LOG_DOMAIN_MMDB       "MaxMindDB"
+
+#define LOG_DOMAIN_EINVAL     "InvalidArg"
+
+#define LOG_DOMAIN_PLUGINS    "Plugins"
+
+#define LOG_DOMAIN_WSLUA      "Lua"
+
+/*
+ * Ascending order by priority needs to be maintained. Higher priorities have
+ * higher values.
+ */
+enum ws_log_level {
+    LOG_LEVEL_NONE,       /* not user facing */
+    LOG_LEVEL_NOISY,      /* extra verbose debugging */
+    LOG_LEVEL_DEBUG,      /* normal debugging level */
+    LOG_LEVEL_INFO,       /* chatty status but not debug */
+    LOG_LEVEL_MESSAGE,    /* default level, doesn't show file/function name */
+    LOG_LEVEL_WARNING,    /* can be set to fatal */
+    LOG_LEVEL_CRITICAL,   /* always enabled, can be set to fatal */
+    LOG_LEVEL_ERROR,      /* "error" is always fatal (aborts) */
+    LOG_LEVEL_ECHO,       /* Always print message, never fatal */
+    _LOG_LEVEL_LAST
+};
+
+#endif /* __WS_LOG_DOMAINS_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin wsutil/ws_getopt.h */
+/** @file
+ *
+ * musl as a whole is licensed under the following standard MIT license:
+ *
+ * ----------------------------------------------------------------------
+ * Copyright © 2005-2020 Rich Felker, et al.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * ----------------------------------------------------------------------
+ */
+
+#ifndef _WS_GETOPT_H_
+#define _WS_GETOPT_H_
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+WS_DLL_PUBLIC int ws_getopt(int, char * const [], const char *);
+WS_DLL_PUBLIC char *ws_optarg;
+WS_DLL_PUBLIC int ws_optind, ws_opterr, ws_optopt, ws_optpos, ws_optreset;
+
+struct ws_option {
+	const char *name;
+	int has_arg;
+	int *flag;
+	int val;
+};
+
+WS_DLL_PUBLIC int ws_getopt_long(int, char *const *, const char *, const struct ws_option *, int *);
+WS_DLL_PUBLIC int ws_getopt_long_only(int, char *const *, const char *, const struct ws_option *, int *);
+
+#define ws_no_argument        0
+#define ws_required_argument  1
+#define ws_optional_argument  2
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+/* End embedded header */
+
+/* Begin wsutil/wslog.h */
+/** @file
+ *
+ * Copyright 2021, João Valverde <j@v6e.pt>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WSLOG_H__
+#define __WSLOG_H__
+
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <time.h>
+
+
+#ifdef WS_LOG_DOMAIN
+#define _LOG_DOMAIN WS_LOG_DOMAIN
+#else
+#define _LOG_DOMAIN ""
+#endif
+
+#ifdef WS_DEBUG
+#define _LOG_DEBUG_ENABLED true
+#else
+#define _LOG_DEBUG_ENABLED false
+#endif
+
+/*
+ * Define the macro WS_LOG_DOMAIN *before* including this header,
+ * for example:
+ *   #define WS_LOG_DOMAIN LOG_DOMAIN_MAIN
+ */
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Console open preference is stored in the Windows registry.
+ *   HKEY_CURRENT_USER\Software\Wireshark\ConsoleOpen
+ */
+#define LOG_HKCU_CONSOLE_OPEN   "ConsoleOpen"
+
+typedef enum {
+    LOG_CONSOLE_OPEN_NEVER,
+    LOG_CONSOLE_OPEN_AUTO, /* On demand. */
+    LOG_CONSOLE_OPEN_ALWAYS, /* Open during startup. */
+} ws_log_console_open_pref;
+
+WSUTIL_EXPORT
+ws_log_console_open_pref ws_log_console_open;
+
+typedef struct {
+    struct tm tstamp_secs;
+    long nanosecs;
+    intmax_t pid;
+} ws_log_manifest_t;
+
+/** Callback for registering a log writer. */
+typedef void (ws_log_writer_cb)(const char *domain, enum ws_log_level level,
+                            const char *file, long line, const char *func,
+                            const char *fatal_msg, ws_log_manifest_t *mft,
+                            const char *user_format, va_list user_ap,
+                            void *user_data);
+
+
+/** Callback for freeing a user data pointer. */
+typedef void (ws_log_writer_free_data_cb)(void *user_data);
+
+
+WS_DLL_PUBLIC
+void ws_log_file_writer(FILE *fp, const char *domain, enum ws_log_level level,
+                            const char *file, long line, const char *func,
+                            ws_log_manifest_t *mft,
+                            const char *user_format, va_list user_ap);
+
+
+WS_DLL_PUBLIC
+void ws_log_console_writer(const char *domain, enum ws_log_level level,
+                            const char *file, long line, const char *func,
+                            ws_log_manifest_t *mft,
+                            const char *user_format, va_list user_ap);
+
+
+/** Configure log levels "info" and below to use stdout.
+ *
+ * Normally all log messages are written to stderr. For backward compatibility
+ * with GLib calling this function with true configures log levels "info",
+ * "debug" and "noisy" to be written to stdout.
+ */
+WS_DLL_PUBLIC
+void ws_log_console_writer_set_use_stdout(bool use_stdout);
+
+
+/** Convert a numerical level to its string representation. */
+WS_DLL_PUBLIC
+WS_RETNONNULL
+const char *ws_log_level_to_string(enum ws_log_level level);
+
+
+/** Checks if a domain and level combination generate output.
+ *
+ * Returns true if a message will be printed for the domain/level combo.
+ */
+WS_DLL_PUBLIC
+bool ws_log_msg_is_active(const char *domain, enum ws_log_level level);
+
+
+/** Return the currently active log level. */
+WS_DLL_PUBLIC
+enum ws_log_level ws_log_get_level(void);
+
+
+/** Set the active log level. Returns the active level or LOG_LEVEL_NONE
+ * if level is invalid. */
+WS_DLL_PUBLIC
+enum ws_log_level ws_log_set_level(enum ws_log_level level);
+
+
+/** Set the active log level from a string.
+ *
+ * String levels are "error", "critical", "warning", "message", "info",
+ * "debug" and "noisy" (case insensitive).
+ * Returns the new log level or LOG_LEVEL NONE if the string representation
+ * is invalid.
+ */
+WS_DLL_PUBLIC
+enum ws_log_level ws_log_set_level_str(const char *str_level);
+
+
+/** Set a domain filter from a string.
+ *
+ * Domain filter is a case insensitive list separated by ',' or ';'. Only
+ * the domains in the filter will generate output; the others will be muted.
+ * Filter expressions can be preceded by '!' to invert the sense of the match.
+ * In this case only non-matching domains will generate output.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_domain_filter(const char *domain_filter);
+
+/** Set a fatal domain filter from a string.
+ *
+ * Domain filter is a case insensitive list separated by ',' or ';'. Domains
+ * in the filter will cause the program to abort.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_fatal_domain_filter(const char *domain_filter);
+
+
+/** Set a debug filter from a string.
+ *
+ * A debug filter lists all domains that should have debug level output turned
+ * on, regardless of the global log level and domain filter. If negated
+ * then debug (and below) will be disabled and the others unaffected by
+ * the filter.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_debug_filter(const char *str_filter);
+
+
+/** Set a noisy filter from a string.
+ *
+ * Same as ws_log_set_debug_filter() for "noisy" level.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_noisy_filter(const char *str_filter);
+
+
+/** Set the fatal log level.
+ *
+ * Sets the log level at which calls to ws_log() will abort the program. The
+ * argument can be LOG_LEVEL_ERROR, LOG_LEVEL_CRITICAL or LOG_LEVEL_WARNING.
+ * Level LOG_LEVEL_ERROR is always fatal.
+ */
+WS_DLL_PUBLIC
+enum ws_log_level ws_log_set_fatal_level(enum ws_log_level level);
+
+
+/** Set the fatal log level from a string.
+ *
+ * Same as ws_log_set_fatal(), but accepts the strings "error", critical" or
+ * "warning" instead as arguments.
+ */
+WS_DLL_PUBLIC
+enum ws_log_level  ws_log_set_fatal_level_str(const char *str_level);
+
+
+/** Set the active log writer.
+ *
+ * The parameter 'writer' can be NULL to use the default writer.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_writer(ws_log_writer_cb *writer);
+
+
+/** Set the active log writer.
+ *
+ * The parameter 'writer' can be NULL to use the default writer.
+ * Accepts an extra user_data parameter that will be passed to
+ * the log writer.
+ */
+WS_DLL_PUBLIC
+void ws_log_set_writer_with_data(ws_log_writer_cb *writer,
+                        void *user_data,
+                        ws_log_writer_free_data_cb *free_user_data);
+
+
+#define LOG_ARGS_NOEXIT -1
+
+#define LONGOPT_WSLOG_LOG_LEVEL            LONGOPT_BASE_WSLOG+1
+#define LONGOPT_WSLOG_LOG_DOMAIN           LONGOPT_BASE_WSLOG+2
+#define LONGOPT_WSLOG_LOG_FILE             LONGOPT_BASE_WSLOG+3
+#define LONGOPT_WSLOG_LOG_FATAL            LONGOPT_BASE_WSLOG+4
+#define LONGOPT_WSLOG_LOG_FATAL_DOMAIN     LONGOPT_BASE_WSLOG+5
+#define LONGOPT_WSLOG_LOG_DEBUG            LONGOPT_BASE_WSLOG+6
+#define LONGOPT_WSLOG_LOG_NOISY            LONGOPT_BASE_WSLOG+7
+
+/** Logging options for command line
+*/
+#define LONGOPT_WSLOG \
+    {"log-level",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_LEVEL},  \
+    {"log-domain",            ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DOMAIN}, \
+    /* Alias "domain" and "domains". */                                              \
+    {"log-domains",           ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DOMAIN}, \
+    {"log-file",              ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FILE},   \
+    {"log-fatal",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL},  \
+    /* Alias "domain" and "domains". */                                                    \
+    {"log-fatal-domain",      ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL_DOMAIN}, \
+    {"log-fatal-domains",     ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL_DOMAIN}, \
+    {"log-debug",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DEBUG}, \
+    {"log-noisy",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_NOISY},
+
+/** Parses the command line arguments for log options.
+ *
+ * Returns zero for no error, non-zero for one or more invalid options.
+ */
+WS_DLL_PUBLIC
+int ws_log_parse_args(int *argc_ptr, char *argv[],
+                        const char* optstring, const struct ws_option* long_options,
+                        void (*vcmdarg_err)(const char *, va_list ap),
+                        int exit_failure);
+
+/** Determine if command line argument is used by wslog
+*
+* Used when applications are strict about command line arguments passed to it,
+* but shouldn't be handling these themselves
+*/
+WS_DLL_PUBLIC
+bool ws_log_is_wslog_arg(int arg);
+
+
+
+/** Initializes the logging code.
+ *
+ * Must be called at startup before using the log API. If provided
+ * vcmdarg_err is used to print initialization errors. This usually means
+ * a misconfigured environment variable.
+ */
+WS_DLL_PUBLIC
+void ws_log_init(void (*vcmdarg_err)(const char *, va_list ap));
+
+
+/** Initializes the logging code.
+ *
+ * Can be used instead of wslog_init(). Takes an extra writer argument.
+ * If provided this callback will be used instead of the default writer.
+ */
+WS_DLL_PUBLIC
+void ws_log_init_with_writer(ws_log_writer_cb *writer,
+                        void (*vcmdarg_err)(const char *, va_list ap));
+
+
+/** Initializes the logging code.
+ *
+ * Accepts a user data pointer in addition to the writer. This pointer will
+ * be provided to the writer with every invocation. If provided
+ * free_user_data will be called during cleanup.
+ */
+WS_DLL_PUBLIC
+void ws_log_init_with_writer_and_data(ws_log_writer_cb *writer,
+                        void *user_data,
+                        ws_log_writer_free_data_cb *free_user_data,
+                        void (*vcmdarg_err)(const char *, va_list ap));
+
+
+/** This function is called to output a message to the log.
+ *
+ * Takes a format string and a variable number of arguments.
+ */
+WS_DLL_PUBLIC
+void ws_log(const char *domain, enum ws_log_level level,
+                    const char *format, ...) G_GNUC_PRINTF(3,4);
+
+
+/** This function is called to output a message to the log.
+ *
+ * Takes a format string and a 'va_list'.
+ */
+WS_DLL_PUBLIC
+void ws_logv(const char *domain, enum ws_log_level level,
+                    const char *format, va_list ap);
+
+
+/** This function is called to output a message to the log.
+ *
+ * In addition to the message this function accepts file/line/function
+ * information.
+ */
+WS_DLL_PUBLIC
+void ws_log_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const char *format, ...) G_GNUC_PRINTF(6,7);
+
+
+/** This function is called to output a message to the log.
+ *
+ * In addition to the message this function accepts file/line/function
+ * information.
+ */
+WS_DLL_PUBLIC
+void ws_logv_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const char *format, va_list ap);
+
+
+WS_DLL_PUBLIC
+WS_NORETURN
+void ws_log_fatal_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const char *format, ...) G_GNUC_PRINTF(6,7);
+
+
+/*
+ * The if condition avoids -Wunused warnings for variables used only with
+ * WS_DEBUG, typically inside a ws_debug() call. The compiler will
+ * optimize away the dead execution branch.
+ */
+#define _LOG_IF_ACTIVE(active, level, file, line, func, ...) \
+        do {                                        \
+            if (active) {                           \
+                ws_log_full(_LOG_DOMAIN, level,     \
+                            file, line, func,       \
+                            __VA_ARGS__);           \
+            }                                       \
+        } while (0)
+
+#define _LOG_FULL(active, level, ...) \
+        _LOG_IF_ACTIVE(active, level, __FILE__, __LINE__, __func__, __VA_ARGS__)
+
+#define _LOG_SIMPLE(active, level, ...) \
+        _LOG_IF_ACTIVE(active, level, NULL, -1, NULL, __VA_ARGS__)
+
+/** Logs with "error" level.
+ *
+ * Accepts a format string and includes the file and function name.
+ *
+ * "error" is always fatal and terminates the program with a coredump.
+ */
+#define ws_error(...) \
+        ws_log_fatal_full(_LOG_DOMAIN, LOG_LEVEL_ERROR, \
+                            __FILE__, __LINE__, __func__, __VA_ARGS__)
+
+/** Logs with "critical" level.
+ *
+ * Accepts a format string and includes the file and function name.
+ */
+#define ws_critical(...) \
+        _LOG_FULL(true, LOG_LEVEL_CRITICAL, __VA_ARGS__)
+
+/** Logs with "warning" level.
+ *
+ * Accepts a format string and includes the file and function name.
+ */
+#define ws_warning(...) \
+        _LOG_FULL(true, LOG_LEVEL_WARNING, __VA_ARGS__)
+
+/** Logs with "message" level.
+ *
+ * Accepts a format string and does not include the file and function
+ * name (use ws_log_full instead). This is the default log level.
+ */
+#define ws_message(...) \
+        _LOG_SIMPLE(true, LOG_LEVEL_MESSAGE, __VA_ARGS__)
+
+/** Logs with "info" level.
+ *
+ * Accepts a format string and does not include the file and function
+ * name (use ws_log_full instead).
+ */
+#define ws_info(...) \
+        _LOG_SIMPLE(true, LOG_LEVEL_INFO, __VA_ARGS__)
+
+/** Logs with "debug" level.
+ *
+ * Accepts a format string and includes the file and function name.
+ */
+#define ws_debug(...) \
+        _LOG_FULL(_LOG_DEBUG_ENABLED, LOG_LEVEL_DEBUG, __VA_ARGS__)
+
+/** Logs with "noisy" level.
+ *
+ * Accepts a format string and includes the file and function name.
+ */
+#define ws_noisy(...) \
+        _LOG_FULL(_LOG_DEBUG_ENABLED, LOG_LEVEL_NOISY, __VA_ARGS__)
+
+/** Used for temporary debug print outs, always active. */
+#define WS_DEBUG_HERE(...) \
+        _LOG_FULL(true, LOG_LEVEL_ECHO, __VA_ARGS__)
+
+#define WS_NOT_IMPLEMENTED() \
+        ws_error("Not implemented yet")
+
+WS_DLL_PUBLIC
+void ws_log_utf8_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const char *string, ssize_t length, const char *endptr);
+
+
+#define ws_log_utf8(str, len, endptr) \
+    do {                                                        \
+        if (_LOG_DEBUG_ENABLED) {                               \
+            ws_log_utf8_full(LOG_DOMAIN_UTF_8, LOG_LEVEL_DEBUG, \
+                                __FILE__, __LINE__, __func__,   \
+                                str, len, endptr);              \
+        }                                                       \
+    } while (0)
+
+
+/** This function is called to log a buffer (bytes array).
+ *
+ * Accepts an optional 'msg' argument to provide a description.
+ */
+WS_DLL_PUBLIC
+void ws_log_buffer_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const uint8_t *buffer, size_t size,
+                    size_t max_bytes_len, const char *msg);
+
+
+#define ws_log_buffer(buf, size, msg) \
+        do {                                                        \
+            if (_LOG_DEBUG_ENABLED) {                               \
+                ws_log_buffer_full(_LOG_DOMAIN, LOG_LEVEL_DEBUG,    \
+                        __FILE__, __LINE__, __func__,               \
+                        buf, size, 36, msg ? msg : #buf);           \
+            }                                                       \
+        } while (0)
+
+
+/** Auxiliary function to write custom logging functions.
+ *
+ * This function is the same as ws_log_full() but does not perform any
+ * domain/level filtering to avoid a useless double activation check.
+ * It should only be used in conjunction with a pre-check using
+ * ws_log_msg_is_active().
+ */
+WS_DLL_PUBLIC
+void ws_log_write_always_full(const char *domain, enum ws_log_level level,
+                    const char *file, long line, const char *func,
+                    const char *format, ...) G_GNUC_PRINTF(6,7);
+
+
+/** Define an auxiliary file pointer where messages should be written.
+ *
+ * This file, if set, functions in addition to the registered or
+ * default log writer.
+ */
+WS_DLL_PUBLIC
+void ws_log_add_custom_file(FILE *fp);
+
+
+WS_DLL_PUBLIC
+void ws_log_print_usage(FILE *fp);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __WSLOG_H__ */
 /* End embedded header */
 
 /* Begin wsutil/wmem/wmem_core.h */
@@ -2644,1105 +3626,6 @@ wmem_unregister_callback(wmem_allocator_t *allocator, unsigned id);
  */
 /* End embedded header */
 
-/* Begin epan/wmem_scopes.h */
-/** @file
- * Definitions for the Wireshark Memory Manager Scopes
- * Copyright 2012, Evan Huus <eapache@gmail.com>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WMEM_SCOPES_H__
-#define __WMEM_SCOPES_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/**
- * @brief Fetch the current epan scope.
- *
- * Allocated memory is freed when wmem_leave_epan_scope() is called, which is normally at program exit.
- */
-WS_DLL_PUBLIC
-wmem_allocator_t *
-wmem_epan_scope(void);
-
-/**
- * @brief Fetch the current file scope.
- *
- * Allocated memory is freed when wmem_leave_file_scope() is called, which is normally when a capture file is closed.
- */
-WS_DLL_PUBLIC
-wmem_allocator_t *
-wmem_file_scope(void);
-
-WS_DLL_LOCAL
-void
-wmem_enter_file_scope(void);
-
-WS_DLL_LOCAL
-void
-wmem_leave_file_scope(void);
-
-/* Scope Management */
-
-WS_DLL_PUBLIC
-void
-wmem_init_scopes(void);
-
-WS_DLL_PUBLIC
-void
-wmem_cleanup_scopes(void);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __WMEM_SCOPES_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/guid-utils.h */
-/** @file
- * Definitions for GUID handling
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- *
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __GUID_UTILS_H__
-#define __GUID_UTILS_H__
-
-#include <stdint.h>
-
-#define GUID_LEN	16
-
-/* Note: this might be larger than GUID_LEN, so don't overlay data in packets
-   with this. */
-typedef struct _e_guid_t {
-    uint32_t data1;
-    uint16_t data2;
-    uint16_t data3;
-    uint8_t data4[8];
-} e_guid_t;
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-WS_DLL_PUBLIC void guids_init(void);
-
-/* add a GUID */
-WS_DLL_PUBLIC void guids_add_guid(const e_guid_t *guid, const char *name);
-
-/* remove a guid to name mapping */
-WS_DLL_PUBLIC void guids_delete_guid(const e_guid_t *guid);
-
-/* try to get registered name for this GUID */
-WS_DLL_PUBLIC const char *guids_get_guid_name(const e_guid_t *guid, wmem_allocator_t *scope);
-
-/* resolve GUID to name (or if unknown to hex string) */
-/* (if you need hex string only, use guid_to_str instead) */
-WS_DLL_PUBLIC const char* guids_resolve_guid_to_str(const e_guid_t *guid, wmem_allocator_t *scope);
-
-/* add a UUID (dcerpc_init_uuid() will call this too) */
-#define guids_add_uuid(uuid, name) guids_add_guid((const e_guid_t *) (uuid), (name))
-
-/* try to get registered name for this UUID */
-#define guids_get_uuid_name(uuid, scope) guids_get_guid_name((e_guid_t *) (uuid), scope)
-
-/* resolve UUID to name (or if unknown to hex string) */
-/* (if you need hex string only, use guid_to_str instead) */
-#define guids_resolve_uuid_to_str(uuid) guids_resolve_guid_to_str((e_guid_t *) (uuid))
-
-WS_DLL_PUBLIC int guid_cmp(const e_guid_t *g1, const e_guid_t *g2);
-
-WS_DLL_PUBLIC unsigned guid_hash(const e_guid_t *guid);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __GUID_UTILS_H__ */
-/* End embedded header */
-
-/* Begin include/ws_diag_control.h */
-/* ws_diag_control.h
- * Turn compiler diagnostic messages on and off.
- *
- * From FreeRADIUS build.h.
- *
- * @copyright 2013 The FreeRADIUS server project
- *
- * That project is covered by the GPLv2, so:
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WS_DIAG_CONTROL_H__
-#define __WS_DIAG_CONTROL_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define XSTRINGIFY(x) #x
-
-/*
- *	Macros for controlling warnings in various compilers.
- */
-#define DIAG_JOINSTR(x,y) XSTRINGIFY(x ## y)
-
-/*
- * XXX - this is only for GCC or GCC-compatible compilers, and we only use
- * it to have a macro that takes a warning as an argument and turns it
- * off in the appropriate fashion for Clang and GCC; it should only be
- * used internally in this header.
- */
-#define DIAG_DO_PRAGMA(x) _Pragma (#x)
-
-#if defined(__clang__)
-  /*
-   * Clang, so we'd use _Pragma("clang diagnostic XXX"), if it's
-   * supported.
-   */
-  #if WS_IS_AT_LEAST_CLANG_VERSION(2,8)
-    /*
-     * This is Clang 2.8 or later: we can use "clang diagnostic ignored -Wxxx"
-     * and "clang diagnostic push/pop".
-     */
-    #define DIAG_PRAGMA(x) DIAG_DO_PRAGMA(clang diagnostic x)
-    #define DIAG_OFF(x) DIAG_PRAGMA(push) DIAG_PRAGMA(ignored DIAG_JOINSTR(-W,x))
-    #define DIAG_WARN(x) DIAG_PRAGMA(push) DIAG_PRAGMA(warning DIAG_JOINSTR(-W,x))
-    #define DIAG_ON(x) DIAG_PRAGMA(pop)
-  #endif
-
-  /*
-   * Not all versions of Clang understand -Wpedantic.  Clang 4.0 appears
-   * to be the first version to do so.
-   */
-  #if WS_IS_AT_LEAST_CLANG_VERSION(4,0)
-    #define DIAG_OFF_PEDANTIC DIAG_OFF(pedantic)
-    #define DIAG_ON_PEDANTIC DIAG_ON(pedantic)
-  #else
-    #define DIAG_OFF_PEDANTIC
-    #define DIAG_ON_PEDANTIC
-  #endif
-
-  /*
-   * Do any pre-5.0 versions of Clang understand -Winitializer-overrides?
-   */
-  #if WS_IS_AT_LEAST_CLANG_VERSION(4,0)
-    #define DIAG_OFF_INIT_TWICE DIAG_OFF(initializer-overrides)
-    #define DIAG_ON_INIT_TWICE DIAG_ON(initializer-overrides)
-  #else
-    #define DIAG_OFF_INIT_TWICE
-    #define DIAG_ON_INIT_TWICE
-  #endif
-#elif defined(__GNUC__)
-  /*
-   * GCC, or a compiler (other than Clang) that claims to be GCC.
-   * We assume that the compiler accepts _Pragma("GCC diagnostic xxx")
-   * even if it's only claiming to be GCC.
-   */
-  #if WS_IS_AT_LEAST_GNUC_VERSION(4,8)
-    /*
-     * This is GCC 4.8 or later, or a compiler claiming to be that.
-     * We can use "GCC diagnostic ignored -Wxxx" (introduced in 4.2)
-     * and "GCC diagnostic push/pop" (introduced in 4.6), *and* gcc
-     * supports "-Wpedantic" (introduced in 4.8), allowing us to
-     * turn off pedantic warnings with DIAG_OFF().
-     */
-    #define DIAG_PRAGMA(x) DIAG_DO_PRAGMA(GCC diagnostic x)
-    #define DIAG_OFF(x) DIAG_PRAGMA(push) DIAG_PRAGMA(ignored DIAG_JOINSTR(-W,x))
-    #define DIAG_WARN(x) DIAG_PRAGMA(push) DIAG_PRAGMA(warning DIAG_JOINSTR(-W,x))
-    #define DIAG_ON(x) DIAG_PRAGMA(pop)
-
-    /*
-     * We assume GCC 4.8 and later understand -Wpedantic.
-     */
-    #define DIAG_OFF_PEDANTIC DIAG_OFF(pedantic)
-    #define DIAG_ON_PEDANTIC DIAG_ON(pedantic)
-
-    /*
-     * GCC 4.2 and later understand -Woverride-init.
-     */
-    #define DIAG_OFF_INIT_TWICE DIAG_OFF(override-init)
-    #define DIAG_ON_INIT_TWICE DIAG_ON(override-init)
-  #else
-    #define DIAG_OFF_PEDANTIC
-    #define DIAG_ON_PEDANTIC
-
-    #define DIAG_OFF_INIT_TWICE
-    #define DIAG_ON_INIT_TWICE
-  #endif
-#endif
-
-/* This applies to both Clang and GCC, and any other compiler that claims
- * GNU C support. The version is GCC specific, we just assume Clang understands
- * this warning. */
-#if defined(__clang__) || WS_IS_AT_LEAST_GNUC_VERSION(14,1)
-  #define DIAG_OFF_TYPE_LIMITS() DIAG_OFF(type-limits)
-  #define DIAG_ON_TYPE_LIMITS() DIAG_ON(type-limits)
-#else
-  #define DIAG_OFF_TYPE_LIMITS()
-  #define DIAG_ON_TYPE_LIMITS()
-#endif
-
-#ifndef DIAG_OFF
-  /*
-   * This is none of the above; we don't have any way to turn diagnostics
-   * on or off.
-   *
-   * XXX - you can do that in MSVC, but it's done differently; we'd
-   * have to have macros for *particular* diagnostics, using the
-   * warning flag for GCC and Clang and the error number for MSVC.
-   */
-  #define DIAG_OFF(x)
-  #define DIAG_WARN(x)
-  #define DIAG_ON(x)
-  #define DIAG_OFF_PEDANTIC
-  #define DIAG_ON_PEDANTIC
-  #define DIAG_OFF_INIT_TWICE
-  #define DIAG_ON_INIT_TWICE
-#endif
-
-/* Use for clang specific pragmas, so we can keep -Wpragmas enabled */
-#ifdef __clang__
-#  define DIAG_OFF_CLANG(x) DIAG_OFF(x)
-#  define DIAG_WARN_CLANG(x) DIAG_WARN(x)
-#  define DIAG_ON_CLANG(x)  DIAG_ON(x)
-#else
-#  define DIAG_OFF_CLANG(x)
-#  define DIAG_ON_CLANG(x)
-#endif
-
-/*
- * Suppress complaints about narrowing conversations and about signed vs.
- * unsigned comparison.
- *
- * XXX - this is done solely to squelch complaints from code generated
- * by Flex, but newer versions of Flex might fix the code; can we
- * check the version of Flex and suppress only the checks that code
- * generated by that version of Flex triggers?
- */
-#if defined(_MSC_VER)
-  /*
-   * Suppress:
-   *
-   *   warning C4018: signed/unsigned mismatch
-   *   warning C4244: 'initializing' : conversion from '__int64' to 'int', possible loss of data
-   *   warning C4267: 'argument' : conversion from 'size_t' to 'int', possible loss of data
-   *
-   * as well as Visual Studio Code Analyzer warnings:
-   *
-   *   warning C6011: Dereferencing NULL pointer
-   *   warning C6308: 'realloc' might return null pointer
-   *   warning C6386: Buffer overrun
-   *   warning C6387: 'XXX' could be '0'
-   *   warning C28182: Dereferencing NULL pointer
-   */
-  #define DIAG_OFF_FLEX() \
-    __pragma(warning(push)) \
-    __pragma(warning(disable:4018)) \
-    __pragma(warning(disable:4244)) \
-    __pragma(warning(disable:4267)) \
-    __pragma(warning(disable:6011)) \
-    __pragma(warning(disable:6308)) \
-    __pragma(warning(disable:6386)) \
-    __pragma(warning(disable:6387)) \
-    __pragma(warning(disable:28182))
-  #define DIAG_ON_FLEX() \
-    __pragma(warning(pop))
-#else
-  /*
-   * Suppress:
-   *
-   *   -Wsigned-compare warnings
-   *   -Wshorten-64-to-32 warnings, if the compiler *has* -Wshorten-64-to-32
-   *   -Wunreachable-code warnings
-   * The version of Flex in the macOS Intel build bots triggers documentation warnings.
-   *   -Wdocumentation
-   *
-   * We use DIAG_OFF() and DIAG_ON(), so we only use features that the
-   * compiler supports.
-   *
-   * We disable -Wshorten-64-to-32 if we're using Clang, or if __APPLE__
-   * is defined; that option was originally added to an Apple version of
-   * GCC, and at least some versions of Clang support it - given that
-   * the Clang work started at Apple, it may be in all versions of Clang.
-   *
-   * (Does no version of GCC or Clang support the same generic "you're
-   * narrowing a value, and you didn't throw in a cast to assert that
-   * you know what you're doing" warning that MSVC does?)
-   */
-  #if defined(__clang__) || defined(__APPLE__)
-    #define DIAG_OFF_FLEX() \
-      DIAG_OFF(sign-compare) \
-      DIAG_OFF(unused-parameter) \
-      DIAG_OFF(shorten-64-to-32) \
-      DIAG_OFF(unreachable-code) \
-      DIAG_OFF(documentation)
-    #define DIAG_ON_FLEX() \
-      DIAG_ON(documentation)    \
-      DIAG_ON(unreachable-code) \
-      DIAG_ON(shorten-64-to-32) \
-      DIAG_ON(unused-parameter) \
-      DIAG_ON(sign-compare)
-  #else
-    #define DIAG_OFF_FLEX() \
-      DIAG_OFF(sign-compare) \
-      DIAG_OFF(unused-parameter)
-    #define DIAG_ON_FLEX() \
-      DIAG_ON(unused-parameter) \
-      DIAG_ON(sign-compare)
-  #endif
-#endif
-
-/* Disable Lemon warnings. */
-#if defined(_MSC_VER)
-  /*
-   * Suppress:
-   *
-   *   warning C4100: unreferenced formal parameter
-   *
-   * Note https://gitlab.kitware.com/cmake/cmake/-/issues/18736
-   * makes it better to suppress MSVC warnings here than in CMake.
-   */
-  #define DIAG_OFF_LEMON() \
-    __pragma(warning(push)) \
-    __pragma(warning(disable:4100))
-  #define DIAG_ON_LEMON() \
-    __pragma(warning(pop))
-#else
-  #define DIAG_OFF_LEMON() \
-    DIAG_OFF_CLANG(unreachable-code) \
-    DIAG_OFF_TYPE_LIMITS() \
-    DIAG_OFF(unused-parameter)
-  #define DIAG_ON_LEMON() \
-    DIAG_ON_CLANG(unreachable-code) \
-    DIAG_ON_TYPE_LIMITS() \
-    DIAG_ON(unused-parameter)
-#endif
-
-/*
- * Suppress warnings about casting away constness.
- * Do this only if you know that the pointer is to something that can
- * be written and, in this context, should be writable.
- */
-#if defined(__GNUC__) || defined(__clang__)
-  /*
-   * GCC or a compiler that claims to be GCC-compatible.
-   * We throw in Clang just in case clang-cl doesn't define
-   * __GNUC__; if it does, __GNUC__ should suffice.
-   */
-  #define DIAG_OFF_CAST_AWAY_CONST DIAG_OFF(cast-qual)
-  #define DIAG_ON_CAST_AWAY_CONST DIAG_OFF(cast-qual)
-#elif defined(_MSC_VER)
-  #define DIAG_OFF_CAST_AWAY_CONST
-  #define DIAG_ON_CAST_AWAY_CONST
-#else
-  #define DIAG_OFF_CAST_AWAY_CONST
-  #define DIAG_ON_CAST_AWAY_CONST
-#endif
-
-/*
- * This warning is only supported by GCC since version 7.1 (and not
- * Clang or other compilers that claim GNU C support).
- */
-#if WS_GCC_VERSION >= 70100
-  #define DIAG_OFF_STRINGOP_OVERFLOW() DIAG_OFF(stringop-overflow=)
-  #define DIAG_ON_STRINGOP_OVERFLOW() DIAG_ON(stringop-overflow=)
-#else
-  #define DIAG_OFF_STRINGOP_OVERFLOW()
-  #define DIAG_ON_STRINGOP_OVERFLOW()
-#endif
-
-/*
- *	For dealing with APIs which are only deprecated in macOS (like the
- *	OpenSSL and MIT/Heimdal Kerberos APIs).
- *
- *	Dear Apple: this is a cross-platform program, and we're not
- *	going to use your Shiny New Frameworks on macOS unless there's
- *	a sufficiently clear benefit to make it worth our while to have
- *	both macOS and non-macOS versions of the code.
- */
-#ifdef __APPLE__
-#  define USES_APPLE_DEPRECATED_API DIAG_OFF(deprecated-declarations)
-#  define USES_APPLE_RST DIAG_ON(deprecated-declarations)
-#else
-#  define USES_APPLE_DEPRECATED_API
-#  define USES_APPLE_RST
-#endif
-
-#ifdef __cplusplus
-}
-#endif
-#endif /* __WS_DIAG_CONTROL_H__ */
-/* End embedded header */
-
-/* Begin include/ws_log_defs.h */
-/* ws_log_defs.h
- * log domain definitions
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WS_LOG_DOMAINS_H__
-#define __WS_LOG_DOMAINS_H__
-
-/*
- * Which log domain to use is a matter of policy. Any string is valid.
- * There are no hard rules but using a pre-defined log domain is a good
- * rule of thumb (there is no pre-defined domain below for dissectors
- * though).
- */
-
-/* Main execution domain (wireshark, tshark, etc) */
-#define LOG_DOMAIN_MAIN       "Main"
-
-/* Capture domain (except for capture child, see below) */
-#define LOG_DOMAIN_CAPTURE    "Capture"
-
-/* Capture child domain (the capture child might also contain
- * file domain messages!) */
-#define LOG_DOMAIN_CAPCHILD   "Capchild"
-
-#define LOG_DOMAIN_WIRETAP    "Wiretap"
-
-#define LOG_DOMAIN_EPAN       "Epan"
-
-#define LOG_DOMAIN_DFILTER    "DFilter"
-
-#define LOG_DOMAIN_WSUTIL     "WSUtil"
-
-#define LOG_DOMAIN_QTUI       "GUI"
-
-#define LOG_DOMAIN_UAT        "UAT"
-
-#define LOG_DOMAIN_EXTCAP     "Extcap"
-
-#define LOG_DOMAIN_UTF_8      "UTF-8"
-
-#define LOG_DOMAIN_MMDB       "MaxMindDB"
-
-#define LOG_DOMAIN_EINVAL     "InvalidArg"
-
-#define LOG_DOMAIN_PLUGINS    "Plugins"
-
-#define LOG_DOMAIN_WSLUA      "Lua"
-
-/*
- * Ascending order by priority needs to be maintained. Higher priorities have
- * higher values.
- */
-enum ws_log_level {
-    LOG_LEVEL_NONE,       /* not user facing */
-    LOG_LEVEL_NOISY,      /* extra verbose debugging */
-    LOG_LEVEL_DEBUG,      /* normal debugging level */
-    LOG_LEVEL_INFO,       /* chatty status but not debug */
-    LOG_LEVEL_MESSAGE,    /* default level, doesn't show file/function name */
-    LOG_LEVEL_WARNING,    /* can be set to fatal */
-    LOG_LEVEL_CRITICAL,   /* always enabled, can be set to fatal */
-    LOG_LEVEL_ERROR,      /* "error" is always fatal (aborts) */
-    LOG_LEVEL_ECHO,       /* Always print message, never fatal */
-    _LOG_LEVEL_LAST
-};
-
-#endif /* __WS_LOG_DOMAINS_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin wsutil/ws_getopt.h */
-/** @file
- *
- * musl as a whole is licensed under the following standard MIT license:
- *
- * ----------------------------------------------------------------------
- * Copyright © 2005-2020 Rich Felker, et al.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- * ----------------------------------------------------------------------
- */
-
-#ifndef _WS_GETOPT_H_
-#define _WS_GETOPT_H_
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-WS_DLL_PUBLIC int ws_getopt(int, char * const [], const char *);
-WS_DLL_PUBLIC char *ws_optarg;
-WS_DLL_PUBLIC int ws_optind, ws_opterr, ws_optopt, ws_optpos, ws_optreset;
-
-struct ws_option {
-	const char *name;
-	int has_arg;
-	int *flag;
-	int val;
-};
-
-WS_DLL_PUBLIC int ws_getopt_long(int, char *const *, const char *, const struct ws_option *, int *);
-WS_DLL_PUBLIC int ws_getopt_long_only(int, char *const *, const char *, const struct ws_option *, int *);
-
-#define ws_no_argument        0
-#define ws_required_argument  1
-#define ws_optional_argument  2
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
-/* End embedded header */
-
-/* Begin wsutil/wslog.h */
-/** @file
- *
- * Copyright 2021, João Valverde <j@v6e.pt>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WSLOG_H__
-#define __WSLOG_H__
-
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <time.h>
-
-
-#ifdef WS_LOG_DOMAIN
-#define _LOG_DOMAIN WS_LOG_DOMAIN
-#else
-#define _LOG_DOMAIN ""
-#endif
-
-#ifdef WS_DEBUG
-#define _LOG_DEBUG_ENABLED true
-#else
-#define _LOG_DEBUG_ENABLED false
-#endif
-
-/*
- * Define the macro WS_LOG_DOMAIN *before* including this header,
- * for example:
- *   #define WS_LOG_DOMAIN LOG_DOMAIN_MAIN
- */
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * Console open preference is stored in the Windows registry.
- *   HKEY_CURRENT_USER\Software\Wireshark\ConsoleOpen
- */
-#define LOG_HKCU_CONSOLE_OPEN   "ConsoleOpen"
-
-typedef enum {
-    LOG_CONSOLE_OPEN_NEVER,
-    LOG_CONSOLE_OPEN_AUTO, /* On demand. */
-    LOG_CONSOLE_OPEN_ALWAYS, /* Open during startup. */
-} ws_log_console_open_pref;
-
-WSUTIL_EXPORT
-ws_log_console_open_pref ws_log_console_open;
-
-typedef struct {
-    struct tm tstamp_secs;
-    long nanosecs;
-    intmax_t pid;
-} ws_log_manifest_t;
-
-/** Callback for registering a log writer. */
-typedef void (ws_log_writer_cb)(const char *domain, enum ws_log_level level,
-                            const char *file, long line, const char *func,
-                            const char *fatal_msg, ws_log_manifest_t *mft,
-                            const char *user_format, va_list user_ap,
-                            void *user_data);
-
-
-/** Callback for freeing a user data pointer. */
-typedef void (ws_log_writer_free_data_cb)(void *user_data);
-
-
-WS_DLL_PUBLIC
-void ws_log_file_writer(FILE *fp, const char *domain, enum ws_log_level level,
-                            const char *file, long line, const char *func,
-                            ws_log_manifest_t *mft,
-                            const char *user_format, va_list user_ap);
-
-
-WS_DLL_PUBLIC
-void ws_log_console_writer(const char *domain, enum ws_log_level level,
-                            const char *file, long line, const char *func,
-                            ws_log_manifest_t *mft,
-                            const char *user_format, va_list user_ap);
-
-
-/** Configure log levels "info" and below to use stdout.
- *
- * Normally all log messages are written to stderr. For backward compatibility
- * with GLib calling this function with true configures log levels "info",
- * "debug" and "noisy" to be written to stdout.
- */
-WS_DLL_PUBLIC
-void ws_log_console_writer_set_use_stdout(bool use_stdout);
-
-
-/** Convert a numerical level to its string representation. */
-WS_DLL_PUBLIC
-WS_RETNONNULL
-const char *ws_log_level_to_string(enum ws_log_level level);
-
-
-/** Checks if a domain and level combination generate output.
- *
- * Returns true if a message will be printed for the domain/level combo.
- */
-WS_DLL_PUBLIC
-bool ws_log_msg_is_active(const char *domain, enum ws_log_level level);
-
-
-/** Return the currently active log level. */
-WS_DLL_PUBLIC
-enum ws_log_level ws_log_get_level(void);
-
-
-/** Set the active log level. Returns the active level or LOG_LEVEL_NONE
- * if level is invalid. */
-WS_DLL_PUBLIC
-enum ws_log_level ws_log_set_level(enum ws_log_level level);
-
-
-/** Set the active log level from a string.
- *
- * String levels are "error", "critical", "warning", "message", "info",
- * "debug" and "noisy" (case insensitive).
- * Returns the new log level or LOG_LEVEL NONE if the string representation
- * is invalid.
- */
-WS_DLL_PUBLIC
-enum ws_log_level ws_log_set_level_str(const char *str_level);
-
-
-/** Set a domain filter from a string.
- *
- * Domain filter is a case insensitive list separated by ',' or ';'. Only
- * the domains in the filter will generate output; the others will be muted.
- * Filter expressions can be preceded by '!' to invert the sense of the match.
- * In this case only non-matching domains will generate output.
- */
-WS_DLL_PUBLIC
-void ws_log_set_domain_filter(const char *domain_filter);
-
-/** Set a fatal domain filter from a string.
- *
- * Domain filter is a case insensitive list separated by ',' or ';'. Domains
- * in the filter will cause the program to abort.
- */
-WS_DLL_PUBLIC
-void ws_log_set_fatal_domain_filter(const char *domain_filter);
-
-
-/** Set a debug filter from a string.
- *
- * A debug filter lists all domains that should have debug level output turned
- * on, regardless of the global log level and domain filter. If negated
- * then debug (and below) will be disabled and the others unaffected by
- * the filter.
- */
-WS_DLL_PUBLIC
-void ws_log_set_debug_filter(const char *str_filter);
-
-
-/** Set a noisy filter from a string.
- *
- * Same as ws_log_set_debug_filter() for "noisy" level.
- */
-WS_DLL_PUBLIC
-void ws_log_set_noisy_filter(const char *str_filter);
-
-
-/** Set the fatal log level.
- *
- * Sets the log level at which calls to ws_log() will abort the program. The
- * argument can be LOG_LEVEL_ERROR, LOG_LEVEL_CRITICAL or LOG_LEVEL_WARNING.
- * Level LOG_LEVEL_ERROR is always fatal.
- */
-WS_DLL_PUBLIC
-enum ws_log_level ws_log_set_fatal_level(enum ws_log_level level);
-
-
-/** Set the fatal log level from a string.
- *
- * Same as ws_log_set_fatal(), but accepts the strings "error", critical" or
- * "warning" instead as arguments.
- */
-WS_DLL_PUBLIC
-enum ws_log_level  ws_log_set_fatal_level_str(const char *str_level);
-
-
-/** Set the active log writer.
- *
- * The parameter 'writer' can be NULL to use the default writer.
- */
-WS_DLL_PUBLIC
-void ws_log_set_writer(ws_log_writer_cb *writer);
-
-
-/** Set the active log writer.
- *
- * The parameter 'writer' can be NULL to use the default writer.
- * Accepts an extra user_data parameter that will be passed to
- * the log writer.
- */
-WS_DLL_PUBLIC
-void ws_log_set_writer_with_data(ws_log_writer_cb *writer,
-                        void *user_data,
-                        ws_log_writer_free_data_cb *free_user_data);
-
-
-#define LOG_ARGS_NOEXIT -1
-
-#define LONGOPT_WSLOG_LOG_LEVEL            LONGOPT_BASE_WSLOG+1
-#define LONGOPT_WSLOG_LOG_DOMAIN           LONGOPT_BASE_WSLOG+2
-#define LONGOPT_WSLOG_LOG_FILE             LONGOPT_BASE_WSLOG+3
-#define LONGOPT_WSLOG_LOG_FATAL            LONGOPT_BASE_WSLOG+4
-#define LONGOPT_WSLOG_LOG_FATAL_DOMAIN     LONGOPT_BASE_WSLOG+5
-#define LONGOPT_WSLOG_LOG_DEBUG            LONGOPT_BASE_WSLOG+6
-#define LONGOPT_WSLOG_LOG_NOISY            LONGOPT_BASE_WSLOG+7
-
-/** Logging options for command line
-*/
-#define LONGOPT_WSLOG \
-    {"log-level",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_LEVEL},  \
-    {"log-domain",            ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DOMAIN}, \
-    /* Alias "domain" and "domains". */                                              \
-    {"log-domains",           ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DOMAIN}, \
-    {"log-file",              ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FILE},   \
-    {"log-fatal",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL},  \
-    /* Alias "domain" and "domains". */                                                    \
-    {"log-fatal-domain",      ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL_DOMAIN}, \
-    {"log-fatal-domains",     ws_required_argument, NULL, LONGOPT_WSLOG_LOG_FATAL_DOMAIN}, \
-    {"log-debug",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_DEBUG}, \
-    {"log-noisy",             ws_required_argument, NULL, LONGOPT_WSLOG_LOG_NOISY},
-
-/** Parses the command line arguments for log options.
- *
- * Returns zero for no error, non-zero for one or more invalid options.
- */
-WS_DLL_PUBLIC
-int ws_log_parse_args(int *argc_ptr, char *argv[],
-                        const char* optstring, const struct ws_option* long_options,
-                        void (*vcmdarg_err)(const char *, va_list ap),
-                        int exit_failure);
-
-/** Determine if command line argument is used by wslog
-*
-* Used when applications are strict about command line arguments passed to it,
-* but shouldn't be handling these themselves
-*/
-WS_DLL_PUBLIC
-bool ws_log_is_wslog_arg(int arg);
-
-
-
-/** Initializes the logging code.
- *
- * Must be called at startup before using the log API. If provided
- * vcmdarg_err is used to print initialization errors. This usually means
- * a misconfigured environment variable.
- */
-WS_DLL_PUBLIC
-void ws_log_init(void (*vcmdarg_err)(const char *, va_list ap));
-
-
-/** Initializes the logging code.
- *
- * Can be used instead of wslog_init(). Takes an extra writer argument.
- * If provided this callback will be used instead of the default writer.
- */
-WS_DLL_PUBLIC
-void ws_log_init_with_writer(ws_log_writer_cb *writer,
-                        void (*vcmdarg_err)(const char *, va_list ap));
-
-
-/** Initializes the logging code.
- *
- * Accepts a user data pointer in addition to the writer. This pointer will
- * be provided to the writer with every invocation. If provided
- * free_user_data will be called during cleanup.
- */
-WS_DLL_PUBLIC
-void ws_log_init_with_writer_and_data(ws_log_writer_cb *writer,
-                        void *user_data,
-                        ws_log_writer_free_data_cb *free_user_data,
-                        void (*vcmdarg_err)(const char *, va_list ap));
-
-
-/** This function is called to output a message to the log.
- *
- * Takes a format string and a variable number of arguments.
- */
-WS_DLL_PUBLIC
-void ws_log(const char *domain, enum ws_log_level level,
-                    const char *format, ...) G_GNUC_PRINTF(3,4);
-
-
-/** This function is called to output a message to the log.
- *
- * Takes a format string and a 'va_list'.
- */
-WS_DLL_PUBLIC
-void ws_logv(const char *domain, enum ws_log_level level,
-                    const char *format, va_list ap);
-
-
-/** This function is called to output a message to the log.
- *
- * In addition to the message this function accepts file/line/function
- * information.
- */
-WS_DLL_PUBLIC
-void ws_log_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const char *format, ...) G_GNUC_PRINTF(6,7);
-
-
-/** This function is called to output a message to the log.
- *
- * In addition to the message this function accepts file/line/function
- * information.
- */
-WS_DLL_PUBLIC
-void ws_logv_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const char *format, va_list ap);
-
-
-WS_DLL_PUBLIC
-WS_NORETURN
-void ws_log_fatal_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const char *format, ...) G_GNUC_PRINTF(6,7);
-
-
-/*
- * The if condition avoids -Wunused warnings for variables used only with
- * WS_DEBUG, typically inside a ws_debug() call. The compiler will
- * optimize away the dead execution branch.
- */
-#define _LOG_IF_ACTIVE(active, level, file, line, func, ...) \
-        do {                                        \
-            if (active) {                           \
-                ws_log_full(_LOG_DOMAIN, level,     \
-                            file, line, func,       \
-                            __VA_ARGS__);           \
-            }                                       \
-        } while (0)
-
-#define _LOG_FULL(active, level, ...) \
-        _LOG_IF_ACTIVE(active, level, __FILE__, __LINE__, __func__, __VA_ARGS__)
-
-#define _LOG_SIMPLE(active, level, ...) \
-        _LOG_IF_ACTIVE(active, level, NULL, -1, NULL, __VA_ARGS__)
-
-/** Logs with "error" level.
- *
- * Accepts a format string and includes the file and function name.
- *
- * "error" is always fatal and terminates the program with a coredump.
- */
-#define ws_error(...) \
-        ws_log_fatal_full(_LOG_DOMAIN, LOG_LEVEL_ERROR, \
-                            __FILE__, __LINE__, __func__, __VA_ARGS__)
-
-/** Logs with "critical" level.
- *
- * Accepts a format string and includes the file and function name.
- */
-#define ws_critical(...) \
-        _LOG_FULL(true, LOG_LEVEL_CRITICAL, __VA_ARGS__)
-
-/** Logs with "warning" level.
- *
- * Accepts a format string and includes the file and function name.
- */
-#define ws_warning(...) \
-        _LOG_FULL(true, LOG_LEVEL_WARNING, __VA_ARGS__)
-
-/** Logs with "message" level.
- *
- * Accepts a format string and does not include the file and function
- * name (use ws_log_full instead). This is the default log level.
- */
-#define ws_message(...) \
-        _LOG_SIMPLE(true, LOG_LEVEL_MESSAGE, __VA_ARGS__)
-
-/** Logs with "info" level.
- *
- * Accepts a format string and does not include the file and function
- * name (use ws_log_full instead).
- */
-#define ws_info(...) \
-        _LOG_SIMPLE(true, LOG_LEVEL_INFO, __VA_ARGS__)
-
-/** Logs with "debug" level.
- *
- * Accepts a format string and includes the file and function name.
- */
-#define ws_debug(...) \
-        _LOG_FULL(_LOG_DEBUG_ENABLED, LOG_LEVEL_DEBUG, __VA_ARGS__)
-
-/** Logs with "noisy" level.
- *
- * Accepts a format string and includes the file and function name.
- */
-#define ws_noisy(...) \
-        _LOG_FULL(_LOG_DEBUG_ENABLED, LOG_LEVEL_NOISY, __VA_ARGS__)
-
-/** Used for temporary debug print outs, always active. */
-#define WS_DEBUG_HERE(...) \
-        _LOG_FULL(true, LOG_LEVEL_ECHO, __VA_ARGS__)
-
-#define WS_NOT_IMPLEMENTED() \
-        ws_error("Not implemented yet")
-
-WS_DLL_PUBLIC
-void ws_log_utf8_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const char *string, ssize_t length, const char *endptr);
-
-
-#define ws_log_utf8(str, len, endptr) \
-    do {                                                        \
-        if (_LOG_DEBUG_ENABLED) {                               \
-            ws_log_utf8_full(LOG_DOMAIN_UTF_8, LOG_LEVEL_DEBUG, \
-                                __FILE__, __LINE__, __func__,   \
-                                str, len, endptr);              \
-        }                                                       \
-    } while (0)
-
-
-/** This function is called to log a buffer (bytes array).
- *
- * Accepts an optional 'msg' argument to provide a description.
- */
-WS_DLL_PUBLIC
-void ws_log_buffer_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const uint8_t *buffer, size_t size,
-                    size_t max_bytes_len, const char *msg);
-
-
-#define ws_log_buffer(buf, size, msg) \
-        do {                                                        \
-            if (_LOG_DEBUG_ENABLED) {                               \
-                ws_log_buffer_full(_LOG_DOMAIN, LOG_LEVEL_DEBUG,    \
-                        __FILE__, __LINE__, __func__,               \
-                        buf, size, 36, msg ? msg : #buf);           \
-            }                                                       \
-        } while (0)
-
-
-/** Auxiliary function to write custom logging functions.
- *
- * This function is the same as ws_log_full() but does not perform any
- * domain/level filtering to avoid a useless double activation check.
- * It should only be used in conjunction with a pre-check using
- * ws_log_msg_is_active().
- */
-WS_DLL_PUBLIC
-void ws_log_write_always_full(const char *domain, enum ws_log_level level,
-                    const char *file, long line, const char *func,
-                    const char *format, ...) G_GNUC_PRINTF(6,7);
-
-
-/** Define an auxiliary file pointer where messages should be written.
- *
- * This file, if set, functions in addition to the registered or
- * default log writer.
- */
-WS_DLL_PUBLIC
-void ws_log_add_custom_file(FILE *fp);
-
-
-WS_DLL_PUBLIC
-void ws_log_print_usage(FILE *fp);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __WSLOG_H__ */
-/* End embedded header */
-
 /* Begin wsutil/ws_assert.h */
 /** @file
  *
@@ -4332,6 +4215,1316 @@ ws_inet_pton6(const char *src, ws_in6_addr *dst);
 #endif
 /* End embedded header */
 
+/* Begin wiretap/wtap_opttypes.h */
+/** @file
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 2001 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef WTAP_OPT_TYPES_H
+#define WTAP_OPT_TYPES_H
+
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * We use the pcapng option codes for option type values.
+ */
+
+/* Options for all blocks */
+#define OPT_EOFOPT             0     /**< Appears in pcapng files, but not in blocks. */
+#define OPT_COMMENT            1     /**< A UTF-8 string containing a human-readable comment. */
+#define OPT_CUSTOM_STR_COPY    2988  /**< A custom option containing a UTF-8 string, copying allowed. */
+#define OPT_CUSTOM_BIN_COPY    2989  /**< A custom option containing binary data, copying allowed. */
+#define OPT_CUSTOM_STR_NO_COPY 19372 /**< A custom option containing a UTF-8 string, copying not allowed. */
+#define OPT_CUSTOM_BIN_NO_COPY 19373 /**< A custom option containing binary data, copying not allowed. */
+
+/* Section Header block (SHB) */
+#define OPT_SHB_HARDWARE       2     /**< A UTF-8 string containing the description of the
+                                       *     hardware used to create this section.
+                                       */
+#define OPT_SHB_OS             3     /**< A UTF-8 string containing the
+                                       *     name of the operating system used to create this section.
+                                       */
+#define OPT_SHB_USERAPPL       4     /**< A UTF-8 string containing the
+                                       *     name of the application used to create this section.
+                                       */
+
+/* Interface Description block (IDB) */
+#define OPT_IDB_NAME           2     /**< A UTF-8 string containing the name
+                                       *     of the device used to capture data.
+                                       *     "eth0" / "\Device\NPF_{AD1CE675-96D0-47C5-ADD0-2504B9126B68}"
+                                       */
+#define OPT_IDB_DESCRIPTION    3     /**< A UTF-8 string containing the description
+                                       *     of the device used to capture data.
+                                       *     "Wi-Fi" / "Local Area Connection" /
+                                       *     "Wireless Network Connection" /
+                                       *     "First Ethernet Interface"
+                                       */
+#define OPT_IDB_IP4ADDR        4     /**< XXX: if_IPv4addr Interface network address and netmask.
+                                       *     This option can be repeated multiple times within the same Interface Description Block
+                                       *     when multiple IPv4 addresses are assigned to the interface.
+                                       *     192 168 1 1 255 255 255 0
+                                       */
+#define OPT_IDB_IP6ADDR        5     /**< XXX: if_IPv6addr Interface network address and prefix length (stored in the last byte).
+                                       *     This option can be repeated multiple times within the same Interface
+                                       *     Description Block when multiple IPv6 addresses are assigned to the interface.
+                                       *     2001:0db8:85a3:08d3:1319:8a2e:0370:7344/64 is written (in hex) as
+                                       *     "20 01 0d b8 85 a3 08 d3 13 19 8a 2e 03 70 73 44 40"
+                                       */
+#define OPT_IDB_MACADDR        6     /**< XXX: if_MACaddr  Interface Hardware MAC address (48 bits).                             */
+#define OPT_IDB_EUIADDR        7     /**< XXX: if_EUIaddr  Interface Hardware EUI address (64 bits)                              */
+#define OPT_IDB_SPEED          8     /**< Interface speed (in bps). 100000000 for 100Mbps
+                                       */
+#define OPT_IDB_TSRESOL        9     /**< Resolution of timestamps. If the Most Significant Bit is equal to zero,
+                                       *     the remaining bits indicates the resolution of the timestamp as a
+                                       *     negative power of 10 (e.g. 6 means microsecond resolution, timestamps
+                                       *     are the number of microseconds since 1/1/1970). If the Most Significant Bit
+                                       *     is equal to one, the remaining bits indicates the resolution has a
+                                       *     negative power of 2 (e.g. 10 means 1/1024 of second).
+                                       *     If this option is not present, a resolution of 10^-6 is assumed
+                                       *     (i.e. timestamps have the same resolution of the standard 'libpcap' timestamps).
+                                       */
+#define OPT_IDB_TZONE          10    /**< Time zone for GMT support.  This option has neer been specified in
+                                       *     greater detail and, unless it were to identify something such as
+                                       *     an IANA time zone database timezone, would be insufficient for
+                                       *     converting between UTC and local time.  Therefore, it SHOULD NOT
+                                       *     be used; instead, the if_iana_tzname option SHOULD be used if
+                                       *     time zone information is to be specified. */
+#define OPT_IDB_FILTER         11    /**< The filter (e.g. "capture only TCP traffic") used to capture traffic.
+                                       *     The first byte of the Option Data keeps a code of the filter used
+                                       *     (e.g. if this is a libpcap string, or BPF bytecode, and more).
+                                       *     More details about this format will be presented in Appendix XXX (TODO).
+                                       *     (TODO: better use different options for different fields?
+                                       *     e.g. if_filter_pcap, if_filter_bpf, ...) 00 "tcp port 23 and host 10.0.0.5"
+                                       */
+#define OPT_IDB_OS             12    /**< A UTF-8 string containing the name of the operating system of the
+                                       *     machine in which this interface is installed.
+                                       *     This can be different from the same information that can be
+                                       *     contained by the Section Header Block
+                                       *     (Section 3.1 (Section Header Block (mandatory))) because
+                                       *     the capture can have been done on a remote machine.
+                                       *     "Windows XP SP2" / "openSUSE 10.2"
+                                       */
+#define OPT_IDB_FCSLEN         13    /**< An integer value that specified the length of the
+                                       *     Frame Check Sequence (in bits) for this interface.
+                                       *     For link layers whose FCS length can change during time,
+                                       *     the Packet Block Flags Word can be used (see Appendix A (Packet Block Flags Word))
+                                       */
+#define OPT_IDB_TSOFFSET       14    /**< A 64-bit signed integer value that specifies an offset (in seconds)
+                                       *     that must be added to the timestamp of each packet to obtain
+                                       *     the absolute timestamp of a packet. If the option is not present,
+                                       *     an offst of 0 is assumed (i.e., timestamps in blocks are absolute
+                                       *     timestamps).
+                                       *
+                                       *     This offset is not intended to be used as an offset between local
+                                       *     time and UTC; for this purpose, the if_iana_tzname option SHOULD be
+                                       *     used to specify a timezone.
+                                       */
+#define OPT_IDB_HARDWARE       15    /**< A UTF-8 string containing the description
+                                       *     of the hardware of the device used
+                                       *     to capture data.
+                                       *     "Broadcom NetXtreme" /
+                                       *     "Intel(R) PRO/1000 MT Network Connection" /
+                                       *     "NETGEAR WNA1000Mv2 N150 Wireless USB Micro Adapter"
+                                       */
+#define OPT_IDB_TXSPEED        16    /**< A 64-bit unsigned integer indicating the interface transmit speed in
+                                       *     bits per second.
+                                       */
+#define OPT_IDB_RXSPEED        17    /**< A 64-bit unsigned integer indicating the interface receive speed in
+                                       *     bits per second.
+                                       */
+#define OPT_IDB_IANA_TZNAME    18    /**< A UTF-8 string that indicates the IANA time zone database timezone name
+                                       *     for the IANA database timezone in which the interface is located.
+                                       */
+
+/*
+ * These are the options for an EPB, but we use them for all WTAP_BLOCK_PACKET
+ */
+#define OPT_PKT_FLAGS        2
+#define OPT_PKT_HASH         3
+#define OPT_PKT_DROPCOUNT    4
+#define OPT_PKT_PACKETID     5
+#define OPT_PKT_QUEUE        6
+#define OPT_PKT_VERDICT      7
+#define OPT_PKT_PROCIDTHRDID 8
+
+/* Name Resolution Block (NRB) */
+#define OPT_NS_DNSNAME       2
+#define OPT_NS_DNSIP4ADDR    3
+#define OPT_NS_DNSIP6ADDR    4
+
+/* Interface Statistics Block (ISB) */
+#define OPT_ISB_STARTTIME    2
+#define OPT_ISB_ENDTIME      3
+#define OPT_ISB_IFRECV       4
+#define OPT_ISB_IFDROP       5
+#define OPT_ISB_FILTERACCEPT 6
+#define OPT_ISB_OSDROP       7
+#define OPT_ISB_USRDELIV     8
+
+/* Darwin Process Info Block (DPIB) */
+#define OPT_DPIB_NAME        2   /**< Process name: NUL-terminated UTF8 string (limited to 16 characters including the NUL) */
+#define OPT_DPIB_UUID        4   /**< Process UUID: 16 byte */
+
+/* Darwin-specific options for EPB */
+#define OPT_PKT_DARWIN_PIB_ID               32769   /**< 32-bit number of the Darwin PIB that describes the Process ID. */
+#define	OPT_PKT_DARWIN_SVC_CODE	            32770   /**< 32-bit type of service code. */
+#define OPT_PKT_DARWIN_EFFECTIVE_PIB_ID     32771   /**< 32-bit number of the Darwin PIB that describes the Effective Process ID. */
+#define OPT_PKT_DARWIN_MD_FLAGS             32772   /**< 32-bit bitmask containing the packet metadata flags. */
+#define OPT_PKT_DARWIN_FLOW_ID              32773   /**< 32-bit opaque flow identifier. */
+#define OPT_PKT_DARWIN_TRACE_TAG            32774   /**< 16-bit opaque trace tag. */
+#define OPT_PKT_DARWIN_DROP_REASON          32775   /**< 32-bit drop reason. */
+#define OPT_PKT_DARWIN_DROP_LINE            32776   /**< 16-bit drop line. */
+#define OPT_PKT_DARWIN_DROP_FUNC            32777   /**< NUL-terminated name of the dropping function. */
+#define OPT_PKT_DARWIN_COMP_GENCNT          32778   /**< 32-bit current value of the compression generation count (epoch). */
+
+
+/*
+ * Currently supported blocks; these are not the pcapng block type values
+ * for them, they're identifiers used internally, and more than one
+ * pcapng block type may use a given block type.
+ *
+ * Note that, in a given file format, this information won't necessarily
+ * appear in the form of blocks in the file, even though they're presented
+ * to the caller of libwiretap as blocks when reading and are presented
+ * by the caller of libwiretap as blocks when writing.  See, for example,
+ * the iptrace file format, in which the interface name is given as part
+ * of the packet record header; we synthesize those blocks when reading
+ * (we don't currently support writing that format, but if we did, we'd
+ * get the interface name from the block and put it in the packet record
+ * header).
+ *
+ * WTAP_BLOCK_IF_ID_AND_INFO is a block that not only gives
+ * descriptive information about an interface but *also* assigns an
+ * ID to the interface, so that every packet has either an explicit
+ * or implicit interface ID indicating on which the packet arrived.
+ *
+ * It does *not* refer to information about interfaces that does not
+ * allow identification of the interface on which a packet arrives
+ * (I'm looking at *you*, Microsoft Network Monitor...).  Do *not*
+ * indicate support for that block if your capture format merely
+ * gives a list of interface information without having every packet
+ * explicitly or implicitly (as in, for example, the pcapng Simple
+ * Packet Block) indicate on which of those interfaces the packet
+ * arrived.
+ *
+ * WTAP_BLOCK_PACKET (which corresponds to the Enhanced Packet Block,
+ * the Simple Packet Block, and the deprecated Packet Block) is not
+ * currently used; it's reserved for future use.  The same applies
+ * to WTAP_BLOCK_SYSTEMD_JOURNAL_EXPORT.
+ *
+ * WTAP_BLOCK_FT_SPECIFIC_EVENT contains filetype-specific "events",
+ * such as "carrier lost" or "moved to a new channel". The "events"
+ * are commonly time-stamped.
+ *
+ * WTAP_BLOCK_FT_SPECIFIC_REPORT contains filetype-specific "reports"
+ * such as "number of times the carrier has been lost".
+ * Similarly to "events", the "reports" are commonly time-stamped;
+ * in addition, the "reports" may include the "duration".
+ *
+ * WTAP_BLOCK_FT_SPECIFIC_INFORMATION contains filetype-specific
+ * "information", which is NOT timestamped.
+ *
+ * The distinction between the "events", "reports" and "information"
+ * is that both the "events" and "reports" describe something
+ * that has happened at some point in time, whereas the "information"
+ * does not have a time coordinate. Further, the "events" differ
+ * from the "reports" in the significance of the time coordinate.
+ * For the "events", the time stamp represents a state change,
+ * so that everything that happened before the "event" is
+ * qualitatively different from everything that followed.
+ * On the other hand, the time coordinates of "reports"
+ * do not have the same significance.
+ *
+ * WTAP_BLOCK_FT_SPECIFIC_INFORMATION is a block that contains
+ * informtaion
+ */
+typedef enum {
+    WTAP_BLOCK_SECTION = 0,
+    WTAP_BLOCK_IF_ID_AND_INFO,
+    WTAP_BLOCK_NAME_RESOLUTION,
+    WTAP_BLOCK_IF_STATISTICS,
+    WTAP_BLOCK_DECRYPTION_SECRETS,
+    WTAP_BLOCK_PACKET,
+    WTAP_BLOCK_FT_SPECIFIC_REPORT,
+    WTAP_BLOCK_FT_SPECIFIC_EVENT,
+    WTAP_BLOCK_SYSDIG_EVENT,
+    WTAP_BLOCK_META_EVENT,
+    WTAP_BLOCK_SYSTEMD_JOURNAL_EXPORT,
+    WTAP_BLOCK_CUSTOM,
+    WTAP_BLOCK_FT_SPECIFIC_INFORMATION,
+    MAX_WTAP_BLOCK_TYPE_VALUE
+} wtap_block_type_t;
+
+struct wtap_block;
+typedef struct wtap_block* wtap_block_t;
+
+typedef void (*wtap_block_create_func)(wtap_block_t block);
+typedef void (*wtap_mand_free_func)(wtap_block_t block);
+typedef void (*wtap_mand_copy_func)(wtap_block_t dest_block, wtap_block_t src_block);
+
+/*
+ * Structure describing a type of block.
+ */
+typedef struct wtap_blocktype_t {
+    wtap_block_type_t block_type;    /**< internal type code for block */
+    const char* name;                /**< name of block */
+    const char* description;         /**< human-readable description of block */
+    wtap_block_create_func create;
+    wtap_mand_free_func free_mand;
+    wtap_mand_copy_func copy_mand;
+    GHashTable* options;             /**< hash table of known options */
+} wtap_blocktype_t;
+
+struct wtap_block
+{
+    struct wtap_blocktype_t* info;
+    void* mandatory_data;
+    GArray* options;
+    int ref_count;
+#ifdef DEBUG_COUNT_REFS
+    unsigned id;
+#endif
+};
+
+/**
+ * Holds the required data from a WTAP_BLOCK_SECTION.
+ */
+typedef struct wtapng_section_mandatory_s {
+    uint64_t            section_length; /**< 64-bit value specifying the length in bytes of the
+                                         *     following section.
+                                         *     Section Length equal -1 (0xFFFFFFFFFFFFFFFF) means
+                                         *     that the size of the section is not specified
+                                         *   Note: if writing to a new file, this length will
+                                         *     be invalid if anything changes, such as the other
+                                         *     members of this struct, or the packets written.
+                                         */
+} wtapng_section_mandatory_t;
+
+/** struct holding the information to build a WTAP_BLOCK_IF_ID_AND_INFO.
+ *  the interface_data array holds an array of wtap_block_t
+ *  representing interfacs, one per interface.
+ */
+typedef struct wtapng_iface_descriptions_s {
+    GArray *interface_data;
+} wtapng_iface_descriptions_t;
+
+/** struct holding the information to lookup a Darwin PIB.
+ *  the dpibs array holds an array of wtap_block_t
+ *  representing Darwin PIBs, one per PIB.
+ */
+ typedef struct wtapng_dpib_lookup_info_s {
+    GArray     *dpibs;
+} wtapng_dpib_lookup_info_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_IF_ID_AND_INFO.
+ */
+typedef struct wtapng_if_descr_mandatory_s {
+    int                    wtap_encap;            /**< link_type translated to wtap_encap */
+    uint64_t               time_units_per_second;
+    int                    tsprecision;           /**< WTAP_TSPREC_ value for this interface */
+
+    uint32_t               snap_len;
+
+    uint8_t                num_stat_entries;
+    GArray                *interface_statistics;  /**< An array holding the interface statistics from
+                                                   *     pcapng ISB:s or equivalent(?)*/
+} wtapng_if_descr_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_NAME_RESOLUTION.
+ */
+typedef struct wtapng_nrb_mandatory_s {
+    GList       *ipv4_addr_list;
+    GList       *ipv6_addr_list;
+}  wtapng_nrb_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_IF_STATISTICS.
+ */
+typedef struct wtapng_if_stats_mandatory_s {
+    uint32_t interface_id;
+    uint32_t ts_high;
+    uint32_t ts_low;
+} wtapng_if_stats_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_DECRYPTION_SECRETS.
+ */
+typedef struct wtapng_dsb_mandatory_s {
+    uint32_t               secrets_type;            /** Type of secrets stored in data (see secrets-types.h) */
+    uint32_t               secrets_len;             /** Length of the secrets data in bytes */
+    uint8_t               *secrets_data;            /** Buffer of secrets (not NUL-terminated) */
+} wtapng_dsb_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_META_EVENT.
+ */
+typedef struct wtapng_meta_event_mandatory_s {
+    uint32_t               mev_block_type;      /** pcapng block type of the event, e.g. BLOCK_TYPE_SYSDIG_MI */
+    unsigned               mev_data_len;        /** Length of the mev data in bytes */
+    uint8_t               *mev_data;            /** Buffer of mev data (not NUL-terminated) */
+} wtapng_meta_event_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_PACKET.
+ * This includes Enhanced Packet Block, Simple Packet Block, and the deprecated Packet Block.
+ * NB. I'm not including the packet data here since Wireshark handles it in other ways.
+ * If we were to add it we'd need to implement copy and free routines in wtap_opttypes.c
+ */
+#if 0
+/* Commented out for now, there's no mandatory data that isn't handled by
+ * Wireshark in other ways.
+ */
+typedef struct wtapng_packet_mandatory_s {
+    uint32_t interface_id;
+    uint32_t ts_high;
+    uint32_t ts_low;
+    uint32_t captured_len;
+    uint32_t orig_len;
+} wtapng_packet_mandatory_t;
+#endif
+
+/**
+ * Holds the required data from a WTAP_BLOCK_LEGACY_DARWIN_PROCESS_EVENT.
+ */
+ typedef struct wtapng_darwin_process_event_mandatory_s {
+    uint32_t               process_id;      /** Process ID */
+}  wtapng_darwin_process_event_mandatory_t;
+
+/**
+ * Holds the required data from a WTAP_BLOCK_FT_SPECIFIC_REPORT.
+ */
+typedef struct wtapng_ft_specific_mandatory_s {
+    unsigned  record_type;      /* the type of record this is - file type-specific value */
+} wtapng_ft_specific_mandatory_t;
+
+/*
+ * Currently supported option types.  These are not option types
+ * in the sense that each one corresponds to a particular option,
+ * they are data types for the data of an option, so, for example,
+ * all options with a 32-bit unsigned integer value have the type
+ * WTAP_OPTTYPE_UINT32.
+ */
+typedef enum {
+    WTAP_OPTTYPE_UINT8,
+    WTAP_OPTTYPE_UINT32,
+    WTAP_OPTTYPE_UINT64,
+    WTAP_OPTTYPE_STRING,
+    WTAP_OPTTYPE_BYTES,
+    WTAP_OPTTYPE_IPv4,
+    WTAP_OPTTYPE_IPv6,
+    WTAP_OPTTYPE_CUSTOM_STRING,
+    WTAP_OPTTYPE_CUSTOM_BINARY,
+    WTAP_OPTTYPE_IF_FILTER,
+    WTAP_OPTTYPE_PACKET_VERDICT,
+    WTAP_OPTTYPE_PACKET_HASH,
+    WTAP_OPTTYPE_INT8,
+    WTAP_OPTTYPE_INT32,
+    WTAP_OPTTYPE_INT64,
+} wtap_opttype_e;
+
+typedef enum {
+    WTAP_OPTTYPE_SUCCESS = 0,
+    WTAP_OPTTYPE_NO_SUCH_OPTION = -1,
+    WTAP_OPTTYPE_NOT_FOUND = -2,
+    WTAP_OPTTYPE_TYPE_MISMATCH = -3,
+    WTAP_OPTTYPE_NUMBER_MISMATCH = -4,
+    WTAP_OPTTYPE_ALREADY_EXISTS = -5,
+    WTAP_OPTTYPE_BAD_BLOCK = -6,
+    WTAP_OPTTYPE_PEN_MISMATCH = -7,
+} wtap_opttype_return_val;
+
+/* https://www.iana.org/assignments/enterprise-numbers/enterprise-numbers */
+#define PEN_VCTR 46254
+
+/*
+ * Structure giving the value of a custom string option; the value
+ * includes both the Private Enterprise Number and the data following it.
+ */
+typedef struct custom_string_opt_s {
+    uint32_t pen;     /* Private Enterprise Number of this option */
+    char* string;
+} custom_string_opt_t;
+
+/*
+ * Structure giving the data of a custom binary option.
+ */
+typedef struct binary_optdata {
+    size_t custom_data_len;
+    void* custom_data;
+} binary_optdata_t;
+
+/*
+ * Structure giving the value of a custom binary option; the value
+ * includes both the Private Enterprise Number and the data following it.
+ */
+typedef struct custom_binary_opt_s {
+    uint32_t pen;     /* Private Enterprise Number of this option */
+    binary_optdata_t data;
+} custom_binary_opt_t;
+
+/* Interface description data - if_filter option structure */
+
+/* BPF instruction */
+typedef struct wtap_bpf_insn_s {
+    uint16_t               code;
+    uint8_t                jt;
+    uint8_t                jf;
+    uint32_t               k;
+} wtap_bpf_insn_t;
+
+/*
+ * Type of filter.
+ */
+typedef enum {
+    if_filter_pcap = 0, /* pcap filter string */
+    if_filter_bpf  = 1  /* BPF program */
+} if_filter_type_e;
+
+typedef struct if_filter_opt_s {
+    if_filter_type_e type;
+    union {
+        char              *filter_str;   /**< pcap filter string */
+        struct wtap_bpf_insns {
+            unsigned       bpf_prog_len; /**< number of BPF instructions */
+            wtap_bpf_insn_t *bpf_prog;   /**< BPF instructions */
+        }                  bpf_prog;     /**< BPF program */
+    }                      data;
+} if_filter_opt_t;
+
+/* Packet - packet_verdict option structure */
+
+/*
+ * Type of verdict.
+ */
+typedef enum {
+    packet_verdict_hardware =       0, /* array of octets */
+    packet_verdict_linux_ebpf_tc  = 1, /* 64-bit unsigned integer TC_ACT_ value */
+    packet_verdict_linux_ebpf_xdp = 2  /* 64-bit unsigned integer xdp_action value */
+} packet_verdict_type_e;
+
+typedef struct packet_verdict_opt_s {
+    packet_verdict_type_e type;
+    union {
+        GByteArray *verdict_bytes;
+        uint64_t    verdict_linux_ebpf_tc;
+        uint64_t    verdict_linux_ebpf_xdp;
+    }               data;
+} packet_verdict_opt_t;
+
+typedef struct packet_hash_opt_s {
+    uint8_t type;
+    GByteArray *hash_bytes;
+} packet_hash_opt_t;
+
+/*
+ * Structure describing a value of an option.
+ */
+typedef union {
+    uint8_t uint8val;
+    uint32_t uint32val;
+    uint64_t uint64val;
+    int8_t int8val;
+    int32_t int32val;
+    int64_t int64val;
+    ws_in4_addr ipv4val;    /* network byte order */
+    ws_in6_addr ipv6val;
+    char *stringval;
+    GBytes *byteval;
+    custom_string_opt_t custom_stringval;
+    custom_binary_opt_t custom_binaryval;
+    if_filter_opt_t if_filterval;
+    packet_verdict_opt_t packet_verdictval;
+    packet_hash_opt_t packet_hash;
+} wtap_optval_t;
+
+/*
+ * Structure describing an option in a block.
+ */
+typedef struct {
+    unsigned option_id;     /**< option code for the option */
+    wtap_optval_t value; /**< value */
+} wtap_option_t;
+
+typedef void (*wtap_block_create_func)(wtap_block_t block);
+typedef void (*wtap_mand_free_func)(wtap_block_t block);
+typedef void (*wtap_mand_copy_func)(wtap_block_t dest_block, wtap_block_t src_block);
+
+/*
+ * Structure describing a type of option.
+ */
+typedef struct {
+    const char* name;                            /**< name of option */
+    const char* description;                     /**< human-readable description of option */
+    wtap_opttype_e data_type;                    /**< data type of that option */
+    unsigned flags;                                 /**< flags for the option */
+} wtap_opttype_t;
+
+#define GET_OPTION_TYPE(options, option_id) \
+    (const wtap_opttype_t *)g_hash_table_lookup((options), GUINT_TO_POINTER(option_id))
+
+/** Initialize block types.
+ *
+ * This is currently just a placeholder as nothing needs to be
+ * initialized yet.  Should handle "registration" when code is
+ * refactored to do so.
+ */
+WS_DLL_PUBLIC void
+wtap_opttypes_initialize(void);
+
+/** Create a block by type
+ *
+ * Return a newly allocated block with default options provided
+ *
+ * @param[in] block_type Block type to be created
+ * @return Newly allocated block
+ */
+WS_DLL_PUBLIC wtap_block_t
+wtap_block_create(wtap_block_type_t block_type);
+
+/** Increase reference count of a block
+ *
+ * Call when taking a copy of a block
+ *
+ * @param[in] block Block add ref to
+ * @return The block
+ */
+WS_DLL_PUBLIC wtap_block_t
+wtap_block_ref(wtap_block_t block);
+
+/** Decrease reference count of a block
+ *
+ * Needs to be called on any block once you're done with it
+ *
+ * @param[in] block Block to be deref'd
+ */
+WS_DLL_PUBLIC void
+wtap_block_unref(wtap_block_t block);
+
+/** Free an array of blocks
+ *
+ * Needs to be called to clean up blocks allocated
+ * through GArray (for multiple blocks of same type)
+ * Includes freeing the GArray
+ *
+ * @param[in] block_array Array of blocks to be freed
+ */
+WS_DLL_PUBLIC void
+wtap_block_array_free(GArray* block_array);
+
+/** Decrement the reference count of an array of blocks
+ *
+ * Decrement the reference count of each block in the array
+ * and the GArray itself. Any element whose reference count
+ * drops to 0 will be freed. If the GArray and every block
+ * has a reference count of 1, this is the same as
+ * wtap_block_array_free().
+ *
+ * @param[in] block_array Array of blocks to be dereferenced
+ */
+WS_DLL_PUBLIC void
+wtap_block_array_unref(GArray* block_array);
+
+/** Increment the reference count of an array of blocks
+ *
+ * Increment the reference count of each block in the array
+ * and the GArray itself.
+ *
+ * @param[in] block_array Array of blocks to be referenced
+ */
+WS_DLL_PUBLIC void
+wtap_block_array_ref(GArray* block_array);
+
+/** Register a block type handler
+ *
+ * @param[in] blocktype Block type to be registered
+ */
+WS_DLL_PUBLIC void
+wtap_opttype_block_register(wtap_blocktype_t* blocktype);
+
+/** Provide type of a block
+ *
+ * @param[in] block Block from which to retrieve mandatory data
+ * @return Block type.
+ */
+WS_DLL_PUBLIC wtap_block_type_t
+wtap_block_get_type(wtap_block_t block);
+
+/** Provide mandatory data of a block
+ *
+ * @param[in] block Block from which to retrieve mandatory data
+ * @return Block mandatory data.  Structure varies based on block type
+ */
+WS_DLL_PUBLIC void*
+wtap_block_get_mandatory_data(wtap_block_t block);
+
+/** Count the number of times the given option appears in the block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @return unsigned - the number of times the option was found
+ */
+WS_DLL_PUBLIC unsigned
+wtap_block_count_option(wtap_block_t block, unsigned option_id);
+
+/** Add UINT8 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_uint8_option(wtap_block_t block, unsigned option_id, uint8_t value);
+
+/** Set UINT8 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_uint8_option_value(wtap_block_t block, unsigned option_id, uint8_t value);
+
+/** Get UINT8 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_uint8_option_value(wtap_block_t block, unsigned option_id, uint8_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add UINT32 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_uint32_option(wtap_block_t block, unsigned option_id, uint32_t value);
+
+/** Set UINT32 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_uint32_option_value(wtap_block_t block, unsigned option_id, uint32_t value);
+
+/** Get UINT32 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_uint32_option_value(wtap_block_t block, unsigned option_id, uint32_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add UINT64 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_uint64_option(wtap_block_t block, unsigned option_id, uint64_t value);
+
+/** Set UINT64 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_uint64_option_value(wtap_block_t block, unsigned option_id, uint64_t value);
+
+/** Get UINT64 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_uint64_option_value(wtap_block_t block, unsigned option_id, uint64_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add INT8 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_int8_option(wtap_block_t block, unsigned option_id, int8_t value);
+
+/** Set INT8 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_int8_option_value(wtap_block_t block, unsigned option_id, int8_t value);
+
+/** Get INT8 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_int8_option_value(wtap_block_t block, unsigned option_id, int8_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add INT32 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_int32_option(wtap_block_t block, unsigned option_id, int32_t value);
+
+/** Set INT32 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_int32_option_value(wtap_block_t block, unsigned option_id, int32_t value);
+
+/** Get INT32 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_int32_option_value(wtap_block_t block, unsigned option_id, int32_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add INT64 option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_int64_option(wtap_block_t block, unsigned option_id, int64_t value);
+
+/** Set INT64 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_int64_option_value(wtap_block_t block, unsigned option_id, int64_t value);
+
+/** Get INT64 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_int64_option_value(wtap_block_t block, unsigned option_id, int64_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add IPv4 address option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_ipv4_option(wtap_block_t block, unsigned option_id, uint32_t value);
+
+/** Set IPv4 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_ipv4_option_value(wtap_block_t block, unsigned option_id, uint32_t value);
+
+/** Get IPv4 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_ipv4_option_value(wtap_block_t block, unsigned option_id, uint32_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add IPv6 address option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_ipv6_option(wtap_block_t block, unsigned option_id, ws_in6_addr *value);
+
+/** Set IPv6 option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_ipv6_option_value(wtap_block_t block, unsigned option_id, ws_in6_addr *value);
+
+/** Get IPv6 option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_ipv6_option_value(wtap_block_t block, unsigned option_id, ws_in6_addr* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add a string option to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @param[in] value_length Maximum length of string to copy.
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_string_option(wtap_block_t block, unsigned option_id, const char *value, size_t value_length);
+
+/** Add a string option to a block taking ownership of the null-terminated string.
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful (caller no longer owns @p value),
+ * error code otherwise (caller still owns @p value)
+ * @note To avoid memory leaks, the caller @b must examine the return status to determine ownership of @p value.
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_string_option_owned(wtap_block_t block, unsigned option_id, char *value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add a string option to a block with a printf-formatted string as its value
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] format printf-like format string
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_string_option_format(wtap_block_t block, unsigned option_id, const char *format, ...)
+                                    G_GNUC_PRINTF(3,4);
+
+/** Set string option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @param[in] value_length Maximum length of string to copy.
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_string_option_value(wtap_block_t block, unsigned option_id, const char* value, size_t value_length);
+
+/** Set string option value for the nth instance of a particular option
+ * in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[in] value New value of option
+ * @param[in] value_length Maximum length of string to copy.
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_nth_string_option_value(wtap_block_t block, unsigned option_id, unsigned idx, const char* value, size_t value_length);
+
+/** Set string option value in a block to a printf-formatted string
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] format printf-like format string
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_string_option_value_format(wtap_block_t block, unsigned option_id, const char *format, ...)
+                                          G_GNUC_PRINTF(3,4);
+
+/** Set string option value for the nth instance of a particular option
+ * in a block to a printf-formatted string
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[in] format printf-like format string
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_nth_string_option_value_format(wtap_block_t block, unsigned option_id, unsigned idx, const char *format, ...)
+                                              G_GNUC_PRINTF(4,5);
+
+/** Get string option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_string_option_value(wtap_block_t block, unsigned option_id, char** value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Get string option value for the nth instance of a particular option
+ * in a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_nth_string_option_value(wtap_block_t block, unsigned option_id, unsigned idx, char** value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add a bytes option to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option to copy
+ * @param[in] value_length Number of bytes to copy
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_bytes_option(wtap_block_t block, unsigned option_id, const uint8_t *value, size_t value_length);
+
+/** Add a bytes option to a block, borrowing the value from a GBytes
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option as a GBytes
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_bytes_option_borrow(wtap_block_t block, unsigned option_id, GBytes *value);
+
+/** Set bytes option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @param[in] value_length Number of bytes to copy.
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_bytes_option_value(wtap_block_t block, unsigned option_id, const uint8_t* value, size_t value_length);
+
+/** Set bytes option value for nth instance of a particular option in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_nth_bytes_option_value(wtap_block_t block, unsigned option_id, unsigned idx, GBytes* value);
+
+/** Get bytes option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ * @note You should call g_bytes_ref() on value if you plan to keep it around
+ * (and then g_bytes_unref() when you're done with it).
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_bytes_option_value(wtap_block_t block, unsigned option_id, GBytes** value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Get bytes option value for nth instance of a particular option in a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ * @note You should call g_bytes_ref() on value if you plan to keep it around
+ * (and then g_bytes_unref() when you're done with it).
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_nth_bytes_option_value(wtap_block_t block, unsigned option_id, unsigned idx, GBytes** value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add a string custom option, with a particular Private Enterprise
+ * Number, to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] pen Private Enterprise Number value for option
+ * @param[in] value Value of option
+ * @param[in] value_length Maximum length of string to copy.
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_custom_string_option(wtap_block_t block, unsigned option_id, uint32_t pen, const char *value, size_t value_length);
+
+/** Add a binary custom option, with a particular Private Enterprise
+ * Number, to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] pen Private Enterprise Number value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_custom_binary_option(wtap_block_t block, unsigned option_id, uint32_t pen, binary_optdata_t *value);
+
+/** Add a binary custom option, with a particular Private Enterprise
+ * Number, to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] pen Private Enterprise Number value for option
+ * @param[in] data Raw data of option
+ * @param[in] data_size Size of raw data
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_custom_binary_option_from_data(wtap_block_t block, unsigned option_id, uint32_t pen, const void *data, size_t data_size);
+
+/** Get binary custom option value for the nth instance of a particular option,
+ * with a particular Private Enterprise Number, in a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] pen Private Enterprise Number value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[out] value Returned value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_nth_custom_binary_option_value(wtap_block_t block, unsigned option_id, uint32_t pen, unsigned idx, binary_optdata_t *value);
+
+/** Add an if_filter option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_if_filter_option(wtap_block_t block, unsigned option_id, if_filter_opt_t* value);
+
+/** Set an if_filter option value in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_if_filter_option_value(wtap_block_t block, unsigned option_id, if_filter_opt_t* value);
+
+/** Get an if_filter option value from a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[out] value Returned value of option value
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_if_filter_option_value(wtap_block_t block, unsigned option_id, if_filter_opt_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+/** Add a packet_verdict option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_packet_verdict_option(wtap_block_t block, unsigned option_id, packet_verdict_opt_t* value);
+
+/** Set packet_verdict option value for the nth instsance of a particular
+ * option in a block
+ *
+ * @param[in] block Block in which to set the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[in] value New value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_set_nth_packet_verdict_option_value(wtap_block_t block, unsigned option_id, unsigned idx, packet_verdict_opt_t* value);
+
+/** Get packet_verdict option value for the nth instance of a particular
+ * option in a block
+ *
+ * @param[in] block Block from which to get the option value
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @param[out] value Returned value of option value
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_get_nth_packet_verdict_option_value(wtap_block_t block, unsigned option_id, unsigned idx, packet_verdict_opt_t* value) G_GNUC_WARN_UNUSED_RESULT;
+
+WS_DLL_PUBLIC void
+wtap_packet_verdict_free(packet_verdict_opt_t* verdict);
+
+/** Add a packet_hash option value to a block
+ *
+ * @param[in] block Block to which to add the option
+ * @param[in] option_id Identifier value for option
+ * @param[in] value Value of option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_add_packet_hash_option(wtap_block_t block, unsigned option_id, packet_hash_opt_t* value);
+
+WS_DLL_PUBLIC void
+wtap_packet_hash_free(packet_hash_opt_t* hash);
+
+/** Remove an option from a block
+ *
+ * @param[in] block Block from which to remove the option
+ * @param[in] option_id Identifier value for option
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_remove_option(wtap_block_t block, unsigned option_id);
+
+/** Remove the nth instance of an option from a block
+ *
+ * @param[in] block Block from which to remove the option instance
+ * @param[in] option_id Identifier value for option
+ * @param[in] idx Instance number of option with that ID
+ * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
+ * error code otherwise
+ */
+WS_DLL_PUBLIC wtap_opttype_return_val
+wtap_block_remove_nth_option_instance(wtap_block_t block, unsigned option_id, unsigned idx);
+
+/** Copy a block to another.
+ *
+ * Any options that are in the destination but not the source are not removed.
+ * Options that are just in source will be added to destination
+ *
+ * @param[in] dest_block Block to be copied to
+ * @param[in] src_block Block to be copied from
+ */
+WS_DLL_PUBLIC void
+wtap_block_copy(wtap_block_t dest_block, wtap_block_t src_block);
+
+/** Make a copy of a block.
+ *
+ * @param[in] block Block to be copied from
+ * @return Newly allocated copy of that block
+ */
+WS_DLL_PUBLIC wtap_block_t
+wtap_block_make_copy(wtap_block_t block);
+
+typedef bool (*wtap_block_foreach_func)(wtap_block_t block, unsigned option_id, wtap_opttype_e option_type, wtap_optval_t *option, void *user_data);
+WS_DLL_PUBLIC bool
+wtap_block_foreach_option(wtap_block_t block, wtap_block_foreach_func func, void* user_data);
+
+/** Cleanup the internal structures
+ */
+WS_DLL_PUBLIC void
+wtap_opttypes_cleanup(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* WTAP_OPT_TYPES_H */
+/* End embedded header */
+
 /* Begin wsutil/nstime.h */
 /* nstime.h
  * Definition of data structure to hold time values with nanosecond resolution
@@ -4537,6 +5730,150 @@ WS_DLL_PUBLIC void nstime_rounded(nstime_t *a, const nstime_t *b, ws_tsprec_e pr
 #endif /* __cplusplus */
 
 #endif /* __NSTIME_H__  */
+/* End embedded header */
+
+/* Begin epan/wmem_scopes.h */
+/** @file
+ * Definitions for the Wireshark Memory Manager Scopes
+ * Copyright 2012, Evan Huus <eapache@gmail.com>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WMEM_SCOPES_H__
+#define __WMEM_SCOPES_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/**
+ * @brief Fetch the current epan scope.
+ *
+ * Allocated memory is freed when wmem_leave_epan_scope() is called, which is normally at program exit.
+ */
+WS_DLL_PUBLIC
+wmem_allocator_t *
+wmem_epan_scope(void);
+
+/**
+ * @brief Fetch the current file scope.
+ *
+ * Allocated memory is freed when wmem_leave_file_scope() is called, which is normally when a capture file is closed.
+ */
+WS_DLL_PUBLIC
+wmem_allocator_t *
+wmem_file_scope(void);
+
+WS_DLL_LOCAL
+void
+wmem_enter_file_scope(void);
+
+WS_DLL_LOCAL
+void
+wmem_leave_file_scope(void);
+
+/* Scope Management */
+
+WS_DLL_PUBLIC
+void
+wmem_init_scopes(void);
+
+WS_DLL_PUBLIC
+void
+wmem_cleanup_scopes(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __WMEM_SCOPES_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/guid-utils.h */
+/** @file
+ * Definitions for GUID handling
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ *
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __GUID_UTILS_H__
+#define __GUID_UTILS_H__
+
+#include <stdint.h>
+
+#define GUID_LEN	16
+
+/* Note: this might be larger than GUID_LEN, so don't overlay data in packets
+   with this. */
+typedef struct _e_guid_t {
+    uint32_t data1;
+    uint16_t data2;
+    uint16_t data3;
+    uint8_t data4[8];
+} e_guid_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+WS_DLL_PUBLIC void guids_init(void);
+
+/* add a GUID */
+WS_DLL_PUBLIC void guids_add_guid(const e_guid_t *guid, const char *name);
+
+/* remove a guid to name mapping */
+WS_DLL_PUBLIC void guids_delete_guid(const e_guid_t *guid);
+
+/* try to get registered name for this GUID */
+WS_DLL_PUBLIC const char *guids_get_guid_name(const e_guid_t *guid, wmem_allocator_t *scope);
+
+/* resolve GUID to name (or if unknown to hex string) */
+/* (if you need hex string only, use guid_to_str instead) */
+WS_DLL_PUBLIC const char* guids_resolve_guid_to_str(const e_guid_t *guid, wmem_allocator_t *scope);
+
+/* add a UUID (dcerpc_init_uuid() will call this too) */
+#define guids_add_uuid(uuid, name) guids_add_guid((const e_guid_t *) (uuid), (name))
+
+/* try to get registered name for this UUID */
+#define guids_get_uuid_name(uuid, scope) guids_get_guid_name((e_guid_t *) (uuid), scope)
+
+/* resolve UUID to name (or if unknown to hex string) */
+/* (if you need hex string only, use guid_to_str instead) */
+#define guids_resolve_uuid_to_str(uuid) guids_resolve_guid_to_str((e_guid_t *) (uuid))
+
+WS_DLL_PUBLIC int guid_cmp(const e_guid_t *g1, const e_guid_t *g2);
+
+WS_DLL_PUBLIC unsigned guid_hash(const e_guid_t *guid);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __GUID_UTILS_H__ */
 /* End embedded header */
 
 /* Begin wsutil/ws_mempbrk.h */
@@ -5936,473 +7273,6 @@ WS_DLL_PUBLIC unsigned tvb_get_varint(tvbuff_t *tvb, unsigned offset, unsigned m
  */
 /* End embedded header */
 
-/* Begin wsutil/inet_cidr.h */
-/** @file
- * Definitions of IPv4 address-and-mask structure, which is what an
- * FT_IPV4 value is (even if there's no mask in a packet, those
- * values can be compared against an address+mask in a filter
- * expression).
- *
- * Gilbert Ramirez <gram@alumni.rice.edu>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __IPV4_H__
-#define __IPV4_H__
-
-
-typedef struct {
-	uint32_t	addr;	/* stored in host order */
-	uint32_t	nmask;	/* stored in host order */
-} ipv4_addr_and_mask;
-
-typedef struct {
-	ws_in6_addr addr;
-	uint32_t prefix;
-} ipv6_addr_and_prefix;
-
-/*
- ********** IPv4 *********
- */
-
-/**
-* Returns the IPv4 subnet mask of the specified length
-*
-* @param mask_length the number of bits in the subnet mask (max of 32)
-* @return the subnet mask of the specified length
-*/
-WS_DLL_PUBLIC
-uint32_t
-ws_ipv4_get_subnet_mask(const uint32_t mask_length);
-
-WS_DLL_PUBLIC
-void
-ws_ipv4_addr_and_mask_init(ipv4_addr_and_mask *dst, ws_in4_addr src_addr, int src_bits);
-
-WS_DLL_PUBLIC
-bool
-ws_ipv4_addr_and_mask_contains(const ipv4_addr_and_mask *ipv4, const ws_in4_addr *addr);
-
-/*
- ********** IPv6 *********
- */
-
-WS_DLL_PUBLIC
-bool
-ws_ipv6_addr_and_prefix_contains(const ipv6_addr_and_prefix *ipv6, const ws_in6_addr *addr);
-
-#endif
-/* End embedded header */
-
-/* Begin epan/address.h */
-/** @file
- * Definitions for structures storing addresses, and for the type of
- * variables holding port-type values
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __ADDRESS_H__
-#define __ADDRESS_H__
-
-#include <string.h>     /* for memcmp */
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/* Types of "global" addresses Wireshark knows about. */
-/* Address types can be added here if there are many dissectors that use them or just
- * within a specific dissector.
- * If an address type is added here, it must be "registered" within address_types.c
- * For dissector address types, just use the address_type_dissector_register function
- * from address_types.h
- *
- * AT_NUMERIC - a numeric address type can consist of a uint8_t, uint16_t, uint32_t or uint64_t
- * value. If no correct length is provided, to avoid data bleed, a uint8_t is
- * assumed. Only representation (aka conversion of value to string) is implemented for this type.
- */
-typedef enum {
-    AT_NONE,               /* no link-layer address */
-    AT_ETHER,              /* MAC (Ethernet, 802.x, FDDI) address */
-    AT_IPv4,               /* IPv4 */
-    AT_IPv6,               /* IPv6 */
-    AT_IPX,                /* IPX */
-    AT_FC,                 /* Fibre Channel */
-    AT_FCWWN,              /* Fibre Channel WWN */
-    AT_STRINGZ,            /* null-terminated string */
-    AT_EUI64,              /* IEEE EUI-64 */
-    AT_IB,                 /* Infiniband GID/LID */
-    AT_AX25,               /* AX.25 */
-    AT_VINES,              /* Banyan Vines address */
-    AT_NUMERIC,            /* Numeric address type. */
-    AT_MCTP,               /* MCTP */
-    AT_ILNP_NID,           /* ILNP NID */
-    AT_ILNP_L64,           /* ILNP L64 */
-    AT_ILNP_ILV,           /* ILNP ILV */
-    AT_END_OF_LIST         /* Must be last in list */
-} address_type;
-
-typedef struct _address {
-    int           type;         /* type of address */
-    int           len;          /* length of address, in bytes */
-    const void   *data;         /* pointer to address data */
-
-    /* private */
-    void         *priv;
-} address;
-
-#define ADDRESS_INIT(type, len, data) {type, len, data, NULL}
-#define ADDRESS_INIT_NONE ADDRESS_INIT(AT_NONE, 0, NULL)
-
-static inline void
-clear_address(address *addr)
-{
-    addr->type = AT_NONE;
-    addr->len  = 0;
-    addr->data = NULL;
-    addr->priv = NULL;
-}
-
-/** Initialize an address with the given values.
- *
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param addr_data [in] Pointer to the address data.
- */
-static inline void
-set_address(address *addr, int addr_type, int addr_len, const void *addr_data) {
-    if (addr_len == 0) {
-        /* Zero length must mean no data */
-        ws_assert(addr_data == NULL);
-    } else {
-        /* Must not be AT_NONE - AT_NONE must have no data */
-        ws_assert(addr_type != AT_NONE);
-        /* Make sure we *do* have data */
-        ws_assert(addr_data != NULL);
-    }
-    addr->type = addr_type;
-    addr->len  = addr_len;
-    addr->data = addr_data;
-    addr->priv = NULL;
-}
-
-static inline void
-set_address_ipv4(address *addr, const ipv4_addr_and_mask *ipv4) {
-    addr->type = AT_IPv4;
-    addr->len  = 4;
-    uint32_t val = g_htonl(ipv4->addr);
-    addr->priv = g_memdup2(&val, sizeof(val));
-    addr->data = addr->priv;
-}
-
-static inline void
-set_address_ipv6(address *addr, const ipv6_addr_and_prefix *ipv6) {
-    set_address(addr, AT_IPv6, sizeof(ws_in6_addr), &ipv6->addr);
-}
-
-/** Initialize an address from TVB data.
- *
- * Same as set_address but it takes a TVB and an offset. This is preferred
- * over passing the return value of tvb_get_ptr() to set_address().
- *
- * This calls tvb_get_ptr() (including throwing any exceptions) before
- * modifying the address.
- *
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param tvb [in] Pointer to the TVB.
- * @param offset [in] Offset within the TVB.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- */
-static inline void
-set_address_tvb(address *addr, int addr_type, int addr_len, tvbuff_t *tvb, int offset) {
-    const void *p;
-
-    if (addr_len != 0) {
-        /* Must not be AT_NONE - AT_NONE must have no data */
-        ws_assert(addr_type != AT_NONE);
-        p = tvb_get_ptr(tvb, offset, addr_len);
-    } else
-        p = NULL;
-    set_address(addr, addr_type, addr_len, p);
-}
-
-/** Initialize an address with the given values, allocating a new buffer
- * for the address data using wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param addr_data [in] Pointer to the address data.
- */
-static inline void
-alloc_address_wmem(wmem_allocator_t *scope, address *addr,
-                        int addr_type, int addr_len, const void *addr_data) {
-    ws_assert(addr);
-    clear_address(addr);
-    addr->type = addr_type;
-    if (addr_len == 0) {
-        /* Zero length must mean no data */
-        ws_assert(addr_data == NULL);
-        /* Nothing to copy */
-        return;
-    }
-    /* Must not be AT_NONE - AT_NONE must have no data */
-    ws_assert(addr_type != AT_NONE);
-    /* Make sure we *do* have data to copy */
-    ws_assert(addr_data != NULL);
-    addr->data = addr->priv = wmem_memdup(scope, addr_data, addr_len);
-    addr->len = addr_len;
-}
-
-/** Allocate an address from TVB data.
- *
- * Same as alloc_address_wmem but it takes a TVB and an offset.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
- * @param addr [in,out] The address to initialize.
- * @param addr_type [in] Address type.
- * @param addr_len [in] The length in bytes of the address data. For example, 4 for
- *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
- * @param tvb [in] Pointer to the TVB.
- * @param offset [in] Offset within the TVB.
- */
-static inline void
-alloc_address_tvb(wmem_allocator_t *scope, address *addr,
-                    int addr_type, int addr_len,  tvbuff_t *tvb, int offset) {
-    const void *p;
-
-    p = tvb_get_ptr(tvb, offset, addr_len);
-    alloc_address_wmem(scope, addr, addr_type, addr_len, p);
-}
-
-/** Compare two addresses.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return 0 if the addresses are equal,
- *  A positive number if addr1 > addr2 in some nondefined metric,
- *  A negative number if addr1 < addr2 in some nondefined metric.
- */
-static inline int
-cmp_address(const address *addr1, const address *addr2) {
-    if (addr1->type > addr2->type) return 1;
-    if (addr1->type < addr2->type) return -1;
-    if (addr1->len  > addr2->len) return 1;
-    if (addr1->len  < addr2->len) return -1;
-    if (addr1->len == 0) {
-        /*
-         * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
-         * if both addresses are zero-length, don't compare them
-         * (there's nothing to compare, so they're equal).
-         */
-        return 0;
-    }
-    return memcmp(addr1->data, addr2->data, addr1->len);
-}
-
-/** Check two addresses for equality.
- *
- * Given two addresses, return "true" if they're equal, "false" otherwise.
- * Addresses are equal only if they have the same type and length; if the
- * length is zero, they are then equal, otherwise the data must be the
- * same.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return true if the addresses are equal, false otherwise.
- */
-static inline bool
-addresses_equal(const address *addr1, const address *addr2) {
-    /*
-     * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
-     * if both addresses are zero-length, don't compare them
-     * (there's nothing to compare, so they're equal).
-     */
-    if (addr1->type == addr2->type &&
-        addr1->len == addr2->len &&
-        (addr1->len == 0 ||
-         memcmp(addr1->data, addr2->data, addr1->len) == 0))
-        return true;
-    return false;
-}
-
-/** Check the data of two addresses for equality.
- *
- * Given two addresses, return "true" if they have the same length and,
- * their data is equal, "false" otherwise.
- * The address types are ignored. This can be used to compare custom
- * address types defined with address_type_dissector_register.
- *
- * @param addr1 [in] The first address to compare.
- * @param addr2 [in] The second address to compare.
- * @return true if the addresses are equal, false otherwise.
- */
-static inline bool
-addresses_data_equal(const address *addr1, const address *addr2) {
-    if ( addr1->len == addr2->len
-            && memcmp(addr1->data, addr2->data, addr1->len) == 0
-            ) return true;
-    return false;
-}
-
-/** Perform a shallow copy of the address (both addresses point to the same
- * memory location).
- *
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- *
- * \warning Make sure 'from' memory stays valid for the lifetime of this object.
- * Also it's strongly recommended to use this function instead of copy-assign.
- */
-static inline void
-copy_address_shallow(address *to, const address *from) {
-    set_address(to, from->type, from->len, from->data);
-}
-
-/** Copy an address, allocating a new buffer for the address data
- *  using wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- */
-static inline void
-copy_address_wmem(wmem_allocator_t *scope, address *to, const address *from) {
-    alloc_address_wmem(scope, to, from->type, from->len, from->data);
-}
-
-/** Copy an address, allocating a new buffer for the address data.
- *
- * @param to [in,out] The destination address.
- * @param from [in] The source address.
- */
-static inline void
-copy_address(address *to, const address *from) {
-    copy_address_wmem(NULL, to, from);
-}
-
-/** Free an address allocated with wmem-scoped memory.
- *
- * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
- * @param addr [in,out] The address whose data to free.
- */
-static inline void
-free_address_wmem(wmem_allocator_t *scope, address *addr) {
-    /* Because many dissectors set 'type = AT_NONE' to mean clear we check for that */
-    if (addr->type != AT_NONE && addr->len > 0 && addr->priv != NULL) {
-        /* Make sure API use is correct */
-        /* if priv is not null then data == priv */
-        ws_assert(addr->data == addr->priv);
-        wmem_free(scope, addr->priv);
-    }
-    clear_address(addr);
-}
-
-/** Free an address.
- *
- * @param addr [in,out] The address whose data to free.
- */
-static inline void
-free_address(address *addr) {
-    free_address_wmem(NULL, addr);
-}
-
-/** Hash an address into a hash value (which must already have been set).
- *
- * @param hash_val The existing hash value.
- * @param addr The address to add.
- * @return The new hash value.
- */
-static inline unsigned
-add_address_to_hash(unsigned hash_val, const address *addr) {
-    const uint8_t *hash_data = (const uint8_t *)(addr)->data;
-    int idx;
-
-    for (idx = 0; idx < (addr)->len; idx++) {
-        hash_val += hash_data[idx];
-        hash_val += ( hash_val << 10 );
-        hash_val ^= ( hash_val >> 6 );
-    }
-    return hash_val;
-}
-
-/** Hash an address into a hash value (which must already have been set).
- *  64-bit version of add_address_to_hash().
- *
- * @param hash_val The existing hash value.
- * @param addr The address to add.
- * @return The new hash value.
- */
-static inline uint64_t
-add_address_to_hash64(uint64_t hash_val, const address *addr) {
-    const uint8_t *hash_data = (const uint8_t *)(addr)->data;
-    int idx;
-
-    for (idx = 0; idx < (addr)->len; idx++) {
-        hash_val += hash_data[idx];
-        hash_val += ( hash_val << 10 );
-        hash_val ^= ( hash_val >> 6 );
-    }
-    return hash_val;
-}
-
-WS_DLL_PUBLIC unsigned address_to_bytes(const address *addr, uint8_t *buf, unsigned buf_len);
-
-/* Types of port numbers Wireshark knows about. */
-typedef enum {
-    PT_NONE,            /* no port number */
-    PT_SCTP,            /* SCTP */
-    PT_TCP,             /* TCP */
-    PT_UDP,             /* UDP */
-    PT_DCCP,            /* DCCP */
-    PT_IPX,             /* IPX sockets */
-    PT_DDP,             /* DDP AppleTalk connection */
-    PT_IDP,             /* XNS IDP sockets */
-    PT_USB,             /* USB endpoint 0xffff means the host */
-    PT_I2C,
-    PT_IBQP,            /* Infiniband QP number */
-    PT_BLUETOOTH,
-    PT_IWARP_MPA,       /* iWarp MPA */
-    PT_MCTP
-} port_type;
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __ADDRESS_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
 /* Begin wsutil/value_string.h */
 /** @file
  * Definitions for value_string structures and routines
@@ -6960,6 +7830,473 @@ WS_DLL_PUBLIC void frame_data_set_after_dissect(frame_data *fdata,
  *
  * vi: set shiftwidth=2 tabstop=8 expandtab:
  * :indentSize=2:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin wsutil/inet_cidr.h */
+/** @file
+ * Definitions of IPv4 address-and-mask structure, which is what an
+ * FT_IPV4 value is (even if there's no mask in a packet, those
+ * values can be compared against an address+mask in a filter
+ * expression).
+ *
+ * Gilbert Ramirez <gram@alumni.rice.edu>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __IPV4_H__
+#define __IPV4_H__
+
+
+typedef struct {
+	uint32_t	addr;	/* stored in host order */
+	uint32_t	nmask;	/* stored in host order */
+} ipv4_addr_and_mask;
+
+typedef struct {
+	ws_in6_addr addr;
+	uint32_t prefix;
+} ipv6_addr_and_prefix;
+
+/*
+ ********** IPv4 *********
+ */
+
+/**
+* Returns the IPv4 subnet mask of the specified length
+*
+* @param mask_length the number of bits in the subnet mask (max of 32)
+* @return the subnet mask of the specified length
+*/
+WS_DLL_PUBLIC
+uint32_t
+ws_ipv4_get_subnet_mask(const uint32_t mask_length);
+
+WS_DLL_PUBLIC
+void
+ws_ipv4_addr_and_mask_init(ipv4_addr_and_mask *dst, ws_in4_addr src_addr, int src_bits);
+
+WS_DLL_PUBLIC
+bool
+ws_ipv4_addr_and_mask_contains(const ipv4_addr_and_mask *ipv4, const ws_in4_addr *addr);
+
+/*
+ ********** IPv6 *********
+ */
+
+WS_DLL_PUBLIC
+bool
+ws_ipv6_addr_and_prefix_contains(const ipv6_addr_and_prefix *ipv6, const ws_in6_addr *addr);
+
+#endif
+/* End embedded header */
+
+/* Begin epan/address.h */
+/** @file
+ * Definitions for structures storing addresses, and for the type of
+ * variables holding port-type values
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __ADDRESS_H__
+#define __ADDRESS_H__
+
+#include <string.h>     /* for memcmp */
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/* Types of "global" addresses Wireshark knows about. */
+/* Address types can be added here if there are many dissectors that use them or just
+ * within a specific dissector.
+ * If an address type is added here, it must be "registered" within address_types.c
+ * For dissector address types, just use the address_type_dissector_register function
+ * from address_types.h
+ *
+ * AT_NUMERIC - a numeric address type can consist of a uint8_t, uint16_t, uint32_t or uint64_t
+ * value. If no correct length is provided, to avoid data bleed, a uint8_t is
+ * assumed. Only representation (aka conversion of value to string) is implemented for this type.
+ */
+typedef enum {
+    AT_NONE,               /* no link-layer address */
+    AT_ETHER,              /* MAC (Ethernet, 802.x, FDDI) address */
+    AT_IPv4,               /* IPv4 */
+    AT_IPv6,               /* IPv6 */
+    AT_IPX,                /* IPX */
+    AT_FC,                 /* Fibre Channel */
+    AT_FCWWN,              /* Fibre Channel WWN */
+    AT_STRINGZ,            /* null-terminated string */
+    AT_EUI64,              /* IEEE EUI-64 */
+    AT_IB,                 /* Infiniband GID/LID */
+    AT_AX25,               /* AX.25 */
+    AT_VINES,              /* Banyan Vines address */
+    AT_NUMERIC,            /* Numeric address type. */
+    AT_MCTP,               /* MCTP */
+    AT_ILNP_NID,           /* ILNP NID */
+    AT_ILNP_L64,           /* ILNP L64 */
+    AT_ILNP_ILV,           /* ILNP ILV */
+    AT_END_OF_LIST         /* Must be last in list */
+} address_type;
+
+typedef struct _address {
+    int           type;         /* type of address */
+    int           len;          /* length of address, in bytes */
+    const void   *data;         /* pointer to address data */
+
+    /* private */
+    void         *priv;
+} address;
+
+#define ADDRESS_INIT(type, len, data) {type, len, data, NULL}
+#define ADDRESS_INIT_NONE ADDRESS_INIT(AT_NONE, 0, NULL)
+
+static inline void
+clear_address(address *addr)
+{
+    addr->type = AT_NONE;
+    addr->len  = 0;
+    addr->data = NULL;
+    addr->priv = NULL;
+}
+
+/** Initialize an address with the given values.
+ *
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param addr_data [in] Pointer to the address data.
+ */
+static inline void
+set_address(address *addr, int addr_type, int addr_len, const void *addr_data) {
+    if (addr_len == 0) {
+        /* Zero length must mean no data */
+        ws_assert(addr_data == NULL);
+    } else {
+        /* Must not be AT_NONE - AT_NONE must have no data */
+        ws_assert(addr_type != AT_NONE);
+        /* Make sure we *do* have data */
+        ws_assert(addr_data != NULL);
+    }
+    addr->type = addr_type;
+    addr->len  = addr_len;
+    addr->data = addr_data;
+    addr->priv = NULL;
+}
+
+static inline void
+set_address_ipv4(address *addr, const ipv4_addr_and_mask *ipv4) {
+    addr->type = AT_IPv4;
+    addr->len  = 4;
+    uint32_t val = g_htonl(ipv4->addr);
+    addr->priv = g_memdup2(&val, sizeof(val));
+    addr->data = addr->priv;
+}
+
+static inline void
+set_address_ipv6(address *addr, const ipv6_addr_and_prefix *ipv6) {
+    set_address(addr, AT_IPv6, sizeof(ws_in6_addr), &ipv6->addr);
+}
+
+/** Initialize an address from TVB data.
+ *
+ * Same as set_address but it takes a TVB and an offset. This is preferred
+ * over passing the return value of tvb_get_ptr() to set_address().
+ *
+ * This calls tvb_get_ptr() (including throwing any exceptions) before
+ * modifying the address.
+ *
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param tvb [in] Pointer to the TVB.
+ * @param offset [in] Offset within the TVB.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ */
+static inline void
+set_address_tvb(address *addr, int addr_type, int addr_len, tvbuff_t *tvb, int offset) {
+    const void *p;
+
+    if (addr_len != 0) {
+        /* Must not be AT_NONE - AT_NONE must have no data */
+        ws_assert(addr_type != AT_NONE);
+        p = tvb_get_ptr(tvb, offset, addr_len);
+    } else
+        p = NULL;
+    set_address(addr, addr_type, addr_len, p);
+}
+
+/** Initialize an address with the given values, allocating a new buffer
+ * for the address data using wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param addr_data [in] Pointer to the address data.
+ */
+static inline void
+alloc_address_wmem(wmem_allocator_t *scope, address *addr,
+                        int addr_type, int addr_len, const void *addr_data) {
+    ws_assert(addr);
+    clear_address(addr);
+    addr->type = addr_type;
+    if (addr_len == 0) {
+        /* Zero length must mean no data */
+        ws_assert(addr_data == NULL);
+        /* Nothing to copy */
+        return;
+    }
+    /* Must not be AT_NONE - AT_NONE must have no data */
+    ws_assert(addr_type != AT_NONE);
+    /* Make sure we *do* have data to copy */
+    ws_assert(addr_data != NULL);
+    addr->data = addr->priv = wmem_memdup(scope, addr_data, addr_len);
+    addr->len = addr_len;
+}
+
+/** Allocate an address from TVB data.
+ *
+ * Same as alloc_address_wmem but it takes a TVB and an offset.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
+ * @param addr [in,out] The address to initialize.
+ * @param addr_type [in] Address type.
+ * @param addr_len [in] The length in bytes of the address data. For example, 4 for
+ *                     AT_IPv4 or sizeof(ws_in6_addr) for AT_IPv6.
+ * @param tvb [in] Pointer to the TVB.
+ * @param offset [in] Offset within the TVB.
+ */
+static inline void
+alloc_address_tvb(wmem_allocator_t *scope, address *addr,
+                    int addr_type, int addr_len,  tvbuff_t *tvb, int offset) {
+    const void *p;
+
+    p = tvb_get_ptr(tvb, offset, addr_len);
+    alloc_address_wmem(scope, addr, addr_type, addr_len, p);
+}
+
+/** Compare two addresses.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return 0 if the addresses are equal,
+ *  A positive number if addr1 > addr2 in some nondefined metric,
+ *  A negative number if addr1 < addr2 in some nondefined metric.
+ */
+static inline int
+cmp_address(const address *addr1, const address *addr2) {
+    if (addr1->type > addr2->type) return 1;
+    if (addr1->type < addr2->type) return -1;
+    if (addr1->len  > addr2->len) return 1;
+    if (addr1->len  < addr2->len) return -1;
+    if (addr1->len == 0) {
+        /*
+         * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
+         * if both addresses are zero-length, don't compare them
+         * (there's nothing to compare, so they're equal).
+         */
+        return 0;
+    }
+    return memcmp(addr1->data, addr2->data, addr1->len);
+}
+
+/** Check two addresses for equality.
+ *
+ * Given two addresses, return "true" if they're equal, "false" otherwise.
+ * Addresses are equal only if they have the same type and length; if the
+ * length is zero, they are then equal, otherwise the data must be the
+ * same.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return true if the addresses are equal, false otherwise.
+ */
+static inline bool
+addresses_equal(const address *addr1, const address *addr2) {
+    /*
+     * memcmp(NULL, NULL, 0) is *not* guaranteed to work, so
+     * if both addresses are zero-length, don't compare them
+     * (there's nothing to compare, so they're equal).
+     */
+    if (addr1->type == addr2->type &&
+        addr1->len == addr2->len &&
+        (addr1->len == 0 ||
+         memcmp(addr1->data, addr2->data, addr1->len) == 0))
+        return true;
+    return false;
+}
+
+/** Check the data of two addresses for equality.
+ *
+ * Given two addresses, return "true" if they have the same length and,
+ * their data is equal, "false" otherwise.
+ * The address types are ignored. This can be used to compare custom
+ * address types defined with address_type_dissector_register.
+ *
+ * @param addr1 [in] The first address to compare.
+ * @param addr2 [in] The second address to compare.
+ * @return true if the addresses are equal, false otherwise.
+ */
+static inline bool
+addresses_data_equal(const address *addr1, const address *addr2) {
+    if ( addr1->len == addr2->len
+            && memcmp(addr1->data, addr2->data, addr1->len) == 0
+            ) return true;
+    return false;
+}
+
+/** Perform a shallow copy of the address (both addresses point to the same
+ * memory location).
+ *
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ *
+ * \warning Make sure 'from' memory stays valid for the lifetime of this object.
+ * Also it's strongly recommended to use this function instead of copy-assign.
+ */
+static inline void
+copy_address_shallow(address *to, const address *from) {
+    set_address(to, from->type, from->len, from->data);
+}
+
+/** Copy an address, allocating a new buffer for the address data
+ *  using wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ */
+static inline void
+copy_address_wmem(wmem_allocator_t *scope, address *to, const address *from) {
+    alloc_address_wmem(scope, to, from->type, from->len, from->data);
+}
+
+/** Copy an address, allocating a new buffer for the address data.
+ *
+ * @param to [in,out] The destination address.
+ * @param from [in] The source address.
+ */
+static inline void
+copy_address(address *to, const address *from) {
+    copy_address_wmem(NULL, to, from);
+}
+
+/** Free an address allocated with wmem-scoped memory.
+ *
+ * @param scope [in] The lifetime of the allocated memory, e.g., pinfo->pool
+ * @param addr [in,out] The address whose data to free.
+ */
+static inline void
+free_address_wmem(wmem_allocator_t *scope, address *addr) {
+    /* Because many dissectors set 'type = AT_NONE' to mean clear we check for that */
+    if (addr->type != AT_NONE && addr->len > 0 && addr->priv != NULL) {
+        /* Make sure API use is correct */
+        /* if priv is not null then data == priv */
+        ws_assert(addr->data == addr->priv);
+        wmem_free(scope, addr->priv);
+    }
+    clear_address(addr);
+}
+
+/** Free an address.
+ *
+ * @param addr [in,out] The address whose data to free.
+ */
+static inline void
+free_address(address *addr) {
+    free_address_wmem(NULL, addr);
+}
+
+/** Hash an address into a hash value (which must already have been set).
+ *
+ * @param hash_val The existing hash value.
+ * @param addr The address to add.
+ * @return The new hash value.
+ */
+static inline unsigned
+add_address_to_hash(unsigned hash_val, const address *addr) {
+    const uint8_t *hash_data = (const uint8_t *)(addr)->data;
+    int idx;
+
+    for (idx = 0; idx < (addr)->len; idx++) {
+        hash_val += hash_data[idx];
+        hash_val += ( hash_val << 10 );
+        hash_val ^= ( hash_val >> 6 );
+    }
+    return hash_val;
+}
+
+/** Hash an address into a hash value (which must already have been set).
+ *  64-bit version of add_address_to_hash().
+ *
+ * @param hash_val The existing hash value.
+ * @param addr The address to add.
+ * @return The new hash value.
+ */
+static inline uint64_t
+add_address_to_hash64(uint64_t hash_val, const address *addr) {
+    const uint8_t *hash_data = (const uint8_t *)(addr)->data;
+    int idx;
+
+    for (idx = 0; idx < (addr)->len; idx++) {
+        hash_val += hash_data[idx];
+        hash_val += ( hash_val << 10 );
+        hash_val ^= ( hash_val >> 6 );
+    }
+    return hash_val;
+}
+
+WS_DLL_PUBLIC unsigned address_to_bytes(const address *addr, uint8_t *buf, unsigned buf_len);
+
+/* Types of port numbers Wireshark knows about. */
+typedef enum {
+    PT_NONE,            /* no port number */
+    PT_SCTP,            /* SCTP */
+    PT_TCP,             /* TCP */
+    PT_UDP,             /* UDP */
+    PT_DCCP,            /* DCCP */
+    PT_IPX,             /* IPX sockets */
+    PT_DDP,             /* DDP AppleTalk connection */
+    PT_IDP,             /* XNS IDP sockets */
+    PT_USB,             /* USB endpoint 0xffff means the host */
+    PT_I2C,
+    PT_IBQP,            /* Infiniband QP number */
+    PT_BLUETOOTH,
+    PT_IWARP_MPA,       /* iWarp MPA */
+    PT_MCTP
+} port_type;
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __ADDRESS_H__ */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
  */
 /* End embedded header */
 
@@ -11611,6 +12948,3219 @@ proto_custom_get_filter(struct epan_dissect *edt, GSList *field_id, int occurren
  */
 /* End embedded header */
 
+/* Begin epan/range.h */
+/* range.h
+ * Range routines
+ *
+ * Dick Gooris <gooris@lucent.com>
+ * Ulf Lamping <ulf.lamping@web.de>
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __RANGE_H__
+#define __RANGE_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/** @file
+ * Range strings a variant of value_strings
+ */
+
+/**@todo where's the best place for these? */
+#define MAX_SCTP_PORT 65535
+#define MAX_TCP_PORT 65535
+#define MAX_UDP_PORT 65535
+#define MAX_DCCP_PORT 65535
+
+typedef struct range_admin_tag {
+    uint32_t low;
+    uint32_t high;
+} range_admin_t;
+#define RANGE_ADMIN_T_INITIALIZER { 0, 0 }
+
+/** user specified range(s) */
+typedef struct epan_range {
+    unsigned        nranges;   /**< number of entries in ranges */
+    range_admin_t   ranges[];  /**< flexible array of range entries */
+} range_t;
+
+/**
+ * Return value from range_convert_str().
+ */
+typedef enum {
+    CVT_NO_ERROR,
+    CVT_SYNTAX_ERROR,
+    CVT_NUMBER_TOO_BIG
+} convert_ret_t;
+
+WS_DLL_PUBLIC range_t *range_empty(wmem_allocator_t *scope);
+
+
+/*** Converts a range string to a fast comparable array of ranges.
+ * This function allocates a range_t large enough to hold the number
+ * of ranges specified, and fills the array range->ranges containing
+ * low and high values with the number of ranges being range->nranges.
+ * After having called this function, the function value_is_in_range()
+ * determines whether a given number is within the range or not.<BR>
+ * In case of a single number, we make a range where low is equal to high.
+ * We take care on wrongly entered ranges; opposite order will be taken
+ * care of.
+ *
+ * The following syntax is accepted :
+ *
+ *   1-20,30-40     Range from 1 to 20, and packets 30 to 40
+ *   -20,30         Range from 1 to 20, and packet 30
+ *   20,30,40-      20, 30, and the range from 40 to the end
+ *   20-10,30-25    Range from 10 to 20, and from 25 to 30
+ *   -              All values
+ * @param scope memory scope for the range
+ * @param range the range
+ * @param es points to the string to be converted.
+ * @param max_value specifies the maximum value in a range.
+ * @return convert_ret_t
+ */
+WS_DLL_PUBLIC convert_ret_t range_convert_str(wmem_allocator_t *scope, range_t **range, const char *es,
+    uint32_t max_value);
+
+WS_DLL_PUBLIC convert_ret_t range_convert_str_work(wmem_allocator_t *scope, range_t **range, const char *es,
+    uint32_t max_value, bool err_on_max);
+
+/** This function returns true if a given value is within one of the ranges
+ * stored in the ranges array.
+ * @param range the range
+ * @param val the value to check
+ * @return true if the value is in range
+ */
+WS_DLL_PUBLIC bool value_is_in_range(const range_t *range, uint32_t val);
+
+/** This function returns true if val has successfully been added to
+ * a range.  This may extend an existing range or create a new one
+ * @param scope memory scope of range (in case of reallocation)
+ * @param range to add value
+ * @param val value to add to range
+ * @return true if the value is successfully added to range
+ */
+WS_DLL_PUBLIC bool range_add_value(wmem_allocator_t *scope, range_t **range, uint32_t val);
+
+/** This function returns true if val has successfully been removed from
+ * a range.  This may remove an existing range.
+ * @param scope memory scope of range (in case of reallocation)
+ * @param range to remove value
+ * @param val value to remove within range
+ * @return true if the value is successfully removed to range
+ */
+WS_DLL_PUBLIC bool range_remove_value(wmem_allocator_t *scope, range_t **range, uint32_t val);
+
+/** This function returns true if the two given range_t's are equal.
+ * @param a first range
+ * @param b second range
+ * @return true if the value is in range
+ */
+WS_DLL_PUBLIC bool ranges_are_equal(const range_t *a, const range_t *b);
+
+/** This function calls the provided callback function for each value in
+ * in the range. Takes a pointer argument, which is passed to the
+ * callback, along with the value in the range.
+ * @param range the range
+ * @param callback the callback function
+ * @param ptr pointer passed to the callback
+ */
+WS_DLL_PUBLIC void range_foreach(range_t *range, void (*callback)(uint32_t val, void *ptr), void *ptr);
+
+/**
+ * This function converts a range_t to a (wmem_alloc()-allocated) string.
+ */
+WS_DLL_PUBLIC char *range_convert_range(wmem_allocator_t *scope, const range_t *range);
+
+/**
+ * Create a (wmem-alloc()ed) copy of a range
+ * @param scope memory scope for the copied range
+ * @param src the range to copy
+ * @return ep allocated copy of the range
+ */
+WS_DLL_PUBLIC range_t *range_copy(wmem_allocator_t *scope, const range_t *src);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __RANGE_H__ */
+/* End embedded header */
+
+/* Begin wsutil/feature_list.h */
+/** @file
+ * Declarations of routines for gathering and handling lists of
+ * present/absent features (usually actually dependencies)
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __WSUTIL_FEATURE_LIST_H__
+#define __WSUTIL_FEATURE_LIST_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/*
+ * Handle to a list of features/dependencies.
+ * Semi-opaque. Functions which gather the list of features
+ * will be passed one of these to use with
+ * `with_feature()`/`without_feature()` (below).
+ */
+typedef GList **feature_list;
+
+/*
+ * The format of entries in a feature_list is a char* starting with a
+ * '+' or '-' character indicating if the feature is respectively
+ * present or absent, followed by the unchanged feature description.
+ * This allows the insert order of features to be preserved,
+ * while still preserving the present/absent status in a simple way.
+ */
+
+
+/*
+ * Pointer to a function which gathers a list of features.
+ */
+typedef void(*gather_feature_func)(feature_list l);
+
+/*
+ * Add an indicator to the given feature_list that the named
+ * feature is present.
+ */
+WS_DLL_PUBLIC
+void with_feature(feature_list l, const char *fmt, ...) G_GNUC_PRINTF(2,3);
+
+/*
+ * Add an indicator to the given feature_list that the named
+ * feature is absent.
+ */
+WS_DLL_PUBLIC
+void without_feature(feature_list l, const char *fmt, ...) G_GNUC_PRINTF(2,3);
+
+/*
+ * Sort the given feature list, alphabetically by feature name.
+ * (The leading '+' or '-' is not factored into the sort.)
+ * Currently unused.
+ */
+WS_DLL_PUBLIC
+void sort_features(feature_list l);
+
+/*
+ * Separate input list l into output lists with_list and without_list
+ * (which should be empty when first called).
+ * Note: output list members DO keep the leading '+'/'-' prefix.
+ */
+WS_DLL_PUBLIC
+void separate_features(feature_list l, feature_list with_list, feature_list without_list);
+
+/*
+ * Free the memory used by the feature list,
+ * and reset its pointer to NULL.
+ */
+WS_DLL_PUBLIC
+void free_features(feature_list l);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __WSUTIL_FEATURE_LIST_H__ */
+/* End embedded header */
+
+/* Begin epan/params.h */
+/** @file
+ *
+ * Definitions for parameter handling routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __PARAMS_H__
+#define __PARAMS_H__
+
+/*
+ * Definition of a value for an enumerated type.
+ *
+ * "name" is the name one would use on the command line for the value.
+ * "description" is the description of the value, used in combo boxes/
+ * option menus.
+ * "value" is the value.
+ */
+typedef struct {
+	const char	*name;
+	const char	*description;
+	int		value;
+} enum_val_t;
+
+/* -----  Public enum_val_t "Helper" macros ----- */
+/*
+ * Reuse the macro format of the list of value strings (that is used by value_string.h
+ * for generating definitions of enum and/or value strings array) to generating
+ * enum_val_t array. For example, there is a macro of a value strings list like:
+ *
+ *      #define foo_VALUE_STRING_LIST(XXX) \
+ *         XXX( FOO_A, 1, "aaa" ) \
+ *         XXX( FOO_B, 3, "bbb" )
+ *
+ * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_STATIC(foo, foo_ev); will define a static enum_val_t array:
+ *
+ *      static const enum_val_t foo_ev[] = {
+ *          { "aaa", "aaa", 1 },
+ *          { "bbb", "bbb", 3 },
+ *          { NULL, NULL, 0 }
+ *      };
+ *
+ * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DEF(foo, foo_ev); will define a global enum_val_t array:
+ *
+ *      const enum_val_t foo_ev[] = {
+ *          { "aaa", "aaa", 1 },
+ *          { "bbb", "bbb", 3 },
+ *          { NULL, NULL, 0 }
+ *      };
+ *
+ * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(foo_ev); will declare a extern enum_val_t array:
+ *
+ *      extern const enum_val_t foo_ev[];
+ */
+#define VS_LIST_TO_ENUM_VAL_T_ARRAY_STATIC(    array_name, new_array_name) static _EV_ARRAY_XXX(array_name, new_array_name, _VALUE_STRING_LIST, _EV_ARRAY_ENTRY_FROM_VS)
+#define VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DEF(array_name, new_array_name) _EV_ARRAY_XXX(array_name, new_array_name, _VALUE_STRING_LIST, _EV_ARRAY_ENTRY_FROM_VS)
+#define VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(new_array_name) extern const enum_val_t new_array_name[]
+
+/*
+ * Provide the capability to define a list of enum_val_t(s) once and
+ * then to expand the list as an enum and/or as a enum_val_t array.:
+ *
+ *      #define foo2_ENUM_VAL_T_LIST(XXX) \
+ *         XXX( FOO_A, 1, "aaa", "The description of aaa" ) \
+ *         XXX( FOO_B, 3, "bbb", "The description of bbb" )
+ *
+ * The code ENUM_VAL_T_ENUM(foo2); will define an enumeration type:
+ *
+ *      enum {
+ *          FOO_A = 1,
+ *          FOO_B = 3,
+ *          _foo_ENUM_DUMMY = 0
+ *      };
+ * Note, you can use code "typedef ENUM_VAL_T_ENUM(foo2) enum_foo_t;" to define a
+ * named enumeration.
+ *
+ * The code ENUM_VAL_T_ARRAY_STATIC(foo2); will define a static enum_val_t array:
+ *
+ *      static const enum_val_t foo2[] = {
+ *          { "aaa", "The description of aaa", 1 },
+ *          { "bbb", "The description of bbb", 3 },
+ *          { NULL, NULL, 0 }
+ *      };
+ *
+ * The code ENUM_VAL_T_ARRAY_GLOBAL_DEF(foo2); will define a global enum_val_t array:
+ *
+ *      const enum_val_t foo2[] = {
+ *          { "aaa", "The description of aaa", 1 },
+ *          { "bbb", "The description of bbb", 3 },
+ *          { NULL, NULL, 0 }
+ *      };
+ *
+ * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(foo2); will declare a extern enum_val_t array:
+ *
+ *      extern const enum_val_t foo2[];
+ */
+#define ENUM_VAL_T_ENUM(array_name)  _EV_ENUM_XXX(array_name, _ENUM_VAL_T_LIST, _EV_ENUM_ENTRY)
+#define ENUM_VAL_T_ARRAY_STATIC(    array_name) static _EV_ARRAY_XXX(array_name, array_name, _ENUM_VAL_T_LIST, _EV_ARRAY_ENTRY)
+#define ENUM_VAL_T_ARRAY_GLOBAL_DEF(array_name) _EV_ARRAY_XXX(array_name, array_name, _ENUM_VAL_T_LIST, _EV_ARRAY_ENTRY)
+#define ENUM_VAL_T_ARRAY_GLOBAL_DCL(array_name) extern const enum_val_t array_name[]
+
+/*
+ * Reuse the format of enum_val list to create value_string array:
+ *
+ * The code ENUM_VAL_T_TO_VS_ARRAY_STATIC(foo2, foo2_vs); will define a static value_string array from an enum_val list:
+ *
+ *      static const value_string foo2_vs[] = {
+ *          { 1, "aaa" },
+ *          { 3, "bbb" },
+ *          { 0, NULL }
+ *      };
+ *
+ * The code ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF(foo2, foo2_vs); will define a global value_string array from an enum_val list:
+ *
+ *      const value_string foo2_vs[] = {
+ *          { 1, "aaa" },
+ *          { 3, "bbb" },
+ *          { 0, NULL }
+ *      };
+ *
+ * The code ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL(foo2_vs); will declare a extern value_string array from an enum_val list:
+ *
+ *      extern const value_string foo2_vs[];
+ *
+ * The macros ENUM_VAL_T_TO_VS_ARRAY_STATIC2, ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF2 and ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL2
+ * are similar to ENUM_VAL_T_TO_VS_ARRAY_STATIC, ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF and ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL
+ * except that ENUM_VAL_T_TO_VS_ARRAY_XXX(s) uses the 'name' field of enum_val list as the 'string' field of value_string,
+ * and ENUM_VAL_T_TO_VS_ARRAY_XXX2(s) uses the 'enum_name' field.
+ *
+ * Similarly, The macros ENUM_VAL_T_TO_VS_ARRAY_XXX3(s) uses the 'description' field of enum_val list as the 'string'
+ * field of value_string.
+ */
+#define ENUM_VAL_T_TO_VS_ARRAY_STATIC(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL(new_array_name) extern const value_string new_array_name[]
+
+#define ENUM_VAL_T_TO_VS_ARRAY_STATIC2(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV2)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF2(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV2)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL2(new_array_name) extern const value_string new_array_name[]
+
+#define ENUM_VAL_T_TO_VS_ARRAY_STATIC3(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV3)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF3(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV3)
+#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL3(new_array_name) extern const value_string new_array_name[]
+
+/* -- Private macros -- */
+#define _EV_ARRAY_XXX(array_name, new_array_name, array_suffix, macro)  \
+    const enum_val_t new_array_name[] = { \
+    array_name##array_suffix(macro) \
+    { NULL, NULL, 0 } \
+}
+
+#define _EV_ARRAY_ENTRY(enum_name, value, name, description) { name, description, value },
+#define _EV_ARRAY_ENTRY_FROM_VS(enum_name, value, string) { string, string, value },
+
+#define _EV_ENUM_XXX(array_name, array_suffix, macro) \
+enum { \
+    array_name##array_suffix(macro) \
+    _##array_name##_ENUM_DUMMY = 0 \
+}
+
+#define _EV_ENUM_ENTRY(enum_name, value, name, description) enum_name = value,
+
+#define _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, array_suffix, macro)  \
+    const value_string new_array_name[] = { \
+    array_name##array_suffix(macro) \
+    { 0, NULL } \
+}
+#define _VS_ARRAY_ENTRY_FROM_EV(enum_name, value, name, description) { value, name }
+#define _VS_ARRAY_ENTRY_FROM_EV2(enum_name, value, name, description) { value, #enum_name }
+#define _VS_ARRAY_ENTRY_FROM_EV3(enum_name, value, name, description) { value, description }
+
+#endif /* params.h */
+
+/* End embedded header */
+
+/* Begin wsutil/color.h */
+/** @file
+ *
+ * Definitions for colors
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#ifndef  __COLOR_H__
+#define  __COLOR_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#include <inttypes.h>
+
+/*
+ * Data structure holding RGB value for a color, 16 bits per channel.
+ */
+typedef struct {
+    uint16_t red;
+    uint16_t green;
+    uint16_t blue;
+} color_t;
+
+/*
+ * Convert a color_t to a 24-bit RGB value, reducing each channel to
+ * 8 bits and combining them.
+ */
+inline static unsigned int
+color_t_to_rgb(const color_t *color) {
+    return (((color->red >> 8) << 16)
+          | ((color->green >> 8) << 8)
+          | (color->blue >> 8));
+}
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/prefs.h */
+/** @file prefs.h
+ * Definitions for preference handling routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __PREFS_H__
+#define __PREFS_H__
+
+
+
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#define DEF_WIDTH 750
+#define DEF_HEIGHT 550
+
+#define MAX_VAL_LEN  1024
+
+#define TAP_UPDATE_DEFAULT_INTERVAL 3000
+#define ST_DEF_BURSTRES 5
+#define ST_DEF_BURSTLEN 100
+#define ST_MAX_BURSTRES 600000 /* somewhat arbitrary limit of 10 minutes */
+#define ST_MAX_BURSTBUCKETS 100 /* somewhat arbitrary limit - more buckets degrade performance */
+#define DEF_GUI_DECIMAL_PLACES1 2
+#define DEF_GUI_DECIMAL_PLACES2 4
+#define DEF_GUI_DECIMAL_PLACES3 6
+
+#define CONV_DEINT_KEY_CAPFILE    0x01 /* unused yet */
+#define CONV_DEINT_KEY_INTERFACE  0x02
+#define CONV_DEINT_KEY_MAC        0x04
+#define CONV_DEINT_KEY_VLAN       0x08
+
+struct epan_uat;
+struct _e_addr_resolve;
+
+/**
+ * Convert a string listing name resolution types to a bitmask of
+ * those types.
+ *
+ * Set "*name_resolve" to the bitmask, and return '\0', on success;
+ * return the bad character in the string on error.
+ *
+ * @param string a list of name resolution types
+ * @param name_resolve the bitmap of names to resolve to set
+ * @return '\0' on success, the bad character in the string on error
+ */
+WS_DLL_PUBLIC
+char string_to_name_resolve(const char *string, struct _e_addr_resolve *name_resolve);
+
+/*
+ * Modes for the starting directory in File Open dialogs.
+ */
+#define FO_STYLE_LAST_OPENED    0 /* start in last directory we looked at */
+#define FO_STYLE_SPECIFIED      1 /* start in specified directory */
+#define FO_STYLE_CWD            2 /* start in current working directory at startup */
+
+/*
+ * Toolbar styles.
+ */
+#define TB_STYLE_ICONS          0
+#define TB_STYLE_TEXT           1
+#define TB_STYLE_BOTH           2
+
+/*
+ * Color styles.
+ */
+#define COLOR_STYLE_DEFAULT     0
+#define COLOR_STYLE_FLAT        1
+#define COLOR_STYLE_GRADIENT    2
+
+#define COLOR_STYLE_ALPHA       0.25
+
+#define COLOR_SCHEME_DEFAULT    0
+#define COLOR_SCHEME_LIGHT      1
+#define COLOR_SCHEME_DARK       2
+
+/*
+ * Types of layout of summary/details/hex panes.
+ */
+typedef enum {
+    layout_unused,  /* entry currently unused */
+    layout_type_5,
+    layout_type_2,
+    layout_type_1,
+    layout_type_4,
+    layout_type_3,
+    layout_type_6,
+    layout_type_max
+} layout_type_e;
+
+/*
+ * Types of pane.
+ */
+typedef enum {
+    layout_pane_content_none,
+    layout_pane_content_plist,
+    layout_pane_content_pdetails,
+    layout_pane_content_pbytes,
+    layout_pane_content_pdiagram,
+} layout_pane_content_e;
+
+/*
+ * Places version information will show up
+ */
+typedef enum {
+    version_welcome_only,
+    version_title_only,
+    version_both,
+    version_neither
+} version_info_e;
+
+typedef enum {
+    layout_vertical,
+    layout_horizontal
+} splitter_layout_e;
+
+typedef enum {
+    pref_default,
+    pref_stashed,
+    pref_current
+} pref_source_t;
+
+typedef enum {
+    ELIDE_LEFT,
+    ELIDE_RIGHT,
+    ELIDE_MIDDLE,
+    ELIDE_NONE
+} elide_mode_e;
+
+typedef enum {
+    COPY_FORMAT_TEXT,
+    COPY_FORMAT_CSV,
+    COPY_FORMAT_YAML,
+    COPY_FORMAT_HTML
+} copy_format_e;
+
+typedef enum {
+    ABS_TIME_ASCII_NEVER,
+    ABS_TIME_ASCII_TREE,
+    ABS_TIME_ASCII_COLUMN,
+    ABS_TIME_ASCII_ALWAYS,
+} abs_time_format_e;
+
+/*
+ * Update channel.
+ */
+typedef enum {
+    UPDATE_CHANNEL_DEVELOPMENT,
+    UPDATE_CHANNEL_STABLE
+} software_update_channel_e;
+
+typedef struct _e_prefs {
+  GList       *col_list;
+  int          num_cols;
+  color_t      st_client_fg, st_client_bg, st_server_fg, st_server_bg;
+  color_t      gui_filter_valid_fg, gui_filter_invalid_fg, gui_filter_deprecated_fg;
+  color_t      gui_filter_valid_bg, gui_filter_invalid_bg, gui_filter_deprecated_bg;
+  bool         restore_filter_after_following_stream;
+  int          gui_toolbar_main_style;
+  char        *gui_font_name;
+  int          gui_color_scheme;
+  color_t      gui_active_fg;
+  color_t      gui_active_bg;
+  int          gui_active_style;
+  color_t      gui_inactive_fg;
+  color_t      gui_inactive_bg;
+  int          gui_inactive_style;
+  color_t      gui_marked_fg;
+  color_t      gui_marked_bg;
+  color_t      gui_ignored_fg;
+  color_t      gui_ignored_bg;
+  char        *gui_colorized_fg;
+  char        *gui_colorized_bg;
+  bool         gui_geometry_save_position;
+  bool         gui_geometry_save_size;
+  bool         gui_geometry_save_maximized;
+  unsigned     gui_recent_df_entries_max;
+  unsigned     gui_recent_files_count_max;
+  unsigned     gui_fileopen_style;
+  char        *gui_fileopen_dir;
+  unsigned     gui_fileopen_preview;
+  char        *gui_tlskeylog_command;
+  bool         gui_ask_unsaved;
+  bool         gui_autocomplete_filter;
+  bool         gui_find_wrap;
+  char        *gui_window_title;
+  char        *gui_prepend_window_title;
+  char        *gui_start_title;
+  version_info_e gui_version_placement;
+  unsigned     gui_max_export_objects;
+  unsigned     gui_max_tree_items;
+  unsigned     gui_max_tree_depth;
+  bool         gui_welcome_page_show_recent;
+  layout_type_e gui_layout_type;
+  layout_pane_content_e gui_layout_content_1;
+  layout_pane_content_e gui_layout_content_2;
+  layout_pane_content_e gui_layout_content_3;
+  splitter_layout_e gui_packet_dialog_layout;
+  char        *gui_interfaces_hide_types;
+  bool         gui_interfaces_show_hidden;
+  bool         gui_interfaces_remote_display;
+  bool         gui_io_graph_automatic_update;
+  bool         gui_io_graph_enable_legend;
+  bool         gui_plot_automatic_update;
+  bool         gui_plot_enable_legend;
+  bool         gui_plot_enable_auto_scroll;
+  bool         gui_packet_details_show_byteview;
+  char        *capture_device;
+  char        *capture_devices_linktypes;
+  char        *capture_devices_descr;
+  char        *capture_devices_hide;
+  char        *capture_devices_monitor_mode;
+  char        *capture_devices_buffersize;
+  char        *capture_devices_snaplen;
+  char        *capture_devices_pmode;
+  char        *capture_devices_filter; /* XXX - Mostly unused. Deprecate? */
+  bool         capture_prom_mode;
+  bool         capture_monitor_mode;
+  bool         capture_pcap_ng;
+  bool         capture_real_time;
+  unsigned     capture_update_interval;
+  bool         capture_no_interface_load;
+  bool         capture_no_extcap;
+  bool         capture_show_info;
+  GList       *capture_columns;
+  unsigned     tap_update_interval;
+  bool         display_hidden_proto_items;
+  bool         display_byte_fields_with_spaces;
+  abs_time_format_e display_abs_time_ascii;
+  bool         enable_incomplete_dissectors_check;
+  bool         incomplete_dissectors_check_debug;
+  bool         strict_conversation_tracking_heuristics;
+  int          conversation_deinterlacing_key;
+  bool         ignore_dup_frames;
+  unsigned     ignore_dup_frames_cache_entries;
+  bool         filter_expressions_old;  /* true if old filter expressions preferences were loaded. */
+  bool         cols_hide_new; /* true if the new (index-based) gui.column.hide preference was loaded. */
+  bool         gui_update_enabled;
+  software_update_channel_e gui_update_channel;
+  int          gui_update_interval;
+  int          gui_debounce_timer;
+  char        *saved_at_version;
+  bool         unknown_prefs; /* unknown or obsolete pref(s) */
+  bool         gui_packet_list_separator;
+  bool         gui_packet_header_column_definition;
+  bool         gui_packet_list_hover_style; /* Enable/Disable mouse-over colorization */
+  bool         gui_show_selected_packet;
+  bool         gui_show_file_load_time;
+  elide_mode_e gui_packet_list_elide_mode;
+  copy_format_e gui_packet_list_copy_format_options_for_keyboard_shortcut;
+  bool         gui_packet_list_copy_text_with_aligned_columns;
+  bool         gui_packet_list_show_related;
+  bool         gui_packet_list_show_minimap;
+  bool         gui_packet_list_sortable;
+  unsigned     gui_packet_list_cached_rows_max;
+  int          gui_decimal_places1; /* Used for type 1 calculations */
+  int          gui_decimal_places2; /* Used for type 2 calculations */
+  int          gui_decimal_places3; /* Used for type 3 calculations */
+  bool         gui_rtp_player_use_disk1;
+  bool         gui_rtp_player_use_disk2;
+  unsigned     flow_graph_max_export_items;
+  bool         st_enable_burstinfo;
+  bool         st_burst_showcount;
+  int          st_burst_resolution;
+  int          st_burst_windowlen;
+  bool         st_sort_casesensitve;
+  bool         st_sort_rng_fixorder;
+  bool         st_sort_rng_nameonly;
+  int          st_sort_defcolflag;
+  bool         st_sort_defdescending;
+  bool         st_sort_showfullname;
+  int          st_format;
+  bool         conv_machine_readable;
+  bool         extcap_save_on_start;
+} e_prefs;
+
+WS_DLL_PUBLIC e_prefs prefs;
+
+/*
+ * Routines to let modules that have preference settings register
+ * themselves by name, and to let them register preference settings
+ * by name.
+ */
+struct pref_module;
+
+struct pref_custom_cbs;
+
+typedef struct pref_module module_t;
+
+/** Sets up memory used by proto routines. Called at program startup */
+void prefs_init(void);
+
+/** Reset preferences to default values.  Called at profile change */
+WS_DLL_PUBLIC void prefs_reset(void);
+
+/** Frees memory used by proto routines. Called at program shutdown */
+void prefs_cleanup(void);
+
+/** Store whether the current UI theme is dark so that we can adjust colors
+* @param is_dark set to true if the UI's theme is dark
+*/
+WS_DLL_PUBLIC void prefs_set_gui_theme_is_dark(bool is_dark);
+
+/**
+ * Register that a protocol has preferences.
+ * @param id the value returned by "proto_register_protocol()" when
+ *                the protocol was registered.
+ * @param apply_cb callback routine that is called when preferences are
+ *                      applied. It may be NULL, which inhibits the callback.
+ * @return a preferences module which can be used to register a user 'preference'
+ */
+WS_DLL_PUBLIC module_t *prefs_register_protocol(int id, void (*apply_cb)(void));
+
+/**
+ * Register an alias for a preference module.
+ * @param name the preference module's alias. Only ASCII letters, numbers,
+ *                  underscores, hyphens, and dots may appear in the name
+ * @param module the module to create an alias for
+ */
+WS_DLL_PUBLIC void prefs_register_module_alias(const char *name, module_t *module);
+
+/**
+ * Deregister preferences from a protocol.
+ * @param id the value returned by "proto_register_protocol()" when
+ *                the protocol was registered.
+ */
+void prefs_deregister_protocol(int id);
+
+/**
+ * Register that a statistical tap has preferences.
+ *
+ * @param name the name for the tap to use on the command line with "-o"
+ *             and in preference files.
+ * @param title is a short human-readable name for the tap.
+ * @param description is a longer human-readable description of the tap.
+ * @param apply_cb routine to call back after we apply the preferences
+ * @return a preferences module which can be used to register a user 'preference'
+ */
+WS_DLL_PUBLIC module_t *prefs_register_stat(const char *name, const char *title,
+    const char *description, void (*apply_cb)(void));
+
+/**
+ * Register that a codec has preferences.
+ *
+ * @param name is a name for the codec to use on the command line with "-o"
+ *             and in preference files.
+ * @param title is a short human-readable name for the codec.
+ * @param description is a longer human-readable description of the codec.
+ * @param apply_cb routine to call back after we apply the preferences
+ * @return a preferences module which can be used to register a user 'preference'
+ */
+WS_DLL_PUBLIC module_t *prefs_register_codec(const char *name, const char *title,
+    const char *description, void (*apply_cb)(void));
+
+/**
+ * Register that a protocol has preferences and group it under a single
+ * subtree
+ * @param subtree the tree node name for grouping preferences
+ *                the protocol was registered.
+ * @param id the value returned by "proto_register_protocol()" when
+ *                the protocol was registered.
+ * @param apply_cb Callback routine that is called when preferences are
+ *                      applied. It may be NULL, which inhibits the callback.
+ * @return a preferences module which can be used to register a user 'preference'
+ */
+WS_DLL_PUBLIC module_t *prefs_register_protocol_subtree(const char *subtree, int id,
+    void (*apply_cb)(void));
+
+/**
+ * Register that a protocol used to have preferences but no longer does,
+ * by creating an "obsolete" module for it.
+ * @param id the value returned by "proto_register_protocol()" when
+ *                the protocol was registered.
+ * @return a preferences module which can be used to register a user 'preference'
+ */
+WS_DLL_PUBLIC module_t *prefs_register_protocol_obsolete(int id);
+
+/**
+ * Callback function for module list scanners.
+ */
+typedef unsigned (*module_cb)(module_t *module, void *user_data);
+
+/**
+ * Returns true if a preferences module has any submodules
+ * @param module a preferences module which can be used to register a user 'preference'
+ * @return true if a preferences module has any submodules, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_module_has_submodules(module_t *module);
+
+/**
+ * Call a callback function, with a specified argument, for each module
+ * in the list of all modules.  (This list does not include subtrees.)
+ *
+ * Ignores "obsolete" modules; their sole purpose is to allow old
+ * preferences for dissectors that no longer have preferences to be
+ * silently ignored in preference files.
+ *
+ * @param callback the callback to call
+ * @param user_data additional data to pass to the callback
+ */
+WS_DLL_PUBLIC unsigned prefs_modules_foreach(module_cb callback, void *user_data);
+
+/**
+ * Call a callback function, with a specified argument, for each submodule
+ * of a specified module. If the module is NULL, goes through the top-level
+ * list in the display tree of modules.
+ *
+ * Ignores "obsolete" modules; their sole purpose is to allow old
+ * preferences for dissectors that no longer have preferences to be
+ * silently ignored in preference files.  Does not ignore subtrees,
+ * as this can be used when walking the display tree of modules.
+ *
+ * @param module the top-level module to walk through the submodules,
+ *               or NULL for the top-level list in the display tree of modules
+ * @param callback the callback to call
+ * @param user_data additional data to pass to the callback
+ */
+WS_DLL_PUBLIC unsigned prefs_modules_foreach_submodules(module_t *module, module_cb callback, void *user_data);
+
+/**
+ * Call the "apply" callback function for each module if any of its
+ * preferences have changed, and then clear the flag saying its
+ * preferences have changed, as the module has been notified of that
+ * fact.
+ */
+WS_DLL_PUBLIC void prefs_apply_all(void);
+
+/**
+ * Call the "apply" callback function for a specific module if any of
+ * its preferences have changed, and then clear the flag saying its
+ * preferences have changed, as the module has been notified of that
+ * fact.
+ * @param module the module to call the 'apply' callback function for
+ */
+WS_DLL_PUBLIC void prefs_apply(module_t *module);
+
+
+struct preference;
+
+typedef struct preference pref_t;
+
+/**
+ * Returns true if the provided protocol has registered preferences.
+ * @param name the name of the protocol to look up
+ * @return true if the given protocol has registered preferences, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_is_registered_protocol(const char *name);
+
+/**
+ * Returns the module title of a registered protocol (or NULL if unknown).
+ * @param name the name of the protocol to look up
+ * @return the module title of a registered protocol, otherwise NULL
+ */
+WS_DLL_PUBLIC const char *prefs_get_title_by_name(const char *name);
+
+/** Given a module name, return a pointer to its pref_module struct,
+ * or NULL if it's not found.
+ *
+ * @param name The preference module name.  Usually the same as the protocol
+ * name, e.g. "tcp".
+ * @return A pointer to the corresponding preference module, or NULL if it
+ * wasn't found.
+ */
+WS_DLL_PUBLIC module_t *prefs_find_module(const char *name);
+
+/** Given a module and a preference name, return a pointer to the given
+ * module's given preference or NULL if it's not found.
+ *
+ * @param module The preference module name.  Usually the same as the protocol
+ * name, e.g. "tcp".
+ * @param pref The preference name, e.g. "desegment".
+ * @return A pointer to the corresponding preference, or NULL if it
+ * wasn't found.
+ */
+WS_DLL_PUBLIC pref_t *prefs_find_preference(module_t * module, const char *pref);
+
+/**
+ * Register a preference with an unsigned integral value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title the title in the preferences dialog
+ * @param description the description included in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param base the base the unsigned integer is expected to be in. See strtoul(3)
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ */
+WS_DLL_PUBLIC void prefs_register_uint_preference(module_t *module, const char *name,
+    const char *title, const char *description, unsigned base, unsigned *var);
+
+/*
+ * prefs_register_ callers must conform to the following:
+ *
+ * Names must be in lowercase letters only (underscore allowed).
+ * Titles and descriptions must be valid UTF-8 or NULL.
+ * Titles must be short (less than 80 characters)
+ * Titles must not contain newlines.
+ */
+
+/**
+ * Register a preference with an Boolean value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ */
+WS_DLL_PUBLIC void prefs_register_bool_preference(module_t *module, const char *name,
+    const char *title, const char *description, bool *var);
+
+/**
+ * Register a preference with an enumerated value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ * @param enumvals a null-terminated array of enum_val_t structures
+ * @param radio_buttons true if the field is to be displayed in the
+ *                  preferences dialog as a set of radio buttons,
+ *                  false if it is to be displayed as an option menu
+ */
+WS_DLL_PUBLIC void prefs_register_enum_preference(module_t *module, const char *name,
+    const char *title, const char *description, int *var,
+    const enum_val_t *enumvals, bool radio_buttons);
+
+/**
+ * Register a preference with a character-string value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box. Note that
+ *          with string preferences the given pointer is overwritten
+ *          with a pointer to a new copy of the string during the
+ *          preference registration. The passed-in string may be
+ *          freed, but you must keep another pointer to the string
+ *          in order to free it
+ */
+WS_DLL_PUBLIC void prefs_register_string_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var);
+
+/**
+ * Register a preference with a file name (string) value.
+ *
+ * File name preferences are basically like string preferences
+ * except that the GUI gives the user the ability to browse for the
+ * file.
+ *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box. Note that
+ *          the given pointer is overwritten
+ *          with a pointer to a new copy of the string during the
+ *          preference registration. The passed-in string may be
+ *          freed, but you must keep another pointer to the string
+ *          in order to free it
+ * @param for_writing true to display a Save dialog, false to display an Open dialog.
+ */
+WS_DLL_PUBLIC void prefs_register_filename_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var, bool for_writing);
+
+/**
+ * Register a preference with a directory name (string) value.
+ * Directory name preferences are basically like string preferences
+ * except that the GUI gives the user the ability to browse for a
+ * directory.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box. Note that
+ *          the given pointer is overwritten
+ *          with a pointer to a new copy of the string during the
+ *          preference registration. The passed-in string may be
+ *          freed, but you must keep another pointer to the string
+ *          in order to free it
+ */
+WS_DLL_PUBLIC void prefs_register_directory_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var);
+
+/**
+ * Register a preference with a ranged value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box.
+ * @param max_value the maximum allowed value for a range (0 is the minimum)
+ */
+WS_DLL_PUBLIC void prefs_register_range_preference(module_t *module, const char *name,
+    const char *title, const char *description, range_t **var,
+    uint32_t max_value);
+
+/**
+ * Register a static text 'preference'. It can be used to add some info/explanation.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ */
+WS_DLL_PUBLIC void prefs_register_static_text_preference(module_t *module, const char *name,
+    const char *title, const char *description);
+
+/**
+ * Register a uat (User Accessible Table) 'preference'. It adds a button that opens the uat's window in the
+ * preferences tab of the module.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param uat the uat object that will be updated when the
+ *                    field is changed in the preference dialog box
+ */
+WS_DLL_PUBLIC void prefs_register_uat_preference(module_t *module,
+    const char *name, const char* title, const char *description,  struct epan_uat* uat);
+
+/**
+ * Register a color preference.  Currently does not have any "GUI Dialog" support
+ * so the color data needs to be managed independently.  Currently used by the
+ * "GUI preferences" to aid in reading/writing the preferences file, but the
+ * "data" is still managed by the specific "GUI preferences" dialog.
+ *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param color the color object that will be updated when the
+ *                    field is changed in the preference dialog box
+ */
+void prefs_register_color_preference(module_t *module, const char *name,
+    const char *title, const char *description, color_t *color);
+
+/**
+ * Register a custom preference.  Currently does not have any "GUI Dialog" support
+ * so data needs to be managed independently.  Currently used by the
+ * "GUI preferences" to aid in reading/writing the preferences file, but the
+ * "data" is still managed by the specific "GUI preferences" dialog.
+ *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param custom_cbs a structure with the custom preference's callbacks
+ * @param custom_data currently unused
+ */
+void prefs_register_custom_preference(module_t *module, const char *name,
+    const char *title, const char *description, struct pref_custom_cbs* custom_cbs,
+    void** custom_data);
+
+/**
+ * Register a (internal) "Decode As" preference with a ranged value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box.
+ * @param max_value the maximum allowed value for a range (0 is the minimum)
+ * @param dissector_table the name of the dissector table
+ * @param dissector_description the handle description
+ */
+void prefs_register_decode_as_range_preference(module_t *module, const char *name,
+    const char *title, const char *description, range_t **var,
+    uint32_t max_value, const char *dissector_table, const char *dissector_description);
+
+/**
+ * Register a preference with an password (password is never stored).
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title the title in the preferences dialog
+ * @param description the description included in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ */
+WS_DLL_PUBLIC void prefs_register_password_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var);
+
+/**
+ * Register a preference with a dissector name.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box. Note that
+ *          with string preferences the given pointer is overwritten
+ *          with a pointer to a new copy of the string during the
+ *          preference registration. The passed-in string may be
+ *          freed, but you must keep another pointer to the string
+ *          in order to free it
+ */
+WS_DLL_PUBLIC void prefs_register_dissector_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var);
+
+/**
+ * Register a preference that used to be supported but no longer is.
+ *
+ * Note that a warning will pop up if you've saved such preference to the
+ * preference file and you subsequently take the code out. The way to make
+ * a preference obsolete is to register it with prefs_register_obsolete_preference()
+ *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ */
+WS_DLL_PUBLIC void prefs_register_obsolete_preference(module_t *module,
+    const char *name);
+
+/**
+ * Register a preference with an enumerated value.
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title Field's title in the preferences dialog
+ * @param description description to include in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ * @param enumvals a null-terminated array of enum_val_t structures
+ * @param radio_buttons true if the field is to be displayed in the
+ *                  preferences dialog as a set of radio buttons,
+ *                  false if it is to be displayed as an option menu
+ */
+WS_DLL_PUBLIC void prefs_register_custom_preference_TCP_Analysis(module_t *module, const char *name,
+    const char *title, const char *description, int *var,
+    const enum_val_t *enumvals, bool radio_buttons);
+
+/**
+ * Mark a preference that affects fields change. This works for bool, enum,
+ * int, string (containing filename), range preferences. UAT is not included,
+ * because you can specified UAT_AFFECTS_FIELDS at uat_new().
+  *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as the name in
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ */
+WS_DLL_PUBLIC void prefs_set_preference_effect_fields(module_t *module,
+    const char *name);
+
+
+typedef unsigned (*pref_cb)(pref_t *pref, void *user_data);
+
+/**
+ * Call a callback function, with a specified argument, for each preference
+ * in a given module.
+ *
+ * If any of the callbacks return a non-zero value, stop and return that
+ * value, otherwise return 0.
+ *
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param callback the callback to call
+ * @param user_data additional data to pass to the callback
+ * @return If any of the callbacks return a non-zero value, stop and return that
+ *         value, otherwise return 0.
+ */
+WS_DLL_PUBLIC unsigned prefs_pref_foreach(module_t *module, pref_cb callback,
+    void *user_data);
+
+/**
+ * Parse through a list of comma-separated, possibly quoted strings.
+ * Return a list of the string data.
+ *
+ * Commas, whitespace, and the quotes surrounding entries are removed.
+ * Quotes and backslashes escaped with a backslash (\") will remain.
+ *
+ * @param str a list of comma-separated, possibly quoted strings
+ * @return a list of the string data, or NULL if there's an error
+ */
+WS_DLL_PUBLIC GList *prefs_get_string_list(const char *str);
+
+/**
+ * Clear the given list of string data.
+ * @param sl the GList to clear
+ */
+WS_DLL_PUBLIC void prefs_clear_string_list(GList *sl);
+
+/** Fetch a short preference type name, e.g. "Integer".
+ *
+ * @param pref A preference.
+ *
+ * @return The preference type name. May be NULL.
+ */
+WS_DLL_PUBLIC
+const char *prefs_pref_type_name(pref_t *pref);
+
+/** Fetch a long description of the preference type
+ *
+ * @param pref A preference.
+ *
+ * @return A description of the preference type including allowed
+ * values for enums. The description may include newlines. Must be
+ * g_free()d.
+ */
+WS_DLL_PUBLIC
+char *prefs_pref_type_description(pref_t *pref);
+
+/** Fetch a string representation of the preference.
+ *
+ * @param pref A preference.
+ * @param source Which value of the preference to return, see pref_source_t.
+ *
+ * @return A string representation of the preference. Must be g_free()d.
+ */
+WS_DLL_PUBLIC
+char *prefs_pref_to_str(pref_t *pref, pref_source_t source);
+
+/** Fetch whether a preference is marked obsolete.
+ *
+ * @param pref A preference.
+ *
+ * @return A boolean indication the obsolesence of the preference.
+ */
+WS_DLL_PUBLIC
+bool prefs_is_preference_obsolete(pref_t *pref);
+
+/**
+ * Read the preferences file, fill in "prefs", and return a pointer to it.
+ * If we got an error (other than "it doesn't exist") we report it through
+ * the UI.
+ *
+ * This is called by epan_load_settings(); programs should call that
+ * rather than individually calling the routines it calls.
+ *
+ * @return a pointer to the filled in prefs object
+*/
+extern e_prefs *read_prefs(void);
+
+/**
+ * Write out "prefs" to the user's preferences file, and return 0.
+ *
+ * If we got an error, stuff a pointer to the path of the preferences file
+ * into "*pf_path_return", and return the errno.
+ *
+ * @param pf_path_return The path to write preferences to or NULL for stdout
+ * @return 0 if success, otherwise errno
+*/
+WS_DLL_PUBLIC int write_prefs(char **pf_path_return);
+
+/**
+ * Result of setting a preference.
+ */
+typedef enum {
+    PREFS_SET_OK,               /* succeeded */
+    PREFS_SET_SYNTAX_ERR,       /* syntax error in string */
+    PREFS_SET_NO_SUCH_PREF,     /* no such preference */
+    PREFS_SET_OBSOLETE          /* preference used to exist but no longer does */
+} prefs_set_pref_e;
+
+/**
+ * Given a string of the form "<pref name>:<pref value>", as might appear
+ * as an argument to a "-o" option, parse it and set the preference in
+ * question.  Return an indication of whether it succeeded or failed
+ * in some fashion.
+ *
+ * For syntax errors (return value PREFS_SET_SYNTAX_ERR), details (when
+ * available) are written into "errmsg" which must be freed with g_free.
+ *
+ * @param prefarg a string of the form "<pref name>:<pref value>"
+ * @param errmsg storage for syntax error details
+ * @return the result from attempting to set the preference
+ */
+WS_DLL_PUBLIC prefs_set_pref_e prefs_set_pref(char *prefarg, char **errmsg);
+
+/**
+ * Get the current range preference value (maintained by pref, so it doesn't need to be freed). This allows the
+ * preference structure to remain hidden from those that doesn't really need it.
+ *
+ * @param module_name the preference module name. Usually the same as the protocol
+ *                    name, e.g. "tcp".
+ * @param pref_name the preference name, e.g. "desegment".
+ * @return the preference's value
+ */
+WS_DLL_PUBLIC range_t* prefs_get_range_value(const char *module_name, const char* pref_name);
+
+/**
+ * Returns true if the specified capture device is hidden
+ * @param name the name of the capture device
+ * @return true if the specified capture device is hidden, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_is_capture_device_hidden(const char *name);
+
+/**
+ * Returns true if the given device should capture in monitor mode by default
+ * @param name the name of the capture device
+ * @return true if the specified capture device should capture in monitor mode by default, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_capture_device_monitor_mode(const char *name);
+
+/**
+ * Returns true if the user has marked this column as visible
+ *
+ * @param column the name of the column
+ * @return true if this column as visible, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_capture_options_dialog_column_is_visible(const char *column);
+
+/**
+ * Returns true if the layout pane content is enabled
+ *
+ * @param layout_pane_content the layout pane content to check
+ * @return true if the layout pane content is enabled, otherwise false
+ */
+WS_DLL_PUBLIC bool prefs_has_layout_pane_content (layout_pane_content_e layout_pane_content);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* prefs.h */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */
+/* End embedded header */
+
+/* Begin epan/epan.h */
+/** @file
+ *
+ * Wireshark Protocol Analyzer Library
+ *
+ * Copyright (c) 2001 by Gerald Combs <gerald@wireshark.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __EPAN_H__
+#define __EPAN_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+/** Global variable holding the content of the corresponding environment variable
+ * to save fetching it repeatedly.
+ */
+extern bool wireshark_abort_on_dissector_bug;
+extern bool wireshark_abort_on_too_many_items;
+
+/** Report a dissector bug (and optionally abort).
+ @param format printf like format string
+ @param ... printf like parameters */
+WS_DLL_PUBLIC void ws_dissector_bug(const char *format, ...)
+    G_GNUC_PRINTF(1,2);
+
+/** Report a dissector OOPS (and optionally abort).
+ @param format printf like format string *literal*
+ @param ... printf like parameters */
+#define ws_dissector_oops(_fmt, ...) ws_dissector_bug("OOPS: " _fmt, __VA_ARGS__)
+
+typedef struct epan_dissect epan_dissect_t;
+
+struct epan_dfilter;
+struct epan_column_info;
+
+/**
+ * Opaque structure provided when an epan_t is created; it contains
+ * information needed to allow the user of libwireshark to provide
+ * time stamps, comments, and other information outside the packet
+ * data itself.
+ */
+struct packet_provider_data;
+
+/**
+ * Structure containing pointers to functions supplied by the user
+ * of libwireshark.
+ */
+struct packet_provider_funcs {
+	const nstime_t *(*get_frame_ts)(struct packet_provider_data *prov, uint32_t frame_num);
+	const char *(*get_interface_name)(struct packet_provider_data *prov, uint32_t interface_id, unsigned section_number);
+	const char *(*get_interface_description)(struct packet_provider_data *prov, uint32_t interface_id, unsigned section_number);
+	wtap_block_t (*get_modified_block)(struct packet_provider_data *prov, const frame_data *fd);
+	int32_t(*get_process_id)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number);
+	const char *(*get_process_name)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number);
+	const uint8_t *(*get_process_uuid)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number, size_t *uuid_size);
+};
+
+/**
+	@section Epan The Enhanced Packet ANalyzer
+
+	XXX
+
+	@b Sections:
+*/
+/*
+Ref 1
+Epan
+Enhanced Packet ANalyzer, aka the packet analyzing engine. Source code can be found in the epan directory.
+
+Protocol-Tree - Keep data of the capture file protocol information.
+
+Dissectors - The various protocol dissectors in epan/dissectors.
+
+Plugins - Some of the protocol dissectors are implemented as plugins. Source code can be found at plugins.
+
+Display-Filters - the display filter engine at epan/dfilter
+
+*/
+
+/**
+ * Init the whole epan module.
+ *
+ * Must be called only once in a program.
+ *
+ * Returns true on success, false on failure.
+ */
+WS_DLL_PUBLIC
+bool epan_init(register_cb cb, void *client_data, bool load_plugins);
+
+/**
+ * Load all settings, from the current profile, that affect epan.
+ */
+WS_DLL_PUBLIC
+e_prefs *epan_load_settings(void);
+
+/** cleanup the whole epan module, this is used to be called only once in a program */
+WS_DLL_PUBLIC
+void epan_cleanup(void);
+
+typedef struct {
+	void (*init)(void);		/* Called before proto_init() */
+	void (*post_init)(void);	/* Called at the end of epan_init() */
+	void (*dissect_init)(epan_dissect_t *);
+	void (*dissect_cleanup)(epan_dissect_t *);
+	void (*cleanup)(void);
+	void (*register_all_protocols)(register_cb, void *);
+	void (*register_all_handoffs)(register_cb, void *);
+	void (*register_all_tap_listeners)(void);
+} epan_plugin;
+
+WS_DLL_PUBLIC void epan_register_plugin(const epan_plugin *plugin);
+
+/** Returns_
+ *     0 if plugins can be loaded for all of libwireshark (tap, dissector, epan).
+ *     1 if plugins are not supported by the platform.
+ *    -1 if plugins were disabled in the build configuration.
+ */
+WS_DLL_PUBLIC int epan_plugins_supported(void);
+
+/**
+ * Initialize the table of conversations.  Conversations are identified by
+ * their endpoints; they are used for protocols such as IP, TCP, and UDP,
+ * where packets contain endpoint information but don't contain a single
+ * value indicating to which flow the packet belongs.
+ */
+void epan_conversation_init(void);
+
+/** A client will create one epan_t for an entire dissection session.
+ * A single epan_t will be used to analyze the entire sequence of packets,
+ * sequentially, in a single session. A session corresponds to a single
+ * packet trace file. The reasons epan_t exists is that some packets in
+ * some protocols cannot be decoded without knowledge of previous packets.
+ * This inter-packet "state" is stored in the epan_t.
+ */
+typedef struct epan_session epan_t;
+
+WS_DLL_PUBLIC epan_t *epan_new(struct packet_provider_data *prov,
+    const struct packet_provider_funcs *funcs);
+
+WS_DLL_PUBLIC wtap_block_t epan_get_modified_block(const epan_t *session, const frame_data *fd);
+
+WS_DLL_PUBLIC const char *epan_get_interface_name(const epan_t *session, uint32_t interface_id, unsigned section_number);
+
+WS_DLL_PUBLIC const char *epan_get_interface_description(const epan_t *session, uint32_t interface_id, unsigned section_number);
+
+WS_DLL_PUBLIC int32_t epan_get_process_id(const epan_t *session, uint32_t process_info_id, unsigned section_number);
+
+WS_DLL_PUBLIC const char *epan_get_process_name(const epan_t *session, uint32_t process_info_id, unsigned section_number);
+
+WS_DLL_PUBLIC const uint8_t *epan_get_process_uuid(const epan_t *session, uint32_t process_info_id, unsigned section_number, size_t *uuid_size);
+
+
+const nstime_t *epan_get_frame_ts(const epan_t *session, uint32_t frame_num);
+
+WS_DLL_PUBLIC void epan_free(epan_t *session);
+
+WS_DLL_PUBLIC const char*
+epan_get_version(void);
+
+WS_DLL_PUBLIC void epan_get_version_number(int *major, int *minor, int *micro);
+
+/**
+ * Set/unset the tree to always be visible when epan_dissect_init() is called.
+ * This state change sticks until cleared, rather than being done per function call.
+ * This is currently used when Lua scripts request all fields be generated.
+ * By default it only becomes visible if epan_dissect_init() makes it so, usually
+ * only when a packet is selected.
+ * Setting this overrides that so it's always visible, although it will still not be
+ * created if create_proto_tree is false in the call to epan_dissect_init().
+ * Clearing this reverts the decision to epan_dissect_init() and proto_tree_visible.
+ */
+WS_DLL_PUBLIC
+void epan_set_always_visible(bool force);
+
+/** initialize an existing single packet dissection */
+WS_DLL_PUBLIC
+void
+epan_dissect_init(epan_dissect_t *edt, epan_t *session, const bool create_proto_tree, const bool proto_tree_visible);
+
+/** get a new single packet dissection
+ * should be freed using epan_dissect_free() after packet dissection completed
+ */
+WS_DLL_PUBLIC
+epan_dissect_t*
+epan_dissect_new(epan_t *session, const bool create_proto_tree, const bool proto_tree_visible);
+
+WS_DLL_PUBLIC
+void
+epan_dissect_reset(epan_dissect_t *edt);
+
+/** Indicate whether we should fake protocols or not */
+WS_DLL_PUBLIC
+void
+epan_dissect_fake_protocols(epan_dissect_t *edt, const bool fake_protocols);
+
+/** run a single packet dissection */
+WS_DLL_PUBLIC
+void
+epan_dissect_run(epan_dissect_t *edt, int file_type_subtype,
+        wtap_rec *rec, frame_data *fd, struct epan_column_info *cinfo);
+
+WS_DLL_PUBLIC
+void
+epan_dissect_run_with_taps(epan_dissect_t *edt, int file_type_subtype,
+        wtap_rec *rec, frame_data *fd, struct epan_column_info *cinfo);
+
+/** run a dissection of file data */
+WS_DLL_PUBLIC
+void
+epan_dissect_file_run(epan_dissect_t *edt, wtap_rec *rec,
+        frame_data *fd, struct epan_column_info *cinfo);
+
+WS_DLL_PUBLIC
+void
+epan_dissect_file_run_with_taps(epan_dissect_t *edt, wtap_rec *rec,
+        frame_data *fd, struct epan_column_info *cinfo);
+
+/** Prime an epan_dissect_t's proto_tree using the fields/protocols used in a dfilter. */
+WS_DLL_PUBLIC
+void
+epan_dissect_prime_with_dfilter(epan_dissect_t *edt, const struct epan_dfilter *dfcode);
+
+/** Prime an epan_dissect_t's proto_tree using the fields/protocols used in a dfilter, marked for print. */
+WS_DLL_PUBLIC
+void
+epan_dissect_prime_with_dfilter_print(epan_dissect_t *edt, const struct epan_dfilter *dfcode);
+
+/** Prime an epan_dissect_t's proto_tree with a field/protocol specified by its hfid */
+WS_DLL_PUBLIC
+void
+epan_dissect_prime_with_hfid(epan_dissect_t *edt, int hfid);
+
+/** Prime an epan_dissect_t's proto_tree with a set of fields/protocols specified by their hfids in a GArray */
+WS_DLL_PUBLIC
+void
+epan_dissect_prime_with_hfid_array(epan_dissect_t *edt, GArray *hfids);
+
+/** fill the dissect run output into the packet list columns */
+WS_DLL_PUBLIC
+void
+epan_dissect_fill_in_columns(epan_dissect_t *edt, const bool fill_col_exprs, const bool fill_fd_colums);
+
+/** Check whether a dissected packet contains a given named field */
+WS_DLL_PUBLIC
+bool
+epan_dissect_packet_contains_field(epan_dissect_t* edt,
+                                   const char *field_name);
+
+/** releases resources attached to the packet dissection. DOES NOT free the actual pointer */
+WS_DLL_PUBLIC
+void
+epan_dissect_cleanup(epan_dissect_t* edt);
+
+/** free a single packet dissection */
+WS_DLL_PUBLIC
+void
+epan_dissect_free(epan_dissect_t* edt);
+
+/** Sets custom column */
+const char *
+epan_custom_set(epan_dissect_t *edt, GSList *ids, int occurrence, bool display_details,
+				char *result, char *expr, const int size);
+
+/**
+ * Get compile-time information for libraries used by libwireshark.
+ */
+WS_DLL_PUBLIC
+void
+epan_gather_compile_info(feature_list l);
+
+/**
+ * Get runtime information for libraries used by libwireshark.
+ */
+WS_DLL_PUBLIC
+void
+epan_gather_runtime_info(feature_list l);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __EPAN_H__ */
+/* End embedded header */
+
+/* Begin epan/column-utils.h */
+/** @file
+ * Definitions for column utility structures and routines
+ * Utility routines used by packet*.c
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __COLUMN_UTILS_H__
+#define __COLUMN_UTILS_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#define COL_MAX_LEN 2048
+#define COL_MAX_INFO_LEN 4096
+
+/* A regex to split possibly multifield custom columns into components
+ *
+ * Split on operator "||" (with optional space around it) and on "or"
+ * (which must have space around it to avoid matching in the middle of
+ * a word, field in the "synphasor" protocol, etc. This is somewhat too
+ * strict, as "or" adjacent to parentheses ought to be fine so long
+ * as the filter matches the grammar, like "(tcp.port)or(udp.port)",
+ * but that's the cost of using regex instead of the real parser.)
+ * Also split on space at the beginning or end of the expression (in
+ * lieu of always stripping whitespace at the beginning and end, but it
+ * does mean that we have to ignore any empty tokens in the result.)
+ *
+ * Use negative lookahead to avoid matching "||" or "or" that are contained
+ * within parentheses. Don't match if a close parenthesis comes before an
+ * open parenthesis. The regex doesn't help with unmatched parentheses, but
+ * such an expression already won't satisfy the grammar and won't compile.
+ */
+#define COL_CUSTOM_PRIME_REGEX "(?:^ *| *\\|\\| *| +or +| *$)(?![^(]*\\))"
+
+struct epan_dissect;
+
+/**
+ *  Helper routines for column utility structures and routines.
+ */
+
+struct epan_column_info;
+typedef struct epan_column_info column_info;
+
+/**
+ * All of the possible columns in summary listing.
+ *
+ * NOTE1: The entries MUST remain in this order, or else you need to reorder
+ *        the slist[] and dlist[] arrays in column.c to match!
+ *
+ * NOTE2: Please add the COL_XYZ entry in the appropriate spot, such that the
+ *        dlist[] array remains in alphabetical order!
+ */
+enum {
+  COL_ABS_YMD_TIME,   /**< 0) Absolute date, as YYYY-MM-DD, and time */
+  COL_ABS_YDOY_TIME,  /**< 1) Absolute date, as YYYY/DOY, and time */
+  COL_ABS_TIME,       /**< 2) Absolute time */
+  COL_CUMULATIVE_BYTES, /**< 3) Cumulative number of bytes */
+  COL_CUSTOM,         /**< 4) Custom column (any filter name's contents) */
+  COL_DELTA_TIME,     /**< 5) Delta time */
+  COL_DELTA_TIME_DIS, /**< 6) Delta time displayed*/
+  COL_RES_DST,        /**< 7) Resolved dest */
+  COL_UNRES_DST,      /**< 8) Unresolved dest */
+  COL_RES_DST_PORT,   /**< 9) Resolved dest port */
+  COL_UNRES_DST_PORT, /**< 10) Unresolved dest port */
+  COL_DEF_DST,        /**< 11) Destination address */
+  COL_DEF_DST_PORT,   /**< 12) Destination port */
+  COL_EXPERT,         /**< 13) Expert Info */
+  COL_IF_DIR,         /**< 14) FW-1 monitor interface/direction */
+  COL_FREQ_CHAN,      /**< 15) IEEE 802.11 (and WiMax?) - Channel */
+  COL_DEF_DL_DST,     /**< 16) Data link layer dest address */
+  COL_DEF_DL_SRC,     /**< 17) Data link layer source address */
+  COL_RES_DL_DST,     /**< 18) Resolved DL dest */
+  COL_UNRES_DL_DST,   /**< 19) Unresolved DL dest */
+  COL_RES_DL_SRC,     /**< 20) Resolved DL source */
+  COL_UNRES_DL_SRC,   /**< 21) Unresolved DL source */
+  COL_RSSI,           /**< 22) IEEE 802.11 - received signal strength */
+  COL_TX_RATE,        /**< 23) IEEE 802.11 - TX rate in Mbps */
+  COL_DSCP_VALUE,     /**< 24) IP DSCP Value */
+  COL_INFO,           /**< 25) Description */
+  COL_RES_NET_DST,    /**< 26) Resolved net dest */
+  COL_UNRES_NET_DST,  /**< 27) Unresolved net dest */
+  COL_RES_NET_SRC,    /**< 28) Resolved net source */
+  COL_UNRES_NET_SRC,  /**< 29) Unresolved net source */
+  COL_DEF_NET_DST,    /**< 30) Network layer dest address */
+  COL_DEF_NET_SRC,    /**< 31) Network layer source address */
+  COL_NUMBER,         /**< 32) Packet list item number */
+  COL_NUMBER_DIS,     /**< 33) Packet list item number displayed */
+  COL_PACKET_LENGTH,  /**< 34) Packet length in bytes */
+  COL_PROTOCOL,       /**< 35) Protocol */
+  COL_REL_TIME,       /**< 36) Relative time */
+  COL_DEF_SRC,        /**< 37) Source address */
+  COL_DEF_SRC_PORT,   /**< 38) Source port */
+  COL_RES_SRC,        /**< 39) Resolved source */
+  COL_UNRES_SRC,      /**< 40) Unresolved source */
+  COL_RES_SRC_PORT,   /**< 41) Resolved source port */
+  COL_UNRES_SRC_PORT, /**< 42) Unresolved source port */
+  COL_UTC_YMD_TIME,   /**< 43) UTC date, as YYYY-MM-DD, and time */
+  COL_UTC_YDOY_TIME,  /**< 44) UTC date, as YYYY/DOY, and time */
+  COL_UTC_TIME,       /**< 45) UTC time */
+  COL_CLS_TIME,       /**< 46) Command line-specified time (default relative) */
+  NUM_COL_FMTS        /**< 47) Should always be last */
+};
+
+/** Are the columns writable?
+ *
+ * @param cinfo the current packet row
+ * @param col the writable column, -1 for checking the state of all columns
+ * @return true if it's writable, false if not
+ */
+WS_DLL_PUBLIC bool col_get_writable(column_info *cinfo, const int col);
+
+/** Set the columns writable.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to set, -1 for all
+ * @param writable true if it's writable, false if not
+ */
+WS_DLL_PUBLIC void col_set_writable(column_info *cinfo, const int col, const bool writable);
+
+/** Sets a fence for the current column content,
+ * so this content won't be affected by further col_... function calls.
+ *
+ * This can be useful if a protocol is more than once in a single packet,
+ * e.g. multiple HTTP calls in a single TCP packet.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_set_fence(column_info *cinfo, const int col);
+
+/** Clears a fence for the current column content
+ *
+ * This can be useful if a protocol wants to remove whatever
+ * a previous protocol has added to the column.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_clear_fence(column_info *cinfo, const int col);
+
+/** Gets the text of a column element.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ *
+ * @return the text string
+ */
+WS_DLL_PUBLIC const char *col_get_text(column_info *cinfo, const int col);
+
+/** Clears the text of a column element.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ */
+WS_DLL_PUBLIC void col_clear(column_info *cinfo, const int col);
+
+/** Set (replace) the text of a column element, the text won't be formatted or copied.
+ *
+ * Use this for simple static strings like protocol names. Don't use for untrusted
+ * strings, strings that may contain unprintable characters, or strings which are
+ * freed before the packet_info (and hence column_info) struct.
+ *
+ * Usually used to set const strings!
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to set
+ */
+WS_DLL_PUBLIC void col_set_str(column_info *cinfo, const int col, const char * str);
+
+/** Add (replace) the text of a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to add
+ */
+WS_DLL_PUBLIC void col_add_str(column_info *cinfo, const int col, const char *str);
+
+/* terminator argument for col_add_lstr() function */
+#define COL_ADD_LSTR_TERMINATOR (const char *) -1
+
+WS_DLL_PUBLIC void col_add_lstr(column_info *cinfo, const int el, const char *str, ...);
+
+/** Add (replace) the text of a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * Same function as col_add_str() but using a printf-like format string.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_add_fstr(column_info *cinfo, const int col, const char *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Append the given text to a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param str the string to append
+ */
+WS_DLL_PUBLIC void col_append_str(column_info *cinfo, const int col, const char *str);
+
+/** Append <abbrev>=<val> to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param abbrev the string to append
+ * @param val the value to append
+ * @param sep an optional separator to _prepend_ to abbrev
+ */
+WS_DLL_PUBLIC void col_append_str_uint(column_info *cinfo, const int col, const char *abbrev, uint32_t val, const char *sep);
+
+/** Append a transport port pair to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param typ the port type to resolve, e.g. PT_UDP
+ * @param src the source port value to append
+ * @param dst the destination port value to append
+ */
+WS_DLL_PUBLIC void col_append_ports(column_info *cinfo, const int col, port_type typ, uint16_t src, uint16_t dst);
+
+/** Append a frame number and signal that we have updated
+ * column information.
+ *
+ * @param pinfo the current packet info
+ * @param col the column to use, e.g. COL_INFO
+ * @param fmt_str format string, e.g. "reassembled in %u".
+ * @param frame_num frame number
+ */
+WS_DLL_PUBLIC void col_append_frame_number(packet_info *pinfo, const int col, const char *fmt_str, unsigned frame_num);
+
+/* Append the given strings (terminated by COL_ADD_LSTR_TERMINATOR) to a column element,
+ *
+ * Same result as col_append_str() called for every string element.
+ */
+WS_DLL_PUBLIC void col_append_lstr(column_info *cinfo, const int el, const char *str, ...);
+
+/** Append the given text to a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * Same function as col_append_str() but using a printf-like format string.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_append_fstr(column_info *cinfo, const int col, const char *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Prepend the given text to a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_prepend_fstr(column_info *cinfo, const int col, const char *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Prepend the given text to a column element, the text will be formatted and copied.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * This function is similar to col_prepend_fstr() but this function will
+ * unconditionally set a fence to the end of the prepended data even if there
+ * were no fence before.
+ * The col_prepend_fstr() will only prepend the data before the fence IF
+ * there is already a fence created. This function will create a fence in case
+ * it does not yet exist.
+ */
+WS_DLL_PUBLIC void col_prepend_fence_fstr(column_info *cinfo, const int col, const char *format, ...)
+    G_GNUC_PRINTF(3, 4);
+
+/** Append the given text (prepended by a separator) to a column element.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * Much like col_append_str() but will prepend the given separator if the column isn't empty.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param sep the separator string or NULL for default: ", "
+ * @param str the string to append
+ */
+WS_DLL_PUBLIC void col_append_sep_str(column_info *cinfo, const int col, const char *sep,
+		const char *str);
+
+/** Append the given text (prepended by a separator) to a column element.
+ *
+ * Unprintable characters according to g_ascii_isprint() are escaped.
+ *
+ * Much like col_append_fstr() but will prepend the given separator if the column isn't empty.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param sep the separator string or NULL for default: ", "
+ * @param format the format string
+ * @param ... the variable number of parameters
+ */
+WS_DLL_PUBLIC void col_append_sep_fstr(column_info *cinfo, const int col, const char *sep,
+		const char *format, ...)
+    G_GNUC_PRINTF(4, 5);
+
+/** Set the given (relative) time to a column element.
+ *
+ * Used by dissectors to set the time in a column
+ *
+ * @param cinfo		the current packet row
+ * @param col		the column to use, e.g. COL_INFO
+ * @param ts		the time to set in the column
+ * @param fieldname	the fieldname to use for creating a filter (when
+ *			  applying/preparing/copying as filter)
+ */
+WS_DLL_PUBLIC void col_set_time(column_info *cinfo, const int col,
+			const nstime_t *ts, const char *fieldname);
+
+WS_DLL_PUBLIC void set_fd_time(const struct epan_session *epan, frame_data *fd, char *buf);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __COLUMN_UTILS_H__ */
+/* End embedded header */
+
+/* Begin epan/packet.h */
+/** @file
+ * Definitions for packet disassembly structures and routines
+ *
+ * Wireshark - Network traffic analyzer
+ * By Gerald Combs <gerald@wireshark.org>
+ * Copyright 1998 Gerald Combs
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef __PACKET_H__
+#define __PACKET_H__
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+
+
+/** @defgroup packet General Packet Dissection
+ *
+ * @{
+ */
+
+#define hi_nibble(b) (((b) & 0xf0) >> 4)
+#define lo_nibble(b) ((b) & 0x0f)
+
+/* Check whether the "len" bytes of data starting at "offset" is
+ * entirely inside the captured data for this packet. */
+#define	BYTES_ARE_IN_FRAME(offset, captured_len, len) \
+	((unsigned)(offset) + (unsigned)(len) > (unsigned)(offset) && \
+	 (unsigned)(offset) + (unsigned)(len) <= (unsigned)(captured_len))
+
+/* 0 is case sensitive for backwards compatibility with tables that
+ * used false or BASE_NONE for case sensitive, which was the default.
+ */
+#define STRING_CASE_SENSITIVE 0
+#define STRING_CASE_INSENSITIVE 1
+
+extern void packet_init(void);
+extern void packet_cache_proto_handles(void);
+extern void packet_all_tables_sort_handles(void);
+extern void packet_cleanup(void);
+
+/* Handle for dissectors you call directly or register with "dissector_add_uint()".
+   This handle is opaque outside of "packet.c". */
+struct dissector_handle;
+typedef struct dissector_handle *dissector_handle_t;
+
+/* Hash table for matching unsigned integers, or strings, and dissectors;
+   this is opaque outside of "packet.c". */
+struct dissector_table;
+typedef struct dissector_table *dissector_table_t;
+
+/*
+ * Dissector that returns:
+ *
+ *	The amount of data in the protocol's PDU, if it was able to
+ *	dissect all the data;
+ *
+ *	0, if the tvbuff doesn't contain a PDU for that protocol;
+ *
+ *	The negative of the amount of additional data needed, if
+ *	we need more data (e.g., from subsequent TCP segments) to
+ *	dissect the entire PDU.
+ */
+typedef int (*dissector_t)(tvbuff_t *, packet_info *, proto_tree *, void *);
+
+/* Same as dissector_t with an extra parameter for callback pointer */
+typedef int (*dissector_cb_t)(tvbuff_t *, packet_info *, proto_tree *, void *, void *);
+
+/** Type of a heuristic dissector, used in heur_dissector_add().
+ *
+ * @param tvb the tvbuff with the (remaining) packet data
+ * @param pinfo the packet info of this packet (additional info)
+ * @param tree the protocol tree to be build or NULL
+ * @return true if the packet was recognized by the sub-dissector (stop dissection here)
+ */
+typedef bool (*heur_dissector_t)(tvbuff_t *tvb, packet_info *pinfo,
+	proto_tree *tree, void *);
+
+typedef enum {
+    HEURISTIC_DISABLE,
+    HEURISTIC_ENABLE
+} heuristic_enable_e;
+
+typedef void (*DATFunc) (const char *table_name, ftenum_t selector_type,
+    void *key, void *value, void *user_data);
+typedef void (*DATFunc_handle) (const char *table_name, void *value,
+    void *user_data);
+typedef void (*DATFunc_table) (const char *table_name, const char *ui_name,
+    void *user_data);
+
+/* Opaque structure - provides type checking but no access to components */
+typedef struct dtbl_entry dtbl_entry_t;
+
+WS_DLL_PUBLIC dissector_handle_t dtbl_entry_get_handle (dtbl_entry_t *dtbl_entry);
+WS_DLL_PUBLIC dissector_handle_t dtbl_entry_get_initial_handle (dtbl_entry_t * entry);
+
+/** Iterate over dissectors in a table with non-default "decode as" settings.
+ *
+ * Walk one dissector table calling a user supplied function only on
+ * any entry that has been changed from its original state.
+ *
+ * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
+ * @param[in] func The function to call for each dissector.
+ * @param[in] user_data User data to pass to the function.
+ */
+void dissector_table_foreach_changed (const char *table_name, DATFunc func,
+    void *user_data);
+
+/** Iterate over dissectors in a table.
+ *
+ * Walk one dissector table's hash table calling a user supplied function
+ * on each entry.
+ *
+ * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
+ * @param[in] func The function to call for each dissector.
+ * @param[in] user_data User data to pass to the function.
+ */
+WS_DLL_PUBLIC void dissector_table_foreach (const char *table_name, DATFunc func,
+    void *user_data);
+
+/** Iterate over dissectors with non-default "decode as" settings.
+ *
+ * Walk all dissector tables calling a user supplied function only on
+ * any "decode as" entry that has been changed from its original state.
+ *
+ * @param[in] func The function to call for each dissector.
+ * @param[in] user_data User data to pass to the function.
+ */
+WS_DLL_PUBLIC void dissector_all_tables_foreach_changed (DATFunc func,
+    void *user_data);
+
+/** Iterate over dissectors in a table by handle.
+ *
+ * Walk one dissector table's list of handles calling a user supplied
+ * function on each entry.
+ *
+ * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
+ * @param[in] func The function to call for each dissector.
+ * @param[in] user_data User data to pass to the function.
+ */
+WS_DLL_PUBLIC void dissector_table_foreach_handle(const char *table_name, DATFunc_handle func,
+    void *user_data);
+
+/** Iterate over all dissector tables.
+ *
+ * Walk the set of dissector tables calling a user supplied function on each
+ * table.
+ * @param[in] func The function to call for each table.
+ * @param[in] user_data User data to pass to the function.
+ * @param[in] compare_key_func Function used to sort the set of tables before
+ * calling the function.  No sorting is done if NULL. */
+WS_DLL_PUBLIC void dissector_all_tables_foreach_table (DATFunc_table func,
+    void *user_data, GCompareFunc compare_key_func);
+
+/* a protocol uses the function to register a sub-dissector table
+ *
+ * 'param' is the display base for integer tables, STRING_CASE_SENSITIVE
+ * or STRING_CASE_INSENSITIVE for string tables, and ignored for other
+ * table types.
+ */
+WS_DLL_PUBLIC dissector_table_t register_dissector_table(const char *name,
+    const char *ui_name, const int proto, const ftenum_t type, const int param);
+
+/*
+ * Similar to register_dissector_table, but with a "custom" hash function
+ * to store subdissectors.
+ */
+WS_DLL_PUBLIC dissector_table_t register_custom_dissector_table(const char *name,
+    const char *ui_name, const int proto, GHashFunc hash_func, GEqualFunc key_equal_func,
+    GDestroyNotify key_destroy_func);
+
+/** Register a dissector table alias.
+ * This is for dissectors whose original name has changed, e.g. SSL to TLS.
+ * @param dissector_table dissector table returned by register_dissector_table.
+ * @param alias_name alias for the dissector table name.
+ */
+WS_DLL_PUBLIC void register_dissector_table_alias(dissector_table_t dissector_table,
+    const char *alias_name);
+
+/** Deregister the dissector table by table name. */
+void deregister_dissector_table(const char *name);
+
+/* Find a dissector table by table name. */
+WS_DLL_PUBLIC dissector_table_t find_dissector_table(const char *name);
+
+/* Get the UI name for a sub-dissector table, given its internal name */
+WS_DLL_PUBLIC const char *get_dissector_table_ui_name(const char *name);
+
+/* Get the field type for values of the selector for a dissector table,
+   given the table's internal name */
+WS_DLL_PUBLIC ftenum_t get_dissector_table_selector_type(const char *name);
+
+/* Get the param set for the sub-dissector table,
+   given the table's internal name */
+WS_DLL_PUBLIC int get_dissector_table_param(const char *name);
+
+/* Dump all dissector tables to the standard output (not the entries,
+   just the information about the tables) */
+WS_DLL_PUBLIC void dissector_dump_dissector_tables(void);
+
+/* Add an entry to a uint dissector table. */
+WS_DLL_PUBLIC void dissector_add_uint(const char *name, const uint32_t pattern,
+    dissector_handle_t handle);
+
+/* Add an entry to a uint dissector table with "preference" automatically added. */
+WS_DLL_PUBLIC void dissector_add_uint_with_preference(const char *name, const uint32_t pattern,
+    dissector_handle_t handle);
+
+/** Add an range of entries to a uint dissector table. */
+WS_DLL_PUBLIC void dissector_add_uint_range(const char *abbrev, range_t *range,
+    dissector_handle_t handle);
+
+/** Add an range of entries to a uint dissector table with "preference" automatically added. */
+WS_DLL_PUBLIC void dissector_add_uint_range_with_preference(const char *abbrev, const char* range_str,
+    dissector_handle_t handle);
+
+/** Delete the entry for a dissector in a uint dissector table
+   with a particular pattern. */
+WS_DLL_PUBLIC void dissector_delete_uint(const char *name, const uint32_t pattern,
+    dissector_handle_t handle);
+
+/** Delete an range of entries from a uint dissector table. */
+WS_DLL_PUBLIC void dissector_delete_uint_range(const char *abbrev, range_t *range,
+    dissector_handle_t handle);
+
+/** Delete all entries from a dissector table. */
+WS_DLL_PUBLIC void dissector_delete_all(const char *name, dissector_handle_t handle);
+
+/** Change the entry for a dissector in a uint dissector table
+   with a particular pattern to use a new dissector handle. */
+WS_DLL_PUBLIC void dissector_change_uint(const char *abbrev, const uint32_t pattern,
+    dissector_handle_t handle);
+
+/** Reset an entry in a uint dissector table to its initial value. */
+WS_DLL_PUBLIC void dissector_reset_uint(const char *name, const uint32_t pattern);
+
+/** Return true if an entry in a uint dissector table is found and has been
+ * changed (i.e. dissector_change_uint() has been called, such as from
+ * Decode As, prefs registered via dissector_add_uint_[range_]with_preference),
+ * etc.), otherwise return false.
+ */
+WS_DLL_PUBLIC bool dissector_is_uint_changed(dissector_table_t const sub_dissectors, const uint32_t uint_val);
+
+/** Look for a given value in a given uint dissector table and, if found,
+   call the dissector with the arguments supplied, and return the number
+   of bytes consumed, otherwise return 0. */
+WS_DLL_PUBLIC int dissector_try_uint(dissector_table_t sub_dissectors,
+    const uint32_t uint_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
+
+/** Look for a given value in a given uint dissector table and, if found,
+   call the dissector with the arguments supplied, and return the number
+   of bytes consumed, otherwise return 0. */
+
+WS_DLL_PUBLIC int dissector_try_uint_with_data(dissector_table_t sub_dissectors,
+    const uint32_t uint_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
+
+WS_DEPRECATED_X("Use dissector_try_uint_with_data instead")
+static inline int dissector_try_uint_new(dissector_table_t sub_dissectors,
+	const uint32_t uint_val, tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data) \
+{	return dissector_try_uint_with_data(sub_dissectors, uint_val, tvb, pinfo, tree, add_proto_name, data); }
+
+/** Look for a given value in a given uint dissector table and, if found,
+ * return the current dissector handle for that value.
+ *
+ * @param[in] sub_dissectors Dissector table to search.
+ * @param[in] uint_val Value to match, e.g. the port number for the TCP dissector.
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_uint_handle(
+    dissector_table_t const sub_dissectors, const uint32_t uint_val);
+
+/** Look for a given value in a given uint dissector table and, if found,
+ * return the default dissector handle for that value.
+ *
+ * @param[in] name Dissector table name.
+ * @param[in] uint_val Value to match, e.g. the port number for the TCP dissector.
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_default_uint_handle(
+    const char *name, const uint32_t uint_val);
+
+/* Add an entry to a string dissector table. */
+WS_DLL_PUBLIC void dissector_add_string(const char *name, const char *pattern,
+    dissector_handle_t handle);
+
+/* Delete the entry for a dissector in a string dissector table
+   with a particular pattern. */
+WS_DLL_PUBLIC void dissector_delete_string(const char *name, const char *pattern,
+	dissector_handle_t handle);
+
+/* Change the entry for a dissector in a string dissector table
+   with a particular pattern to use a new dissector handle. */
+WS_DLL_PUBLIC void dissector_change_string(const char *name, const char *pattern,
+    dissector_handle_t handle);
+
+/* Reset an entry in a string sub-dissector table to its initial value. */
+WS_DLL_PUBLIC void dissector_reset_string(const char *name, const char *pattern);
+
+/* Return true if an entry in a string dissector table is found and has been
+ * changed (i.e. dissector_change_string() has been called, such as from
+ * Decode As), otherwise return false.
+ */
+WS_DLL_PUBLIC bool dissector_is_string_changed(dissector_table_t const subdissectors, const char *string);
+
+
+/** Look for a given string in a given dissector table and, if found, call
+   the dissector with the arguments supplied, and return the number of
+   bytes consumed, otherwise return 0. */
+WS_DLL_PUBLIC int dissector_try_string_with_data(dissector_table_t sub_dissectors,
+	const char* string, tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data);
+
+/* Look for a given string in a given dissector table and, if found, call
+   the dissector with the arguments supplied, and return the number of
+   bytes consumed, otherwise return 0. */
+WS_DEPRECATED_X("Use dissector_try_string_with_data instead")
+static inline int
+dissector_try_string(dissector_table_t sub_dissectors, const char* string,\
+	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data) \
+	{ return dissector_try_string_with_data(sub_dissectors, string, tvb, pinfo, tree, true, data); }
+
+WS_DEPRECATED_X("Use dissector_try_string_with_data instead")
+static inline int
+dissector_try_string_new(dissector_table_t sub_dissectors, const char* string, \
+	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data) \
+{ return dissector_try_string_with_data(sub_dissectors, string, tvb, pinfo, tree, add_proto_name, data); }
+
+
+/** Look for a given value in a given string dissector table and, if found,
+ * return the current dissector handle for that value.
+ *
+ * @param[in] sub_dissectors Dissector table to search.
+ * @param[in] string Value to match, e.g. the OID for the BER dissector.
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_string_handle(
+    dissector_table_t sub_dissectors, const char *string);
+
+/** Look for a given value in a given string dissector table and, if found,
+ * return the default dissector handle for that value.
+ *
+ * @param[in] name Dissector table name.
+ * @param[in] string Value to match, e.g. the OID for the BER dissector.
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_default_string_handle(
+    const char *name, const char *string);
+
+/* Add an entry to a "custom" dissector table. */
+WS_DLL_PUBLIC void dissector_add_custom_table_handle(const char *name, void *pattern,
+    dissector_handle_t handle);
+
+/** Look for a given key in a given "custom" dissector table and, if found,
+ * return the current dissector handle for that key.
+ *
+ * @param[in] sub_dissectors Dissector table to search.
+ * @param[in] key Value to match, e.g. RPC key for its subdissectors
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_custom_table_handle(
+    dissector_table_t sub_dissectors, void *key);
+/* Key for GUID dissector tables.  This is based off of DCE/RPC needs
+   so some dissector tables may not need the ver portion of the hash
+ */
+typedef struct _guid_key {
+    e_guid_t guid;
+    uint16_t ver;
+} guid_key;
+
+/* Add an entry to a guid dissector table. */
+WS_DLL_PUBLIC void dissector_add_guid(const char *name, guid_key* guid_val,
+    dissector_handle_t handle);
+
+/** Look for a given value in a given guid dissector table and, if found,
+   call the dissector with the arguments supplied, and return true,
+   otherwise return false. */
+WS_DLL_PUBLIC int dissector_try_guid_with_data(dissector_table_t sub_dissectors,
+    guid_key* guid_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
+
+/* Delete a GUID from a dissector table. */
+WS_DLL_PUBLIC void dissector_delete_guid(const char *name, guid_key* guid_val,
+    dissector_handle_t handle);
+
+/** Look for a given value in a given guid dissector table and, if found,
+ * return the current dissector handle for that value.
+ *
+ * @param[in] sub_dissectors Dissector table to search.
+ * @param[in] guid_val Value to match, e.g. the GUID number for the GUID dissector.
+ * @return The matching dissector handle on success, NULL if no match is found.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_guid_handle(
+    dissector_table_t const sub_dissectors, guid_key* guid_val);
+
+/* Use the currently assigned payload dissector for the dissector table and,
+   if any, call the dissector with the arguments supplied, and return the
+   number of bytes consumed, otherwise return 0. */
+WS_DLL_PUBLIC int dissector_try_payload_with_data(dissector_table_t sub_dissectors,
+    tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
+
+WS_DEPRECATED_X("Use dissector_try_payload_with_data instead")
+static inline int dissector_try_payload_new(dissector_table_t sub_dissectors,
+	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data){ \
+	return dissector_try_payload_with_data(sub_dissectors, tvb, pinfo, tree, add_proto_name, data); \
+}
+
+/* Use the currently assigned payload dissector for the dissector table and,
+   if any, call the dissector with the arguments supplied, and return the
+   number of bytes consumed, otherwise return 0. */
+WS_DEPRECATED_X("Use dissector_try_payload_with_data instead")
+static inline int dissector_try_payload(dissector_table_t sub_dissectors,
+	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
+	\
+	return dissector_try_payload_with_data(sub_dissectors, tvb, pinfo, tree, true, NULL); \
+}
+
+/* Change the entry for a dissector in a payload (FT_NONE) dissector table
+   with a particular pattern to use a new dissector handle. */
+WS_DLL_PUBLIC void dissector_change_payload(const char *abbrev, dissector_handle_t handle);
+
+/* Reset payload (FT_NONE) dissector table to its initial value. */
+WS_DLL_PUBLIC void dissector_reset_payload(const char *name);
+
+/* Given a payload dissector table (type FT_NONE), return the handle of
+   the dissector that is currently active, i.e. that was selected via
+   Decode As. */
+WS_DLL_PUBLIC dissector_handle_t dissector_get_payload_handle(
+        dissector_table_t const dissector_table);
+
+/* Add a handle to the list of handles that *could* be used with this
+   table.  That list is used by the "Decode As"/"-d" code in the UI. */
+WS_DLL_PUBLIC void dissector_add_for_decode_as(const char *name,
+    dissector_handle_t handle);
+
+/* Same as dissector_add_for_decode_as, but adds preference for dissector table value */
+WS_DLL_PUBLIC void dissector_add_for_decode_as_with_preference(const char *name,
+    dissector_handle_t handle);
+
+/** Get the list of handles for a dissector table
+ */
+WS_DLL_PUBLIC GSList *dissector_table_get_dissector_handles(dissector_table_t dissector_table);
+
+/** Get a handle to dissector out of a dissector table given the description
+ * of what the dissector dissects.
+ */
+WS_DLL_PUBLIC dissector_handle_t dissector_table_get_dissector_handle(dissector_table_t dissector_table, const char* description);
+
+/** Get a dissector table's type
+ */
+WS_DLL_PUBLIC ftenum_t dissector_table_get_type(dissector_table_t dissector_table);
+
+/** Mark a dissector table as allowing "Decode As"
+ *
+ * XXX - Why is this WS_DLL_PUBLIC? This is called by register_decode_as, and
+ * anything that marks a table as allowing "Decode As" should call that instead.
+ */
+WS_DLL_PUBLIC void dissector_table_allow_decode_as(dissector_table_t dissector_table);
+
+/** Returns true if dissector table allows "Decode As"
+ */
+WS_DLL_PUBLIC bool dissector_table_supports_decode_as(dissector_table_t dissector_table);
+
+/* List of "heuristic" dissectors (which get handed a packet, look at it,
+   and either recognize it as being for their protocol, dissect it, and
+   return true, or don't recognize it and return false) to be called
+   by another dissector.
+
+   This is opaque outside of "packet.c". */
+struct heur_dissector_list;
+typedef struct heur_dissector_list *heur_dissector_list_t;
+
+
+typedef struct heur_dtbl_entry {
+	heur_dissector_t dissector;
+	protocol_t *protocol; /* this entry's protocol */
+	char *list_name;     /* the list name this entry is in the list of */
+	const char *display_name;     /* the string used to present heuristic to user */
+	char *short_name;     /* string used for "internal" use to uniquely identify heuristic */
+	bool enabled;
+	bool enabled_by_default;
+} heur_dtbl_entry_t;
+
+/** A protocol uses this function to register a heuristic sub-dissector list.
+ *  Call this in the parent dissectors proto_register function.
+ *
+ * @param name a unique short name for the list
+ * @param ui_name the name used in the user interface
+ * @param proto the value obtained when registering the protocol
+ */
+WS_DLL_PUBLIC heur_dissector_list_t register_heur_dissector_list_with_description(const char *name, const char *ui_name, const int proto);
+
+/** Get description of heuristic sub-dissector list.
+ *
+ * @param list the dissector list
+ */
+WS_DLL_PUBLIC const char *heur_dissector_list_get_description(heur_dissector_list_t list);
+
+/** A protocol uses this function to register a heuristic sub-dissector list.
+ *  Call this in the parent dissectors proto_register function.
+ *
+ * @param name the name of this protocol
+ * @param proto the value obtained when registering the protocol
+ */
+WS_DLL_PUBLIC heur_dissector_list_t register_heur_dissector_list(const char *name, const int proto);
+
+/** Deregister a heuristic dissector list by unique short name. */
+void deregister_heur_dissector_list(const char *name);
+
+typedef void (*DATFunc_heur) (const char *table_name,
+    struct heur_dtbl_entry *entry, void *user_data);
+typedef void (*DATFunc_heur_table) (const char *table_name,
+    struct heur_dissector_list *table, void *user_data);
+
+/** Iterate over heuristic dissectors in a table.
+ *
+ * Walk one heuristic dissector table's list calling a user supplied function
+ * on each entry.
+ *
+ * @param[in] table_name The name of the dissector table, e.g. "tcp".
+ * @param[in] func The function to call for each dissector.
+ * @param[in] user_data User data to pass to the function.
+ */
+WS_DLL_PUBLIC void heur_dissector_table_foreach(const char *table_name,
+    DATFunc_heur func, void *user_data);
+
+/** Iterate over all heuristic dissector tables.
+ *
+ * Walk the set of heuristic dissector tables calling a user supplied function
+ * on each table.
+ * @param[in] func The function to call for each table.
+ * @param[in] user_data User data to pass to the function.
+ * @param[in] compare_key_func Function used to sort the set of tables before
+ * calling the function.  No sorting is done if NULL. */
+WS_DLL_PUBLIC void dissector_all_heur_tables_foreach_table (DATFunc_heur_table func,
+    void *user_data, GCompareFunc compare_key_func);
+
+/* true if a heur_dissector list of that name exists to be registered into */
+WS_DLL_PUBLIC bool has_heur_dissector_list(const char *name);
+
+/** Try all the dissectors in a given heuristic dissector list. This is done,
+ *  until we find one that recognizes the protocol.
+ *  Call this while the parent dissector running.
+ *
+ * @param sub_dissectors the sub-dissector list
+ * @param tvb the tvbuff with the (remaining) packet data
+ * @param pinfo the packet info of this packet (additional info)
+ * @param tree the protocol tree to be build or NULL
+ * @param hdtbl_entry returns the last tried dissectors hdtbl_entry.
+ * @param data parameter to pass to subdissector
+ * @return true if the packet was recognized by the sub-dissector (stop dissection here)
+ */
+WS_DLL_PUBLIC bool dissector_try_heuristic(heur_dissector_list_t sub_dissectors,
+    tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, heur_dtbl_entry_t **hdtbl_entry, void *data);
+
+/** Find a heuristic dissector table by table name.
+ *
+ * @param name name of the dissector table
+ * @return pointer to the table on success, NULL if no such table exists
+ */
+WS_DLL_PUBLIC heur_dissector_list_t find_heur_dissector_list(const char *name);
+
+/** Find a heuristic dissector by the unique short protocol name provided during registration.
+ *
+ * @param short_name short name of the protocol to look at
+ * @return pointer to the heuristic dissector entry, NULL if not such dissector exists
+ */
+WS_DLL_PUBLIC heur_dtbl_entry_t* find_heur_dissector_by_unique_short_name(const char *short_name);
+
+/** Add a sub-dissector to a heuristic dissector list.
+ *  Call this in the proto_handoff function of the sub-dissector.
+ *
+ * @param name the name of the heuristic dissector table into which to register the dissector, e.g. "tcp"
+ * @param dissector the sub-dissector to be registered
+ * @param display_name the string used to present heuristic to user, e.g. "HTTP over TCP"
+ * @param internal_name the string used for "internal" use to identify heuristic, e.g. "http_tcp"
+ * @param proto the protocol id of the sub-dissector
+ * @param enable initially enabled or not
+ */
+WS_DLL_PUBLIC void heur_dissector_add(const char *name, heur_dissector_t dissector,
+    const char *display_name, const char *internal_name, const int proto, heuristic_enable_e enable);
+
+/** Remove a sub-dissector from a heuristic dissector list.
+ *  Call this in the prefs_reinit function of the sub-dissector.
+ *
+ * @param name the name of the "parent" protocol, e.g. "tcp"
+ * @param dissector the sub-dissector to be unregistered
+ * @param proto the protocol id of the sub-dissector
+ */
+WS_DLL_PUBLIC void heur_dissector_delete(const char *name, heur_dissector_t dissector, const int proto);
+
+/** Register a new dissector. */
+WS_DLL_PUBLIC dissector_handle_t register_dissector(const char *name, dissector_t dissector, const int proto);
+
+/** Register a new dissector with a description. */
+WS_DLL_PUBLIC dissector_handle_t register_dissector_with_description(const char *name, const char *description, dissector_t dissector, const int proto);
+
+/** Register a new dissector with a callback pointer. */
+WS_DLL_PUBLIC dissector_handle_t register_dissector_with_data(const char *name, dissector_cb_t dissector, const int proto, void *cb_data);
+
+/** Deregister a dissector. */
+void deregister_dissector(const char *name);
+
+/** Get the long name of the protocol for a dissector handle. */
+WS_DLL_PUBLIC const char *dissector_handle_get_protocol_long_name(const dissector_handle_t handle);
+
+/** Get the short name of the protocol for a dissector handle. */
+WS_DLL_PUBLIC const char *dissector_handle_get_protocol_short_name(const dissector_handle_t handle);
+
+/* For backwards source and binary compatibility */
+G_DEPRECATED_FOR(dissector_handle_get_protocol_short_name)
+WS_DLL_PUBLIC const char *dissector_handle_get_short_name(const dissector_handle_t handle);
+
+/** Get the description for what the dissector for a dissector handle dissects. */
+WS_DLL_PUBLIC const char *dissector_handle_get_description(const dissector_handle_t handle);
+
+/** Get the index of the protocol for a dissector handle. */
+WS_DLL_PUBLIC int dissector_handle_get_protocol_index(const dissector_handle_t handle);
+
+/** Get a GList of all registered dissector names. */
+WS_DLL_PUBLIC GList* get_dissector_names(void);
+
+/** Find a dissector by name. */
+WS_DLL_PUBLIC dissector_handle_t find_dissector(const char *name);
+
+/** Find a dissector by name and add parent protocol as a dependency. */
+WS_DLL_PUBLIC dissector_handle_t find_dissector_add_dependency(const char *name, const int parent_proto);
+
+/** Get a dissector name from handle. */
+WS_DLL_PUBLIC const char *dissector_handle_get_dissector_name(const dissector_handle_t handle);
+
+WS_DLL_PUBLIC const char *dissector_handle_get_pref_suffix(const dissector_handle_t handle);
+
+/** Create an anonymous, unregistered dissector handle. Unregistered means that
+ * other dissectors can't find the dissector through this API. The typical use
+ * case is dissectors added to dissector tables that shouldn't be called by other
+ * dissectors, perhaps if some data structure must be passed to the dissector.
+ *
+ * @param dissector The dissector the handle will call
+ * @param proto The value obtained when registering the protocol
+ *
+ * @note The protocol short name will be used as the user-visible description.
+ */
+WS_DLL_PUBLIC dissector_handle_t create_dissector_handle(dissector_t dissector,
+    const int proto);
+
+/** Create an named, unregistered dissector handle.
+ * A non-NULL name is needed for dissector_add_for_decode_add_with_preference().
+ *
+ * @param dissector The dissector the handle will call
+ * @param proto The value obtained when registering the protocol
+ * @param name a short, machine-friendly name for the dissector. Does not have
+ * to be globally unique, but should be unique for any table the handle will be
+ * registered to. Can be NULL, which creates an anonymous dissector.
+ *
+ * @note The protocol short name will be used as the user-visible description.
+ */
+WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_name(dissector_t dissector,
+    const int proto, const char* name);
+
+/** Create an named, unregistered handle dissector handle with a description.
+ * A non-NULL name is needed for dissector_add_for_decode_add_with_preference().
+ * The description is used to allow a user to distinguish dissectors for the
+ * same protocol, e.g. when registered to the same table.
+ *
+ * @param dissector The dissector the handle will call
+ * @param proto The value obtained when registering the protocol
+ * @param name a short, machine-friendly name for the dissector. Does not have
+ * to be globally unique, but should be unique for any table the handle will be
+ * registered to. Can be NULL, which creates an anonymous dissector.
+ * @param description Freeform text designed to be shown to a user. Must be
+ * unique for any table the dissector is registered in. Can be NULL, in which
+ * case the protocol short name is used as the user-visible description.
+ */
+WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_name_and_description(dissector_t dissector,
+    const int proto, const char* name, const char* description);
+WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_data(dissector_cb_t dissector,
+    const int proto, void* cb_data);
+
+/* Dump all registered dissectors to the standard output */
+WS_DLL_PUBLIC void dissector_dump_dissectors(void);
+
+/** Call a dissector through a handle and if no dissector was found
+ * pass it over to the "data" dissector instead.
+ *
+ *   @param handle The dissector to call.
+ *   @param  tvb The buffer to dissect.
+ *   @param  pinfo Packet Info.
+ *   @param  tree The protocol tree.
+ *   @param  data parameter to pass to dissector
+ *   @return  If the protocol for that handle isn't enabled call the data
+ *   dissector. Otherwise, if the handle refers to a new-style
+ *   dissector, call the dissector and return its return value, otherwise call
+ *   it and return the length of the tvbuff pointed to by the argument.
+ */
+WS_DLL_PUBLIC int call_dissector_with_data(dissector_handle_t handle, tvbuff_t *tvb,
+    packet_info *pinfo, proto_tree *tree, void *data);
+WS_DLL_PUBLIC int call_dissector(dissector_handle_t handle, tvbuff_t *tvb,
+    packet_info *pinfo, proto_tree *tree);
+
+WS_DLL_PUBLIC int call_data_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
+
+/** Call a dissector through a handle but if no dissector was found
+ * just return 0 and do not call the "data" dissector instead.
+ *
+ *   @param handle The dissector to call.
+ *   @param  tvb The buffer to dissect.
+ *   @param  pinfo Packet Info.
+ *   @param  tree The protocol tree.
+ *   @param  data parameter to pass to dissector
+ *   @return  If the protocol for that handle isn't enabled, return 0 without
+ *   calling the dissector. Otherwise, if the handle refers to a new-style
+ *   dissector, call the dissector and return its return value, otherwise call
+ *   it and return the length of the tvbuff pointed to by the argument.
+ */
+WS_DLL_PUBLIC int call_dissector_only(dissector_handle_t handle, tvbuff_t *tvb,
+    packet_info *pinfo, proto_tree *tree, void *data);
+
+/**
+ *   @param heur_dtbl_entry The heur_dtbl_entry of the dissector to call.
+ *   @param  tvb The buffer to dissect.
+ *   @param  pinfo Packet Info.
+ *   @param  tree The protocol tree.
+ *   @param  data parameter to pass to dissector
+ */
+
+WS_DLL_PUBLIC void call_heur_dissector_direct(heur_dtbl_entry_t *heur_dtbl_entry, tvbuff_t *tvb,
+    packet_info *pinfo, proto_tree *tree, void *data);
+
+/* This is opaque outside of "packet.c". */
+struct depend_dissector_list;
+typedef struct depend_dissector_list *depend_dissector_list_t;
+
+/** Register a protocol dependency
+ * This is done automatically when registering with a dissector or
+ * heuristic table.  This is for "manual" registration when a dissector
+ * ends up calling another through call_dissector (or similar) so
+ * dependencies can be determined
+ *
+ *   @param parent "Parent" protocol short name
+ *   @param dependent "Dependent" protocol short name
+ *   @return  return true if dependency was successfully registered
+ */
+WS_DLL_PUBLIC bool register_depend_dissector(const char* parent, const char* dependent);
+
+/** Unregister a protocol dependency
+ * This is done automatically when removing from a dissector or
+ * heuristic table.  This is for "manual" deregistration for things
+ * like Lua.
+ *
+ *   @param parent "Parent" protocol short name
+ *   @param dependent "Dependent" protocol short name
+ *   @return  return true if dependency was successfully unregistered
+ */
+WS_DLL_PUBLIC bool deregister_depend_dissector(const char* parent, const char* dependent);
+
+/** Find the list of protocol dependencies
+ *
+ *   @param name Protocol short name to search for
+ *   @return  return list of dependent was successfully registered
+ */
+WS_DLL_PUBLIC depend_dissector_list_t find_depend_dissector_list(const char* name);
+
+/*
+ * Given a tvbuff, and a length from a packet header, adjust the length
+ * of the tvbuff to reflect the specified length.
+ */
+WS_DLL_PUBLIC void set_actual_length(tvbuff_t *tvb, const unsigned specified_len);
+
+/**
+ * Allow protocols to register "init" routines, which are called before
+ * we make a pass through a capture file and dissect all its packets
+ * (e.g., when we read in a new capture file, or run a "filter packets"
+ * or "colorize packets" pass over the current capture file or when the
+ * preferences are changed).
+ */
+WS_DLL_PUBLIC void register_init_routine(void (*func)(void));
+
+/**
+ * Allows protocols to register "cleanup" routines, which are called
+ * after closing a capture file (or when preferences are changed, in
+ * that case these routines are called before the init routines are
+ * executed). It can be used to release resources that are allocated in
+ * an "init" routine.
+ */
+WS_DLL_PUBLIC void register_cleanup_routine(void (*func)(void));
+
+/*
+ * Allows protocols to register "shutdown" routines, which are called
+ * once, just before program exit
+ */
+WS_DLL_PUBLIC void register_shutdown_routine(void (*func)(void));
+
+/* Initialize all data structures used for dissection. */
+void init_dissection(void);
+
+/* Free data structures allocated for dissection. */
+void cleanup_dissection(void);
+
+/* Allow protocols to register a "cleanup" routine to be
+ * run after the initial sequential run through the packets.
+ * Note that the file can still be open after this; this is not
+ * the final cleanup. */
+WS_DLL_PUBLIC void register_postseq_cleanup_routine(void (*func)(void));
+
+/* Call all the registered "postseq_cleanup" routines. */
+WS_DLL_PUBLIC void postseq_cleanup_all_protocols(void);
+
+/* Allow dissectors to register a "final_registration" routine
+ * that is run like the proto_register_XXX() routine, but the end
+ * end of the epan_init() function; that is, *after* all other
+ * subsystems, liked dfilters, have finished initializing. This is
+ * useful for dissector registration routines which need to compile
+ * display filters. dfilters can't initialize itself until all protocols
+ * have registered themselves. */
+WS_DLL_PUBLIC void
+register_final_registration_routine(void (*func)(void));
+
+/* Call all the registered "final_registration" routines. */
+extern void
+final_registration_all_protocols(void);
+
+// XXX Should we move frame_data.encoding here?
+typedef enum {
+    DS_MEDIA_TYPE_APPLICATION_OCTET_STREAM,
+    DS_MEDIA_TYPE_APPLICATION_JSON,
+} data_source_media_type_e;
+
+struct data_source;
+
+/**
+ * Add a new data source to the list of data sources for a frame, given
+ * the tvbuff for the data source and its name. The media type will be
+ * set to DS_MEDIA_TYPE_APPLICATION_OCTET_STREAM.
+ * @param pinfo Packet info.
+ * @param tvb The tvbuff to associate with the data source.
+ * @param name A display-freindly name of the data source.
+ * @return An opaque pointer to the data source.
+ */
+WS_DLL_PUBLIC struct data_source* add_new_data_source(packet_info *pinfo, tvbuff_t *tvb,
+    const char *name);
+
+/**
+ * Set the name for the data source.
+ * @param pinfo pinfo from whose pool to allocate a copy of the data source
+ * @param src The data source.
+ * @param name new name for the data source
+ */
+WS_DLL_PUBLIC void set_data_source_name(packet_info *pinfo, struct data_source *src, const char *name);
+
+/**
+ * Set the media type for the data source. This will be used as a hint
+ * to display the source's tvbuff.
+ * @param src The data source.
+ * @param media_type A valid media type.
+ */
+WS_DLL_PUBLIC void set_data_source_media_type(struct data_source *src, data_source_media_type_e media_type);
+
+/* Removes the last-added data source, if it turns out it wasn't needed */
+WS_DLL_PUBLIC void remove_last_data_source(packet_info *pinfo);
+
+/*
+ * Return the data source description.
+ */
+WS_DLL_PUBLIC char *get_data_source_description(const struct data_source *src);
+
+/*
+ * Return the tvb for the data source.
+ */
+WS_DLL_PUBLIC tvbuff_t *get_data_source_tvb(const struct data_source *src);
+
+/**
+ * Find and return data source with the given name.
+ * @param pinfo packet_info for the packet whose data sources are to be searched
+ * @param name name of the data source
+ * @return the data source or NULL if not found
+ */
+WS_DLL_PUBLIC struct data_source *get_data_source_by_name(const packet_info *pinfo, const char *name);
+
+/**
+ * Find and return data source with the given tvb.
+ * @param pinfo packet_info for the packet whose data sources are to be searched
+ * @param tvb tvb of the data source
+ * @return the data source or NULL if not found
+ */
+WS_DLL_PUBLIC struct data_source *get_data_source_by_tvb(const packet_info *pinfo, const tvbuff_t *tvb);
+
+/**
+ * Get a data source's media type.
+ * @param src The data source.
+ * @return A media type.
+ */
+WS_DLL_PUBLIC data_source_media_type_e get_data_source_media_type(const struct data_source *src);
+
+/*
+ * Free up a frame's list of data sources.
+ */
+extern void free_data_sources(packet_info *pinfo);
+
+/* Mark another frame as depended upon by the current frame.
+ *
+ * This information is used to ensure that the depended-upon frame is saved
+ * if the user does a File->Save-As of only the Displayed packets and the
+ * current frame passed the display filter.
+ */
+WS_DLL_PUBLIC void mark_frame_as_depended_upon(frame_data *fd, uint32_t frame_num);
+
+/* Structure passed to the frame dissector */
+typedef struct frame_data_s
+{
+    int file_type_subtype;
+    /*
+     * This might be the block from the packet's wtap_rec or it might
+     * be a modified copy of that, as, for example, the comments
+     * might have been edited but not yet saved to the file.
+     */
+    wtap_block_t pkt_block;         /**< NULL if not available */
+    struct epan_dissect *color_edt; /** Used strictly for "coloring rules" */
+
+} frame_data_t;
+
+/* Structure passed to the file dissector */
+typedef struct file_data_s
+{
+    wtap_block_t pkt_block;         /**< NULL if not available */
+    struct epan_dissect *color_edt; /** Used strictly for "coloring rules" */
+
+} file_data_t;
+
+/*
+ * Dissectors should never modify the record data.
+ */
+extern void dissect_record(struct epan_dissect *edt, int file_type_subtype,
+    wtap_rec *rec, frame_data *fd, column_info *cinfo);
+
+/*
+ * Dissectors should never modify the file data.
+ */
+extern void dissect_file(struct epan_dissect *edt,
+    wtap_rec *rec, frame_data *fd, column_info *cinfo);
+
+/* Structure passed to the ethertype dissector */
+typedef struct ethertype_data_s
+{
+    uint16_t etype;
+    int payload_offset;
+    proto_tree *fh_tree;
+    int trailer_id;
+    int fcs_len;
+} ethertype_data_t;
+
+/*
+ * Dump layer/selector/dissector records in a fashion similar to the
+ * proto_registrar_dump_* routines.
+ */
+WS_DLL_PUBLIC void dissector_dump_decodes(void);
+
+/*
+ * For each heuristic dissector table, dump list of dissectors (filter_names) for that table
+ */
+WS_DLL_PUBLIC void dissector_dump_heur_decodes(void);
+
+/*
+ * postdissectors are to be called by packet-frame.c after every other
+ * dissector has been called.
+ */
+
+/*
+ * Register a postdissector; the argument is the dissector handle for it.
+ */
+WS_DLL_PUBLIC void register_postdissector(dissector_handle_t handle);
+
+/*
+ * Specify a set of hfids that the postdissector will need on the first pass.
+ * This ensures that the fields will not be faked, and can be retrieved with
+ * proto_get_finfo_ptr_array.
+ *
+ * @note There is no way to guarantee that fields added by other postdissectors
+ * will be available. (Issue #19804) This is for postdissectors that examine
+ * fields added by other dissectors on the first linear pass, and then store
+ * their own results in persistent memory for retrieval and adding in later
+ * passes. Postdissectors that need field values on later passes should call
+ * something else, like epan_set_always_visible() (which slows dissection.)
+ *
+ * @param handle The dissector handle used to register the postdissector.
+ * @param wanted_hfids An array of hfids (type int), which should be NULL to
+ * clear the list. This function will take ownership of the array.
+ */
+WS_DLL_PUBLIC void set_postdissector_wanted_hfids(dissector_handle_t handle,
+    GArray *wanted_hfids);
+
+/*
+ * Deregister a postdissector.  Not for use in (post)dissectors or
+ * applications; only to be used by libwireshark itself.
+ */
+void deregister_postdissector(dissector_handle_t handle);
+
+/*
+ * Return true if we have at least one postdissector, false if not.
+ * Not for use in (post)dissectors or applications; only to be used
+ * by libwireshark itself.
+ */
+extern bool have_postdissector(void);
+
+/*
+ * Call all postdissectors, handing them the supplied arguments.
+ * Not for use in (post)dissectors or applications; only to be used
+ * by libwireshark itself.
+ */
+extern void call_all_postdissectors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
+
+/*
+ * Return true if at least one postdissector needs at least one hfid,
+ * false otherwise.
+ */
+WS_DLL_PUBLIC bool postdissectors_want_hfids(void);
+
+/*
+ * Prime an epan_dissect_t with all the hfids wanted by postdissectors
+ * on the first pass. Not for use in (post)dissectors or applications;
+ * only to be used by libwireshark itself, which will call this automatically
+ * when dissecting a frame that has not been visited yet.
+ */
+extern void
+prime_epan_dissect_with_postdissector_wanted_hfids(epan_dissect_t *edt);
+
+/** Increment the dissection depth.
+ * This should be used to limit recursion outside the tree depth checks in
+ * call_dissector and dissector_try_heuristic.
+ * @param pinfo Packet Info.
+ */
+
+WS_DLL_PUBLIC void increment_dissection_depth(packet_info *pinfo);
+
+/** Decrement the dissection depth.
+ * @param pinfo Packet Info.
+ */
+
+WS_DLL_PUBLIC void decrement_dissection_depth(packet_info *pinfo);
+
+/** @} */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* packet.h */
+/* End embedded header */
+
 /* Begin wsutil/to_str.h */
 /** @file
  *
@@ -12211,1316 +16761,6 @@ ws_buffer_append_buffer(Buffer* buffer, const Buffer* src_buffer)
 #endif /* __cplusplus */
 
 #endif
-/* End embedded header */
-
-/* Begin wiretap/wtap_opttypes.h */
-/** @file
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 2001 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef WTAP_OPT_TYPES_H
-#define WTAP_OPT_TYPES_H
-
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * We use the pcapng option codes for option type values.
- */
-
-/* Options for all blocks */
-#define OPT_EOFOPT             0     /**< Appears in pcapng files, but not in blocks. */
-#define OPT_COMMENT            1     /**< A UTF-8 string containing a human-readable comment. */
-#define OPT_CUSTOM_STR_COPY    2988  /**< A custom option containing a UTF-8 string, copying allowed. */
-#define OPT_CUSTOM_BIN_COPY    2989  /**< A custom option containing binary data, copying allowed. */
-#define OPT_CUSTOM_STR_NO_COPY 19372 /**< A custom option containing a UTF-8 string, copying not allowed. */
-#define OPT_CUSTOM_BIN_NO_COPY 19373 /**< A custom option containing binary data, copying not allowed. */
-
-/* Section Header block (SHB) */
-#define OPT_SHB_HARDWARE       2     /**< A UTF-8 string containing the description of the
-                                       *     hardware used to create this section.
-                                       */
-#define OPT_SHB_OS             3     /**< A UTF-8 string containing the
-                                       *     name of the operating system used to create this section.
-                                       */
-#define OPT_SHB_USERAPPL       4     /**< A UTF-8 string containing the
-                                       *     name of the application used to create this section.
-                                       */
-
-/* Interface Description block (IDB) */
-#define OPT_IDB_NAME           2     /**< A UTF-8 string containing the name
-                                       *     of the device used to capture data.
-                                       *     "eth0" / "\Device\NPF_{AD1CE675-96D0-47C5-ADD0-2504B9126B68}"
-                                       */
-#define OPT_IDB_DESCRIPTION    3     /**< A UTF-8 string containing the description
-                                       *     of the device used to capture data.
-                                       *     "Wi-Fi" / "Local Area Connection" /
-                                       *     "Wireless Network Connection" /
-                                       *     "First Ethernet Interface"
-                                       */
-#define OPT_IDB_IP4ADDR        4     /**< XXX: if_IPv4addr Interface network address and netmask.
-                                       *     This option can be repeated multiple times within the same Interface Description Block
-                                       *     when multiple IPv4 addresses are assigned to the interface.
-                                       *     192 168 1 1 255 255 255 0
-                                       */
-#define OPT_IDB_IP6ADDR        5     /**< XXX: if_IPv6addr Interface network address and prefix length (stored in the last byte).
-                                       *     This option can be repeated multiple times within the same Interface
-                                       *     Description Block when multiple IPv6 addresses are assigned to the interface.
-                                       *     2001:0db8:85a3:08d3:1319:8a2e:0370:7344/64 is written (in hex) as
-                                       *     "20 01 0d b8 85 a3 08 d3 13 19 8a 2e 03 70 73 44 40"
-                                       */
-#define OPT_IDB_MACADDR        6     /**< XXX: if_MACaddr  Interface Hardware MAC address (48 bits).                             */
-#define OPT_IDB_EUIADDR        7     /**< XXX: if_EUIaddr  Interface Hardware EUI address (64 bits)                              */
-#define OPT_IDB_SPEED          8     /**< Interface speed (in bps). 100000000 for 100Mbps
-                                       */
-#define OPT_IDB_TSRESOL        9     /**< Resolution of timestamps. If the Most Significant Bit is equal to zero,
-                                       *     the remaining bits indicates the resolution of the timestamp as a
-                                       *     negative power of 10 (e.g. 6 means microsecond resolution, timestamps
-                                       *     are the number of microseconds since 1/1/1970). If the Most Significant Bit
-                                       *     is equal to one, the remaining bits indicates the resolution has a
-                                       *     negative power of 2 (e.g. 10 means 1/1024 of second).
-                                       *     If this option is not present, a resolution of 10^-6 is assumed
-                                       *     (i.e. timestamps have the same resolution of the standard 'libpcap' timestamps).
-                                       */
-#define OPT_IDB_TZONE          10    /**< Time zone for GMT support.  This option has neer been specified in
-                                       *     greater detail and, unless it were to identify something such as
-                                       *     an IANA time zone database timezone, would be insufficient for
-                                       *     converting between UTC and local time.  Therefore, it SHOULD NOT
-                                       *     be used; instead, the if_iana_tzname option SHOULD be used if
-                                       *     time zone information is to be specified. */
-#define OPT_IDB_FILTER         11    /**< The filter (e.g. "capture only TCP traffic") used to capture traffic.
-                                       *     The first byte of the Option Data keeps a code of the filter used
-                                       *     (e.g. if this is a libpcap string, or BPF bytecode, and more).
-                                       *     More details about this format will be presented in Appendix XXX (TODO).
-                                       *     (TODO: better use different options for different fields?
-                                       *     e.g. if_filter_pcap, if_filter_bpf, ...) 00 "tcp port 23 and host 10.0.0.5"
-                                       */
-#define OPT_IDB_OS             12    /**< A UTF-8 string containing the name of the operating system of the
-                                       *     machine in which this interface is installed.
-                                       *     This can be different from the same information that can be
-                                       *     contained by the Section Header Block
-                                       *     (Section 3.1 (Section Header Block (mandatory))) because
-                                       *     the capture can have been done on a remote machine.
-                                       *     "Windows XP SP2" / "openSUSE 10.2"
-                                       */
-#define OPT_IDB_FCSLEN         13    /**< An integer value that specified the length of the
-                                       *     Frame Check Sequence (in bits) for this interface.
-                                       *     For link layers whose FCS length can change during time,
-                                       *     the Packet Block Flags Word can be used (see Appendix A (Packet Block Flags Word))
-                                       */
-#define OPT_IDB_TSOFFSET       14    /**< A 64-bit signed integer value that specifies an offset (in seconds)
-                                       *     that must be added to the timestamp of each packet to obtain
-                                       *     the absolute timestamp of a packet. If the option is not present,
-                                       *     an offst of 0 is assumed (i.e., timestamps in blocks are absolute
-                                       *     timestamps).
-                                       *
-                                       *     This offset is not intended to be used as an offset between local
-                                       *     time and UTC; for this purpose, the if_iana_tzname option SHOULD be
-                                       *     used to specify a timezone.
-                                       */
-#define OPT_IDB_HARDWARE       15    /**< A UTF-8 string containing the description
-                                       *     of the hardware of the device used
-                                       *     to capture data.
-                                       *     "Broadcom NetXtreme" /
-                                       *     "Intel(R) PRO/1000 MT Network Connection" /
-                                       *     "NETGEAR WNA1000Mv2 N150 Wireless USB Micro Adapter"
-                                       */
-#define OPT_IDB_TXSPEED        16    /**< A 64-bit unsigned integer indicating the interface transmit speed in
-                                       *     bits per second.
-                                       */
-#define OPT_IDB_RXSPEED        17    /**< A 64-bit unsigned integer indicating the interface receive speed in
-                                       *     bits per second.
-                                       */
-#define OPT_IDB_IANA_TZNAME    18    /**< A UTF-8 string that indicates the IANA time zone database timezone name
-                                       *     for the IANA database timezone in which the interface is located.
-                                       */
-
-/*
- * These are the options for an EPB, but we use them for all WTAP_BLOCK_PACKET
- */
-#define OPT_PKT_FLAGS        2
-#define OPT_PKT_HASH         3
-#define OPT_PKT_DROPCOUNT    4
-#define OPT_PKT_PACKETID     5
-#define OPT_PKT_QUEUE        6
-#define OPT_PKT_VERDICT      7
-#define OPT_PKT_PROCIDTHRDID 8
-
-/* Name Resolution Block (NRB) */
-#define OPT_NS_DNSNAME       2
-#define OPT_NS_DNSIP4ADDR    3
-#define OPT_NS_DNSIP6ADDR    4
-
-/* Interface Statistics Block (ISB) */
-#define OPT_ISB_STARTTIME    2
-#define OPT_ISB_ENDTIME      3
-#define OPT_ISB_IFRECV       4
-#define OPT_ISB_IFDROP       5
-#define OPT_ISB_FILTERACCEPT 6
-#define OPT_ISB_OSDROP       7
-#define OPT_ISB_USRDELIV     8
-
-/* Darwin Process Info Block (DPIB) */
-#define OPT_DPIB_NAME        2   /**< Process name: NUL-terminated UTF8 string (limited to 16 characters including the NUL) */
-#define OPT_DPIB_UUID        4   /**< Process UUID: 16 byte */
-
-/* Darwin-specific options for EPB */
-#define OPT_PKT_DARWIN_PIB_ID               32769   /**< 32-bit number of the Darwin PIB that describes the Process ID. */
-#define	OPT_PKT_DARWIN_SVC_CODE	            32770   /**< 32-bit type of service code. */
-#define OPT_PKT_DARWIN_EFFECTIVE_PIB_ID     32771   /**< 32-bit number of the Darwin PIB that describes the Effective Process ID. */
-#define OPT_PKT_DARWIN_MD_FLAGS             32772   /**< 32-bit bitmask containing the packet metadata flags. */
-#define OPT_PKT_DARWIN_FLOW_ID              32773   /**< 32-bit opaque flow identifier. */
-#define OPT_PKT_DARWIN_TRACE_TAG            32774   /**< 16-bit opaque trace tag. */
-#define OPT_PKT_DARWIN_DROP_REASON          32775   /**< 32-bit drop reason. */
-#define OPT_PKT_DARWIN_DROP_LINE            32776   /**< 16-bit drop line. */
-#define OPT_PKT_DARWIN_DROP_FUNC            32777   /**< NUL-terminated name of the dropping function. */
-#define OPT_PKT_DARWIN_COMP_GENCNT          32778   /**< 32-bit current value of the compression generation count (epoch). */
-
-
-/*
- * Currently supported blocks; these are not the pcapng block type values
- * for them, they're identifiers used internally, and more than one
- * pcapng block type may use a given block type.
- *
- * Note that, in a given file format, this information won't necessarily
- * appear in the form of blocks in the file, even though they're presented
- * to the caller of libwiretap as blocks when reading and are presented
- * by the caller of libwiretap as blocks when writing.  See, for example,
- * the iptrace file format, in which the interface name is given as part
- * of the packet record header; we synthesize those blocks when reading
- * (we don't currently support writing that format, but if we did, we'd
- * get the interface name from the block and put it in the packet record
- * header).
- *
- * WTAP_BLOCK_IF_ID_AND_INFO is a block that not only gives
- * descriptive information about an interface but *also* assigns an
- * ID to the interface, so that every packet has either an explicit
- * or implicit interface ID indicating on which the packet arrived.
- *
- * It does *not* refer to information about interfaces that does not
- * allow identification of the interface on which a packet arrives
- * (I'm looking at *you*, Microsoft Network Monitor...).  Do *not*
- * indicate support for that block if your capture format merely
- * gives a list of interface information without having every packet
- * explicitly or implicitly (as in, for example, the pcapng Simple
- * Packet Block) indicate on which of those interfaces the packet
- * arrived.
- *
- * WTAP_BLOCK_PACKET (which corresponds to the Enhanced Packet Block,
- * the Simple Packet Block, and the deprecated Packet Block) is not
- * currently used; it's reserved for future use.  The same applies
- * to WTAP_BLOCK_SYSTEMD_JOURNAL_EXPORT.
- *
- * WTAP_BLOCK_FT_SPECIFIC_EVENT contains filetype-specific "events",
- * such as "carrier lost" or "moved to a new channel". The "events"
- * are commonly time-stamped.
- *
- * WTAP_BLOCK_FT_SPECIFIC_REPORT contains filetype-specific "reports"
- * such as "number of times the carrier has been lost".
- * Similarly to "events", the "reports" are commonly time-stamped;
- * in addition, the "reports" may include the "duration".
- *
- * WTAP_BLOCK_FT_SPECIFIC_INFORMATION contains filetype-specific
- * "information", which is NOT timestamped.
- *
- * The distinction between the "events", "reports" and "information"
- * is that both the "events" and "reports" describe something
- * that has happened at some point in time, whereas the "information"
- * does not have a time coordinate. Further, the "events" differ
- * from the "reports" in the significance of the time coordinate.
- * For the "events", the time stamp represents a state change,
- * so that everything that happened before the "event" is
- * qualitatively different from everything that followed.
- * On the other hand, the time coordinates of "reports"
- * do not have the same significance.
- *
- * WTAP_BLOCK_FT_SPECIFIC_INFORMATION is a block that contains
- * informtaion
- */
-typedef enum {
-    WTAP_BLOCK_SECTION = 0,
-    WTAP_BLOCK_IF_ID_AND_INFO,
-    WTAP_BLOCK_NAME_RESOLUTION,
-    WTAP_BLOCK_IF_STATISTICS,
-    WTAP_BLOCK_DECRYPTION_SECRETS,
-    WTAP_BLOCK_PACKET,
-    WTAP_BLOCK_FT_SPECIFIC_REPORT,
-    WTAP_BLOCK_FT_SPECIFIC_EVENT,
-    WTAP_BLOCK_SYSDIG_EVENT,
-    WTAP_BLOCK_META_EVENT,
-    WTAP_BLOCK_SYSTEMD_JOURNAL_EXPORT,
-    WTAP_BLOCK_CUSTOM,
-    WTAP_BLOCK_FT_SPECIFIC_INFORMATION,
-    MAX_WTAP_BLOCK_TYPE_VALUE
-} wtap_block_type_t;
-
-struct wtap_block;
-typedef struct wtap_block* wtap_block_t;
-
-typedef void (*wtap_block_create_func)(wtap_block_t block);
-typedef void (*wtap_mand_free_func)(wtap_block_t block);
-typedef void (*wtap_mand_copy_func)(wtap_block_t dest_block, wtap_block_t src_block);
-
-/*
- * Structure describing a type of block.
- */
-typedef struct wtap_blocktype_t {
-    wtap_block_type_t block_type;    /**< internal type code for block */
-    const char* name;                /**< name of block */
-    const char* description;         /**< human-readable description of block */
-    wtap_block_create_func create;
-    wtap_mand_free_func free_mand;
-    wtap_mand_copy_func copy_mand;
-    GHashTable* options;             /**< hash table of known options */
-} wtap_blocktype_t;
-
-struct wtap_block
-{
-    struct wtap_blocktype_t* info;
-    void* mandatory_data;
-    GArray* options;
-    int ref_count;
-#ifdef DEBUG_COUNT_REFS
-    unsigned id;
-#endif
-};
-
-/**
- * Holds the required data from a WTAP_BLOCK_SECTION.
- */
-typedef struct wtapng_section_mandatory_s {
-    uint64_t            section_length; /**< 64-bit value specifying the length in bytes of the
-                                         *     following section.
-                                         *     Section Length equal -1 (0xFFFFFFFFFFFFFFFF) means
-                                         *     that the size of the section is not specified
-                                         *   Note: if writing to a new file, this length will
-                                         *     be invalid if anything changes, such as the other
-                                         *     members of this struct, or the packets written.
-                                         */
-} wtapng_section_mandatory_t;
-
-/** struct holding the information to build a WTAP_BLOCK_IF_ID_AND_INFO.
- *  the interface_data array holds an array of wtap_block_t
- *  representing interfacs, one per interface.
- */
-typedef struct wtapng_iface_descriptions_s {
-    GArray *interface_data;
-} wtapng_iface_descriptions_t;
-
-/** struct holding the information to lookup a Darwin PIB.
- *  the dpibs array holds an array of wtap_block_t
- *  representing Darwin PIBs, one per PIB.
- */
- typedef struct wtapng_dpib_lookup_info_s {
-    GArray     *dpibs;
-} wtapng_dpib_lookup_info_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_IF_ID_AND_INFO.
- */
-typedef struct wtapng_if_descr_mandatory_s {
-    int                    wtap_encap;            /**< link_type translated to wtap_encap */
-    uint64_t               time_units_per_second;
-    int                    tsprecision;           /**< WTAP_TSPREC_ value for this interface */
-
-    uint32_t               snap_len;
-
-    uint8_t                num_stat_entries;
-    GArray                *interface_statistics;  /**< An array holding the interface statistics from
-                                                   *     pcapng ISB:s or equivalent(?)*/
-} wtapng_if_descr_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_NAME_RESOLUTION.
- */
-typedef struct wtapng_nrb_mandatory_s {
-    GList       *ipv4_addr_list;
-    GList       *ipv6_addr_list;
-}  wtapng_nrb_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_IF_STATISTICS.
- */
-typedef struct wtapng_if_stats_mandatory_s {
-    uint32_t interface_id;
-    uint32_t ts_high;
-    uint32_t ts_low;
-} wtapng_if_stats_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_DECRYPTION_SECRETS.
- */
-typedef struct wtapng_dsb_mandatory_s {
-    uint32_t               secrets_type;            /** Type of secrets stored in data (see secrets-types.h) */
-    uint32_t               secrets_len;             /** Length of the secrets data in bytes */
-    uint8_t               *secrets_data;            /** Buffer of secrets (not NUL-terminated) */
-} wtapng_dsb_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_META_EVENT.
- */
-typedef struct wtapng_meta_event_mandatory_s {
-    uint32_t               mev_block_type;      /** pcapng block type of the event, e.g. BLOCK_TYPE_SYSDIG_MI */
-    unsigned               mev_data_len;        /** Length of the mev data in bytes */
-    uint8_t               *mev_data;            /** Buffer of mev data (not NUL-terminated) */
-} wtapng_meta_event_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_PACKET.
- * This includes Enhanced Packet Block, Simple Packet Block, and the deprecated Packet Block.
- * NB. I'm not including the packet data here since Wireshark handles it in other ways.
- * If we were to add it we'd need to implement copy and free routines in wtap_opttypes.c
- */
-#if 0
-/* Commented out for now, there's no mandatory data that isn't handled by
- * Wireshark in other ways.
- */
-typedef struct wtapng_packet_mandatory_s {
-    uint32_t interface_id;
-    uint32_t ts_high;
-    uint32_t ts_low;
-    uint32_t captured_len;
-    uint32_t orig_len;
-} wtapng_packet_mandatory_t;
-#endif
-
-/**
- * Holds the required data from a WTAP_BLOCK_LEGACY_DARWIN_PROCESS_EVENT.
- */
- typedef struct wtapng_darwin_process_event_mandatory_s {
-    uint32_t               process_id;      /** Process ID */
-}  wtapng_darwin_process_event_mandatory_t;
-
-/**
- * Holds the required data from a WTAP_BLOCK_FT_SPECIFIC_REPORT.
- */
-typedef struct wtapng_ft_specific_mandatory_s {
-    unsigned  record_type;      /* the type of record this is - file type-specific value */
-} wtapng_ft_specific_mandatory_t;
-
-/*
- * Currently supported option types.  These are not option types
- * in the sense that each one corresponds to a particular option,
- * they are data types for the data of an option, so, for example,
- * all options with a 32-bit unsigned integer value have the type
- * WTAP_OPTTYPE_UINT32.
- */
-typedef enum {
-    WTAP_OPTTYPE_UINT8,
-    WTAP_OPTTYPE_UINT32,
-    WTAP_OPTTYPE_UINT64,
-    WTAP_OPTTYPE_STRING,
-    WTAP_OPTTYPE_BYTES,
-    WTAP_OPTTYPE_IPv4,
-    WTAP_OPTTYPE_IPv6,
-    WTAP_OPTTYPE_CUSTOM_STRING,
-    WTAP_OPTTYPE_CUSTOM_BINARY,
-    WTAP_OPTTYPE_IF_FILTER,
-    WTAP_OPTTYPE_PACKET_VERDICT,
-    WTAP_OPTTYPE_PACKET_HASH,
-    WTAP_OPTTYPE_INT8,
-    WTAP_OPTTYPE_INT32,
-    WTAP_OPTTYPE_INT64,
-} wtap_opttype_e;
-
-typedef enum {
-    WTAP_OPTTYPE_SUCCESS = 0,
-    WTAP_OPTTYPE_NO_SUCH_OPTION = -1,
-    WTAP_OPTTYPE_NOT_FOUND = -2,
-    WTAP_OPTTYPE_TYPE_MISMATCH = -3,
-    WTAP_OPTTYPE_NUMBER_MISMATCH = -4,
-    WTAP_OPTTYPE_ALREADY_EXISTS = -5,
-    WTAP_OPTTYPE_BAD_BLOCK = -6,
-    WTAP_OPTTYPE_PEN_MISMATCH = -7,
-} wtap_opttype_return_val;
-
-/* https://www.iana.org/assignments/enterprise-numbers/enterprise-numbers */
-#define PEN_VCTR 46254
-
-/*
- * Structure giving the value of a custom string option; the value
- * includes both the Private Enterprise Number and the data following it.
- */
-typedef struct custom_string_opt_s {
-    uint32_t pen;     /* Private Enterprise Number of this option */
-    char* string;
-} custom_string_opt_t;
-
-/*
- * Structure giving the data of a custom binary option.
- */
-typedef struct binary_optdata {
-    size_t custom_data_len;
-    void* custom_data;
-} binary_optdata_t;
-
-/*
- * Structure giving the value of a custom binary option; the value
- * includes both the Private Enterprise Number and the data following it.
- */
-typedef struct custom_binary_opt_s {
-    uint32_t pen;     /* Private Enterprise Number of this option */
-    binary_optdata_t data;
-} custom_binary_opt_t;
-
-/* Interface description data - if_filter option structure */
-
-/* BPF instruction */
-typedef struct wtap_bpf_insn_s {
-    uint16_t               code;
-    uint8_t                jt;
-    uint8_t                jf;
-    uint32_t               k;
-} wtap_bpf_insn_t;
-
-/*
- * Type of filter.
- */
-typedef enum {
-    if_filter_pcap = 0, /* pcap filter string */
-    if_filter_bpf  = 1  /* BPF program */
-} if_filter_type_e;
-
-typedef struct if_filter_opt_s {
-    if_filter_type_e type;
-    union {
-        char              *filter_str;   /**< pcap filter string */
-        struct wtap_bpf_insns {
-            unsigned       bpf_prog_len; /**< number of BPF instructions */
-            wtap_bpf_insn_t *bpf_prog;   /**< BPF instructions */
-        }                  bpf_prog;     /**< BPF program */
-    }                      data;
-} if_filter_opt_t;
-
-/* Packet - packet_verdict option structure */
-
-/*
- * Type of verdict.
- */
-typedef enum {
-    packet_verdict_hardware =       0, /* array of octets */
-    packet_verdict_linux_ebpf_tc  = 1, /* 64-bit unsigned integer TC_ACT_ value */
-    packet_verdict_linux_ebpf_xdp = 2  /* 64-bit unsigned integer xdp_action value */
-} packet_verdict_type_e;
-
-typedef struct packet_verdict_opt_s {
-    packet_verdict_type_e type;
-    union {
-        GByteArray *verdict_bytes;
-        uint64_t    verdict_linux_ebpf_tc;
-        uint64_t    verdict_linux_ebpf_xdp;
-    }               data;
-} packet_verdict_opt_t;
-
-typedef struct packet_hash_opt_s {
-    uint8_t type;
-    GByteArray *hash_bytes;
-} packet_hash_opt_t;
-
-/*
- * Structure describing a value of an option.
- */
-typedef union {
-    uint8_t uint8val;
-    uint32_t uint32val;
-    uint64_t uint64val;
-    int8_t int8val;
-    int32_t int32val;
-    int64_t int64val;
-    ws_in4_addr ipv4val;    /* network byte order */
-    ws_in6_addr ipv6val;
-    char *stringval;
-    GBytes *byteval;
-    custom_string_opt_t custom_stringval;
-    custom_binary_opt_t custom_binaryval;
-    if_filter_opt_t if_filterval;
-    packet_verdict_opt_t packet_verdictval;
-    packet_hash_opt_t packet_hash;
-} wtap_optval_t;
-
-/*
- * Structure describing an option in a block.
- */
-typedef struct {
-    unsigned option_id;     /**< option code for the option */
-    wtap_optval_t value; /**< value */
-} wtap_option_t;
-
-typedef void (*wtap_block_create_func)(wtap_block_t block);
-typedef void (*wtap_mand_free_func)(wtap_block_t block);
-typedef void (*wtap_mand_copy_func)(wtap_block_t dest_block, wtap_block_t src_block);
-
-/*
- * Structure describing a type of option.
- */
-typedef struct {
-    const char* name;                            /**< name of option */
-    const char* description;                     /**< human-readable description of option */
-    wtap_opttype_e data_type;                    /**< data type of that option */
-    unsigned flags;                                 /**< flags for the option */
-} wtap_opttype_t;
-
-#define GET_OPTION_TYPE(options, option_id) \
-    (const wtap_opttype_t *)g_hash_table_lookup((options), GUINT_TO_POINTER(option_id))
-
-/** Initialize block types.
- *
- * This is currently just a placeholder as nothing needs to be
- * initialized yet.  Should handle "registration" when code is
- * refactored to do so.
- */
-WS_DLL_PUBLIC void
-wtap_opttypes_initialize(void);
-
-/** Create a block by type
- *
- * Return a newly allocated block with default options provided
- *
- * @param[in] block_type Block type to be created
- * @return Newly allocated block
- */
-WS_DLL_PUBLIC wtap_block_t
-wtap_block_create(wtap_block_type_t block_type);
-
-/** Increase reference count of a block
- *
- * Call when taking a copy of a block
- *
- * @param[in] block Block add ref to
- * @return The block
- */
-WS_DLL_PUBLIC wtap_block_t
-wtap_block_ref(wtap_block_t block);
-
-/** Decrease reference count of a block
- *
- * Needs to be called on any block once you're done with it
- *
- * @param[in] block Block to be deref'd
- */
-WS_DLL_PUBLIC void
-wtap_block_unref(wtap_block_t block);
-
-/** Free an array of blocks
- *
- * Needs to be called to clean up blocks allocated
- * through GArray (for multiple blocks of same type)
- * Includes freeing the GArray
- *
- * @param[in] block_array Array of blocks to be freed
- */
-WS_DLL_PUBLIC void
-wtap_block_array_free(GArray* block_array);
-
-/** Decrement the reference count of an array of blocks
- *
- * Decrement the reference count of each block in the array
- * and the GArray itself. Any element whose reference count
- * drops to 0 will be freed. If the GArray and every block
- * has a reference count of 1, this is the same as
- * wtap_block_array_free().
- *
- * @param[in] block_array Array of blocks to be dereferenced
- */
-WS_DLL_PUBLIC void
-wtap_block_array_unref(GArray* block_array);
-
-/** Increment the reference count of an array of blocks
- *
- * Increment the reference count of each block in the array
- * and the GArray itself.
- *
- * @param[in] block_array Array of blocks to be referenced
- */
-WS_DLL_PUBLIC void
-wtap_block_array_ref(GArray* block_array);
-
-/** Register a block type handler
- *
- * @param[in] blocktype Block type to be registered
- */
-WS_DLL_PUBLIC void
-wtap_opttype_block_register(wtap_blocktype_t* blocktype);
-
-/** Provide type of a block
- *
- * @param[in] block Block from which to retrieve mandatory data
- * @return Block type.
- */
-WS_DLL_PUBLIC wtap_block_type_t
-wtap_block_get_type(wtap_block_t block);
-
-/** Provide mandatory data of a block
- *
- * @param[in] block Block from which to retrieve mandatory data
- * @return Block mandatory data.  Structure varies based on block type
- */
-WS_DLL_PUBLIC void*
-wtap_block_get_mandatory_data(wtap_block_t block);
-
-/** Count the number of times the given option appears in the block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @return unsigned - the number of times the option was found
- */
-WS_DLL_PUBLIC unsigned
-wtap_block_count_option(wtap_block_t block, unsigned option_id);
-
-/** Add UINT8 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_uint8_option(wtap_block_t block, unsigned option_id, uint8_t value);
-
-/** Set UINT8 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_uint8_option_value(wtap_block_t block, unsigned option_id, uint8_t value);
-
-/** Get UINT8 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_uint8_option_value(wtap_block_t block, unsigned option_id, uint8_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add UINT32 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_uint32_option(wtap_block_t block, unsigned option_id, uint32_t value);
-
-/** Set UINT32 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_uint32_option_value(wtap_block_t block, unsigned option_id, uint32_t value);
-
-/** Get UINT32 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_uint32_option_value(wtap_block_t block, unsigned option_id, uint32_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add UINT64 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_uint64_option(wtap_block_t block, unsigned option_id, uint64_t value);
-
-/** Set UINT64 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_uint64_option_value(wtap_block_t block, unsigned option_id, uint64_t value);
-
-/** Get UINT64 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_uint64_option_value(wtap_block_t block, unsigned option_id, uint64_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add INT8 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_int8_option(wtap_block_t block, unsigned option_id, int8_t value);
-
-/** Set INT8 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_int8_option_value(wtap_block_t block, unsigned option_id, int8_t value);
-
-/** Get INT8 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_int8_option_value(wtap_block_t block, unsigned option_id, int8_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add INT32 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_int32_option(wtap_block_t block, unsigned option_id, int32_t value);
-
-/** Set INT32 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_int32_option_value(wtap_block_t block, unsigned option_id, int32_t value);
-
-/** Get INT32 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_int32_option_value(wtap_block_t block, unsigned option_id, int32_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add INT64 option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_int64_option(wtap_block_t block, unsigned option_id, int64_t value);
-
-/** Set INT64 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_int64_option_value(wtap_block_t block, unsigned option_id, int64_t value);
-
-/** Get INT64 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_int64_option_value(wtap_block_t block, unsigned option_id, int64_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add IPv4 address option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_ipv4_option(wtap_block_t block, unsigned option_id, uint32_t value);
-
-/** Set IPv4 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_ipv4_option_value(wtap_block_t block, unsigned option_id, uint32_t value);
-
-/** Get IPv4 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_ipv4_option_value(wtap_block_t block, unsigned option_id, uint32_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add IPv6 address option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_ipv6_option(wtap_block_t block, unsigned option_id, ws_in6_addr *value);
-
-/** Set IPv6 option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_ipv6_option_value(wtap_block_t block, unsigned option_id, ws_in6_addr *value);
-
-/** Get IPv6 option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_ipv6_option_value(wtap_block_t block, unsigned option_id, ws_in6_addr* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add a string option to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @param[in] value_length Maximum length of string to copy.
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_string_option(wtap_block_t block, unsigned option_id, const char *value, size_t value_length);
-
-/** Add a string option to a block taking ownership of the null-terminated string.
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful (caller no longer owns @p value),
- * error code otherwise (caller still owns @p value)
- * @note To avoid memory leaks, the caller @b must examine the return status to determine ownership of @p value.
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_string_option_owned(wtap_block_t block, unsigned option_id, char *value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add a string option to a block with a printf-formatted string as its value
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] format printf-like format string
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_string_option_format(wtap_block_t block, unsigned option_id, const char *format, ...)
-                                    G_GNUC_PRINTF(3,4);
-
-/** Set string option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @param[in] value_length Maximum length of string to copy.
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_string_option_value(wtap_block_t block, unsigned option_id, const char* value, size_t value_length);
-
-/** Set string option value for the nth instance of a particular option
- * in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[in] value New value of option
- * @param[in] value_length Maximum length of string to copy.
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_nth_string_option_value(wtap_block_t block, unsigned option_id, unsigned idx, const char* value, size_t value_length);
-
-/** Set string option value in a block to a printf-formatted string
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] format printf-like format string
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_string_option_value_format(wtap_block_t block, unsigned option_id, const char *format, ...)
-                                          G_GNUC_PRINTF(3,4);
-
-/** Set string option value for the nth instance of a particular option
- * in a block to a printf-formatted string
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[in] format printf-like format string
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_nth_string_option_value_format(wtap_block_t block, unsigned option_id, unsigned idx, const char *format, ...)
-                                              G_GNUC_PRINTF(4,5);
-
-/** Get string option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_string_option_value(wtap_block_t block, unsigned option_id, char** value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Get string option value for the nth instance of a particular option
- * in a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_nth_string_option_value(wtap_block_t block, unsigned option_id, unsigned idx, char** value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add a bytes option to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option to copy
- * @param[in] value_length Number of bytes to copy
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_bytes_option(wtap_block_t block, unsigned option_id, const uint8_t *value, size_t value_length);
-
-/** Add a bytes option to a block, borrowing the value from a GBytes
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option as a GBytes
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_bytes_option_borrow(wtap_block_t block, unsigned option_id, GBytes *value);
-
-/** Set bytes option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @param[in] value_length Number of bytes to copy.
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_bytes_option_value(wtap_block_t block, unsigned option_id, const uint8_t* value, size_t value_length);
-
-/** Set bytes option value for nth instance of a particular option in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_nth_bytes_option_value(wtap_block_t block, unsigned option_id, unsigned idx, GBytes* value);
-
-/** Get bytes option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- * @note You should call g_bytes_ref() on value if you plan to keep it around
- * (and then g_bytes_unref() when you're done with it).
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_bytes_option_value(wtap_block_t block, unsigned option_id, GBytes** value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Get bytes option value for nth instance of a particular option in a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- * @note You should call g_bytes_ref() on value if you plan to keep it around
- * (and then g_bytes_unref() when you're done with it).
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_nth_bytes_option_value(wtap_block_t block, unsigned option_id, unsigned idx, GBytes** value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add a string custom option, with a particular Private Enterprise
- * Number, to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] pen Private Enterprise Number value for option
- * @param[in] value Value of option
- * @param[in] value_length Maximum length of string to copy.
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_custom_string_option(wtap_block_t block, unsigned option_id, uint32_t pen, const char *value, size_t value_length);
-
-/** Add a binary custom option, with a particular Private Enterprise
- * Number, to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] pen Private Enterprise Number value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_custom_binary_option(wtap_block_t block, unsigned option_id, uint32_t pen, binary_optdata_t *value);
-
-/** Add a binary custom option, with a particular Private Enterprise
- * Number, to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] pen Private Enterprise Number value for option
- * @param[in] data Raw data of option
- * @param[in] data_size Size of raw data
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_custom_binary_option_from_data(wtap_block_t block, unsigned option_id, uint32_t pen, const void *data, size_t data_size);
-
-/** Get binary custom option value for the nth instance of a particular option,
- * with a particular Private Enterprise Number, in a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[in] pen Private Enterprise Number value for option
- * @param[in] idx Instance number of option with that ID
- * @param[out] value Returned value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_nth_custom_binary_option_value(wtap_block_t block, unsigned option_id, uint32_t pen, unsigned idx, binary_optdata_t *value);
-
-/** Add an if_filter option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_if_filter_option(wtap_block_t block, unsigned option_id, if_filter_opt_t* value);
-
-/** Set an if_filter option value in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_if_filter_option_value(wtap_block_t block, unsigned option_id, if_filter_opt_t* value);
-
-/** Get an if_filter option value from a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[out] value Returned value of option value
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_if_filter_option_value(wtap_block_t block, unsigned option_id, if_filter_opt_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-/** Add a packet_verdict option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_packet_verdict_option(wtap_block_t block, unsigned option_id, packet_verdict_opt_t* value);
-
-/** Set packet_verdict option value for the nth instsance of a particular
- * option in a block
- *
- * @param[in] block Block in which to set the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[in] value New value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_set_nth_packet_verdict_option_value(wtap_block_t block, unsigned option_id, unsigned idx, packet_verdict_opt_t* value);
-
-/** Get packet_verdict option value for the nth instance of a particular
- * option in a block
- *
- * @param[in] block Block from which to get the option value
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @param[out] value Returned value of option value
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_get_nth_packet_verdict_option_value(wtap_block_t block, unsigned option_id, unsigned idx, packet_verdict_opt_t* value) G_GNUC_WARN_UNUSED_RESULT;
-
-WS_DLL_PUBLIC void
-wtap_packet_verdict_free(packet_verdict_opt_t* verdict);
-
-/** Add a packet_hash option value to a block
- *
- * @param[in] block Block to which to add the option
- * @param[in] option_id Identifier value for option
- * @param[in] value Value of option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_add_packet_hash_option(wtap_block_t block, unsigned option_id, packet_hash_opt_t* value);
-
-WS_DLL_PUBLIC void
-wtap_packet_hash_free(packet_hash_opt_t* hash);
-
-/** Remove an option from a block
- *
- * @param[in] block Block from which to remove the option
- * @param[in] option_id Identifier value for option
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_remove_option(wtap_block_t block, unsigned option_id);
-
-/** Remove the nth instance of an option from a block
- *
- * @param[in] block Block from which to remove the option instance
- * @param[in] option_id Identifier value for option
- * @param[in] idx Instance number of option with that ID
- * @return wtap_opttype_return_val - WTAP_OPTTYPE_SUCCESS if successful,
- * error code otherwise
- */
-WS_DLL_PUBLIC wtap_opttype_return_val
-wtap_block_remove_nth_option_instance(wtap_block_t block, unsigned option_id, unsigned idx);
-
-/** Copy a block to another.
- *
- * Any options that are in the destination but not the source are not removed.
- * Options that are just in source will be added to destination
- *
- * @param[in] dest_block Block to be copied to
- * @param[in] src_block Block to be copied from
- */
-WS_DLL_PUBLIC void
-wtap_block_copy(wtap_block_t dest_block, wtap_block_t src_block);
-
-/** Make a copy of a block.
- *
- * @param[in] block Block to be copied from
- * @return Newly allocated copy of that block
- */
-WS_DLL_PUBLIC wtap_block_t
-wtap_block_make_copy(wtap_block_t block);
-
-typedef bool (*wtap_block_foreach_func)(wtap_block_t block, unsigned option_id, wtap_opttype_e option_type, wtap_optval_t *option, void *user_data);
-WS_DLL_PUBLIC bool
-wtap_block_foreach_option(wtap_block_t block, wtap_block_foreach_func func, void* user_data);
-
-/** Cleanup the internal structures
- */
-WS_DLL_PUBLIC void
-wtap_opttypes_cleanup(void);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* WTAP_OPT_TYPES_H */
 /* End embedded header */
 
 /* Begin wiretap/wtap.h */
@@ -17343,3246 +20583,6 @@ extern "C" {
 #endif /* __cplusplus */
 
 #endif /* arptypes.h */
-/* End embedded header */
-
-/* Begin wsutil/array.h */
-/** @file
- * Utility functions/macros for handling arrays, C and/or glib.
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WSUTIL_ARRAY_H__
-#define __WSUTIL_ARRAY_H__
-
-#include <stdlib.h>
-
-/** Useful when you have an array whose size is known at compile-time. */
-#define array_length(x)	(sizeof (x) / sizeof (x)[0])
-
-/** glib doesn't have g_ptr_array_len, of all things! */
-#ifndef g_ptr_array_len
-#define g_ptr_array_len(a)      ((a) ? (a)->len : 0)
-#endif
-
-#endif /* __WSUTIL_ARRAY_H__ */
-/* End embedded header */
-
-/* Begin epan/range.h */
-/* range.h
- * Range routines
- *
- * Dick Gooris <gooris@lucent.com>
- * Ulf Lamping <ulf.lamping@web.de>
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __RANGE_H__
-#define __RANGE_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/** @file
- * Range strings a variant of value_strings
- */
-
-/**@todo where's the best place for these? */
-#define MAX_SCTP_PORT 65535
-#define MAX_TCP_PORT 65535
-#define MAX_UDP_PORT 65535
-#define MAX_DCCP_PORT 65535
-
-typedef struct range_admin_tag {
-    uint32_t low;
-    uint32_t high;
-} range_admin_t;
-#define RANGE_ADMIN_T_INITIALIZER { 0, 0 }
-
-/** user specified range(s) */
-typedef struct epan_range {
-    unsigned        nranges;   /**< number of entries in ranges */
-    range_admin_t   ranges[];  /**< flexible array of range entries */
-} range_t;
-
-/**
- * Return value from range_convert_str().
- */
-typedef enum {
-    CVT_NO_ERROR,
-    CVT_SYNTAX_ERROR,
-    CVT_NUMBER_TOO_BIG
-} convert_ret_t;
-
-WS_DLL_PUBLIC range_t *range_empty(wmem_allocator_t *scope);
-
-
-/*** Converts a range string to a fast comparable array of ranges.
- * This function allocates a range_t large enough to hold the number
- * of ranges specified, and fills the array range->ranges containing
- * low and high values with the number of ranges being range->nranges.
- * After having called this function, the function value_is_in_range()
- * determines whether a given number is within the range or not.<BR>
- * In case of a single number, we make a range where low is equal to high.
- * We take care on wrongly entered ranges; opposite order will be taken
- * care of.
- *
- * The following syntax is accepted :
- *
- *   1-20,30-40     Range from 1 to 20, and packets 30 to 40
- *   -20,30         Range from 1 to 20, and packet 30
- *   20,30,40-      20, 30, and the range from 40 to the end
- *   20-10,30-25    Range from 10 to 20, and from 25 to 30
- *   -              All values
- * @param scope memory scope for the range
- * @param range the range
- * @param es points to the string to be converted.
- * @param max_value specifies the maximum value in a range.
- * @return convert_ret_t
- */
-WS_DLL_PUBLIC convert_ret_t range_convert_str(wmem_allocator_t *scope, range_t **range, const char *es,
-    uint32_t max_value);
-
-WS_DLL_PUBLIC convert_ret_t range_convert_str_work(wmem_allocator_t *scope, range_t **range, const char *es,
-    uint32_t max_value, bool err_on_max);
-
-/** This function returns true if a given value is within one of the ranges
- * stored in the ranges array.
- * @param range the range
- * @param val the value to check
- * @return true if the value is in range
- */
-WS_DLL_PUBLIC bool value_is_in_range(const range_t *range, uint32_t val);
-
-/** This function returns true if val has successfully been added to
- * a range.  This may extend an existing range or create a new one
- * @param scope memory scope of range (in case of reallocation)
- * @param range to add value
- * @param val value to add to range
- * @return true if the value is successfully added to range
- */
-WS_DLL_PUBLIC bool range_add_value(wmem_allocator_t *scope, range_t **range, uint32_t val);
-
-/** This function returns true if val has successfully been removed from
- * a range.  This may remove an existing range.
- * @param scope memory scope of range (in case of reallocation)
- * @param range to remove value
- * @param val value to remove within range
- * @return true if the value is successfully removed to range
- */
-WS_DLL_PUBLIC bool range_remove_value(wmem_allocator_t *scope, range_t **range, uint32_t val);
-
-/** This function returns true if the two given range_t's are equal.
- * @param a first range
- * @param b second range
- * @return true if the value is in range
- */
-WS_DLL_PUBLIC bool ranges_are_equal(const range_t *a, const range_t *b);
-
-/** This function calls the provided callback function for each value in
- * in the range. Takes a pointer argument, which is passed to the
- * callback, along with the value in the range.
- * @param range the range
- * @param callback the callback function
- * @param ptr pointer passed to the callback
- */
-WS_DLL_PUBLIC void range_foreach(range_t *range, void (*callback)(uint32_t val, void *ptr), void *ptr);
-
-/**
- * This function converts a range_t to a (wmem_alloc()-allocated) string.
- */
-WS_DLL_PUBLIC char *range_convert_range(wmem_allocator_t *scope, const range_t *range);
-
-/**
- * Create a (wmem-alloc()ed) copy of a range
- * @param scope memory scope for the copied range
- * @param src the range to copy
- * @return ep allocated copy of the range
- */
-WS_DLL_PUBLIC range_t *range_copy(wmem_allocator_t *scope, const range_t *src);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __RANGE_H__ */
-/* End embedded header */
-
-/* Begin wsutil/feature_list.h */
-/** @file
- * Declarations of routines for gathering and handling lists of
- * present/absent features (usually actually dependencies)
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __WSUTIL_FEATURE_LIST_H__
-#define __WSUTIL_FEATURE_LIST_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/*
- * Handle to a list of features/dependencies.
- * Semi-opaque. Functions which gather the list of features
- * will be passed one of these to use with
- * `with_feature()`/`without_feature()` (below).
- */
-typedef GList **feature_list;
-
-/*
- * The format of entries in a feature_list is a char* starting with a
- * '+' or '-' character indicating if the feature is respectively
- * present or absent, followed by the unchanged feature description.
- * This allows the insert order of features to be preserved,
- * while still preserving the present/absent status in a simple way.
- */
-
-
-/*
- * Pointer to a function which gathers a list of features.
- */
-typedef void(*gather_feature_func)(feature_list l);
-
-/*
- * Add an indicator to the given feature_list that the named
- * feature is present.
- */
-WS_DLL_PUBLIC
-void with_feature(feature_list l, const char *fmt, ...) G_GNUC_PRINTF(2,3);
-
-/*
- * Add an indicator to the given feature_list that the named
- * feature is absent.
- */
-WS_DLL_PUBLIC
-void without_feature(feature_list l, const char *fmt, ...) G_GNUC_PRINTF(2,3);
-
-/*
- * Sort the given feature list, alphabetically by feature name.
- * (The leading '+' or '-' is not factored into the sort.)
- * Currently unused.
- */
-WS_DLL_PUBLIC
-void sort_features(feature_list l);
-
-/*
- * Separate input list l into output lists with_list and without_list
- * (which should be empty when first called).
- * Note: output list members DO keep the leading '+'/'-' prefix.
- */
-WS_DLL_PUBLIC
-void separate_features(feature_list l, feature_list with_list, feature_list without_list);
-
-/*
- * Free the memory used by the feature list,
- * and reset its pointer to NULL.
- */
-WS_DLL_PUBLIC
-void free_features(feature_list l);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __WSUTIL_FEATURE_LIST_H__ */
-/* End embedded header */
-
-/* Begin epan/params.h */
-/** @file
- *
- * Definitions for parameter handling routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __PARAMS_H__
-#define __PARAMS_H__
-
-/*
- * Definition of a value for an enumerated type.
- *
- * "name" is the name one would use on the command line for the value.
- * "description" is the description of the value, used in combo boxes/
- * option menus.
- * "value" is the value.
- */
-typedef struct {
-	const char	*name;
-	const char	*description;
-	int		value;
-} enum_val_t;
-
-/* -----  Public enum_val_t "Helper" macros ----- */
-/*
- * Reuse the macro format of the list of value strings (that is used by value_string.h
- * for generating definitions of enum and/or value strings array) to generating
- * enum_val_t array. For example, there is a macro of a value strings list like:
- *
- *      #define foo_VALUE_STRING_LIST(XXX) \
- *         XXX( FOO_A, 1, "aaa" ) \
- *         XXX( FOO_B, 3, "bbb" )
- *
- * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_STATIC(foo, foo_ev); will define a static enum_val_t array:
- *
- *      static const enum_val_t foo_ev[] = {
- *          { "aaa", "aaa", 1 },
- *          { "bbb", "bbb", 3 },
- *          { NULL, NULL, 0 }
- *      };
- *
- * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DEF(foo, foo_ev); will define a global enum_val_t array:
- *
- *      const enum_val_t foo_ev[] = {
- *          { "aaa", "aaa", 1 },
- *          { "bbb", "bbb", 3 },
- *          { NULL, NULL, 0 }
- *      };
- *
- * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(foo_ev); will declare a extern enum_val_t array:
- *
- *      extern const enum_val_t foo_ev[];
- */
-#define VS_LIST_TO_ENUM_VAL_T_ARRAY_STATIC(    array_name, new_array_name) static _EV_ARRAY_XXX(array_name, new_array_name, _VALUE_STRING_LIST, _EV_ARRAY_ENTRY_FROM_VS)
-#define VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DEF(array_name, new_array_name) _EV_ARRAY_XXX(array_name, new_array_name, _VALUE_STRING_LIST, _EV_ARRAY_ENTRY_FROM_VS)
-#define VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(new_array_name) extern const enum_val_t new_array_name[]
-
-/*
- * Provide the capability to define a list of enum_val_t(s) once and
- * then to expand the list as an enum and/or as a enum_val_t array.:
- *
- *      #define foo2_ENUM_VAL_T_LIST(XXX) \
- *         XXX( FOO_A, 1, "aaa", "The description of aaa" ) \
- *         XXX( FOO_B, 3, "bbb", "The description of bbb" )
- *
- * The code ENUM_VAL_T_ENUM(foo2); will define an enumeration type:
- *
- *      enum {
- *          FOO_A = 1,
- *          FOO_B = 3,
- *          _foo_ENUM_DUMMY = 0
- *      };
- * Note, you can use code "typedef ENUM_VAL_T_ENUM(foo2) enum_foo_t;" to define a
- * named enumeration.
- *
- * The code ENUM_VAL_T_ARRAY_STATIC(foo2); will define a static enum_val_t array:
- *
- *      static const enum_val_t foo2[] = {
- *          { "aaa", "The description of aaa", 1 },
- *          { "bbb", "The description of bbb", 3 },
- *          { NULL, NULL, 0 }
- *      };
- *
- * The code ENUM_VAL_T_ARRAY_GLOBAL_DEF(foo2); will define a global enum_val_t array:
- *
- *      const enum_val_t foo2[] = {
- *          { "aaa", "The description of aaa", 1 },
- *          { "bbb", "The description of bbb", 3 },
- *          { NULL, NULL, 0 }
- *      };
- *
- * The code VS_LIST_TO_ENUM_VAL_T_ARRAY_GLOBAL_DCL(foo2); will declare a extern enum_val_t array:
- *
- *      extern const enum_val_t foo2[];
- */
-#define ENUM_VAL_T_ENUM(array_name)  _EV_ENUM_XXX(array_name, _ENUM_VAL_T_LIST, _EV_ENUM_ENTRY)
-#define ENUM_VAL_T_ARRAY_STATIC(    array_name) static _EV_ARRAY_XXX(array_name, array_name, _ENUM_VAL_T_LIST, _EV_ARRAY_ENTRY)
-#define ENUM_VAL_T_ARRAY_GLOBAL_DEF(array_name) _EV_ARRAY_XXX(array_name, array_name, _ENUM_VAL_T_LIST, _EV_ARRAY_ENTRY)
-#define ENUM_VAL_T_ARRAY_GLOBAL_DCL(array_name) extern const enum_val_t array_name[]
-
-/*
- * Reuse the format of enum_val list to create value_string array:
- *
- * The code ENUM_VAL_T_TO_VS_ARRAY_STATIC(foo2, foo2_vs); will define a static value_string array from an enum_val list:
- *
- *      static const value_string foo2_vs[] = {
- *          { 1, "aaa" },
- *          { 3, "bbb" },
- *          { 0, NULL }
- *      };
- *
- * The code ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF(foo2, foo2_vs); will define a global value_string array from an enum_val list:
- *
- *      const value_string foo2_vs[] = {
- *          { 1, "aaa" },
- *          { 3, "bbb" },
- *          { 0, NULL }
- *      };
- *
- * The code ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL(foo2_vs); will declare a extern value_string array from an enum_val list:
- *
- *      extern const value_string foo2_vs[];
- *
- * The macros ENUM_VAL_T_TO_VS_ARRAY_STATIC2, ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF2 and ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL2
- * are similar to ENUM_VAL_T_TO_VS_ARRAY_STATIC, ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF and ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL
- * except that ENUM_VAL_T_TO_VS_ARRAY_XXX(s) uses the 'name' field of enum_val list as the 'string' field of value_string,
- * and ENUM_VAL_T_TO_VS_ARRAY_XXX2(s) uses the 'enum_name' field.
- *
- * Similarly, The macros ENUM_VAL_T_TO_VS_ARRAY_XXX3(s) uses the 'description' field of enum_val list as the 'string'
- * field of value_string.
- */
-#define ENUM_VAL_T_TO_VS_ARRAY_STATIC(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL(new_array_name) extern const value_string new_array_name[]
-
-#define ENUM_VAL_T_TO_VS_ARRAY_STATIC2(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV2)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF2(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV2)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL2(new_array_name) extern const value_string new_array_name[]
-
-#define ENUM_VAL_T_TO_VS_ARRAY_STATIC3(    array_name, new_array_name) static _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV3)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DEF3(array_name, new_array_name) _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, _ENUM_VAL_T_LIST, _VS_ARRAY_ENTRY_FROM_EV3)
-#define ENUM_VAL_T_TO_VS_ARRAY_GLOBAL_DCL3(new_array_name) extern const value_string new_array_name[]
-
-/* -- Private macros -- */
-#define _EV_ARRAY_XXX(array_name, new_array_name, array_suffix, macro)  \
-    const enum_val_t new_array_name[] = { \
-    array_name##array_suffix(macro) \
-    { NULL, NULL, 0 } \
-}
-
-#define _EV_ARRAY_ENTRY(enum_name, value, name, description) { name, description, value },
-#define _EV_ARRAY_ENTRY_FROM_VS(enum_name, value, string) { string, string, value },
-
-#define _EV_ENUM_XXX(array_name, array_suffix, macro) \
-enum { \
-    array_name##array_suffix(macro) \
-    _##array_name##_ENUM_DUMMY = 0 \
-}
-
-#define _EV_ENUM_ENTRY(enum_name, value, name, description) enum_name = value,
-
-#define _EV_TO_VS_ARRAY_XXX(array_name, new_array_name, array_suffix, macro)  \
-    const value_string new_array_name[] = { \
-    array_name##array_suffix(macro) \
-    { 0, NULL } \
-}
-#define _VS_ARRAY_ENTRY_FROM_EV(enum_name, value, name, description) { value, name }
-#define _VS_ARRAY_ENTRY_FROM_EV2(enum_name, value, name, description) { value, #enum_name }
-#define _VS_ARRAY_ENTRY_FROM_EV3(enum_name, value, name, description) { value, description }
-
-#endif /* params.h */
-
-/* End embedded header */
-
-/* Begin wsutil/color.h */
-/** @file
- *
- * Definitions for colors
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-#ifndef  __COLOR_H__
-#define  __COLOR_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#include <inttypes.h>
-
-/*
- * Data structure holding RGB value for a color, 16 bits per channel.
- */
-typedef struct {
-    uint16_t red;
-    uint16_t green;
-    uint16_t blue;
-} color_t;
-
-/*
- * Convert a color_t to a 24-bit RGB value, reducing each channel to
- * 8 bits and combining them.
- */
-inline static unsigned int
-color_t_to_rgb(const color_t *color) {
-    return (((color->red >> 8) << 16)
-          | ((color->green >> 8) << 8)
-          | (color->blue >> 8));
-}
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/prefs.h */
-/** @file prefs.h
- * Definitions for preference handling routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __PREFS_H__
-#define __PREFS_H__
-
-
-
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#define DEF_WIDTH 750
-#define DEF_HEIGHT 550
-
-#define MAX_VAL_LEN  1024
-
-#define TAP_UPDATE_DEFAULT_INTERVAL 3000
-#define ST_DEF_BURSTRES 5
-#define ST_DEF_BURSTLEN 100
-#define ST_MAX_BURSTRES 600000 /* somewhat arbitrary limit of 10 minutes */
-#define ST_MAX_BURSTBUCKETS 100 /* somewhat arbitrary limit - more buckets degrade performance */
-#define DEF_GUI_DECIMAL_PLACES1 2
-#define DEF_GUI_DECIMAL_PLACES2 4
-#define DEF_GUI_DECIMAL_PLACES3 6
-
-#define CONV_DEINT_KEY_CAPFILE    0x01 /* unused yet */
-#define CONV_DEINT_KEY_INTERFACE  0x02
-#define CONV_DEINT_KEY_MAC        0x04
-#define CONV_DEINT_KEY_VLAN       0x08
-
-struct epan_uat;
-struct _e_addr_resolve;
-
-/**
- * Convert a string listing name resolution types to a bitmask of
- * those types.
- *
- * Set "*name_resolve" to the bitmask, and return '\0', on success;
- * return the bad character in the string on error.
- *
- * @param string a list of name resolution types
- * @param name_resolve the bitmap of names to resolve to set
- * @return '\0' on success, the bad character in the string on error
- */
-WS_DLL_PUBLIC
-char string_to_name_resolve(const char *string, struct _e_addr_resolve *name_resolve);
-
-/*
- * Modes for the starting directory in File Open dialogs.
- */
-#define FO_STYLE_LAST_OPENED    0 /* start in last directory we looked at */
-#define FO_STYLE_SPECIFIED      1 /* start in specified directory */
-#define FO_STYLE_CWD            2 /* start in current working directory at startup */
-
-/*
- * Toolbar styles.
- */
-#define TB_STYLE_ICONS          0
-#define TB_STYLE_TEXT           1
-#define TB_STYLE_BOTH           2
-
-/*
- * Color styles.
- */
-#define COLOR_STYLE_DEFAULT     0
-#define COLOR_STYLE_FLAT        1
-#define COLOR_STYLE_GRADIENT    2
-
-#define COLOR_STYLE_ALPHA       0.25
-
-#define COLOR_SCHEME_DEFAULT    0
-#define COLOR_SCHEME_LIGHT      1
-#define COLOR_SCHEME_DARK       2
-
-/*
- * Types of layout of summary/details/hex panes.
- */
-typedef enum {
-    layout_unused,  /* entry currently unused */
-    layout_type_5,
-    layout_type_2,
-    layout_type_1,
-    layout_type_4,
-    layout_type_3,
-    layout_type_6,
-    layout_type_max
-} layout_type_e;
-
-/*
- * Types of pane.
- */
-typedef enum {
-    layout_pane_content_none,
-    layout_pane_content_plist,
-    layout_pane_content_pdetails,
-    layout_pane_content_pbytes,
-    layout_pane_content_pdiagram,
-} layout_pane_content_e;
-
-/*
- * Places version information will show up
- */
-typedef enum {
-    version_welcome_only,
-    version_title_only,
-    version_both,
-    version_neither
-} version_info_e;
-
-typedef enum {
-    layout_vertical,
-    layout_horizontal
-} splitter_layout_e;
-
-typedef enum {
-    pref_default,
-    pref_stashed,
-    pref_current
-} pref_source_t;
-
-typedef enum {
-    ELIDE_LEFT,
-    ELIDE_RIGHT,
-    ELIDE_MIDDLE,
-    ELIDE_NONE
-} elide_mode_e;
-
-typedef enum {
-    COPY_FORMAT_TEXT,
-    COPY_FORMAT_CSV,
-    COPY_FORMAT_YAML,
-    COPY_FORMAT_HTML
-} copy_format_e;
-
-typedef enum {
-    ABS_TIME_ASCII_NEVER,
-    ABS_TIME_ASCII_TREE,
-    ABS_TIME_ASCII_COLUMN,
-    ABS_TIME_ASCII_ALWAYS,
-} abs_time_format_e;
-
-/*
- * Update channel.
- */
-typedef enum {
-    UPDATE_CHANNEL_DEVELOPMENT,
-    UPDATE_CHANNEL_STABLE
-} software_update_channel_e;
-
-typedef struct _e_prefs {
-  GList       *col_list;
-  int          num_cols;
-  color_t      st_client_fg, st_client_bg, st_server_fg, st_server_bg;
-  color_t      gui_filter_valid_fg, gui_filter_invalid_fg, gui_filter_deprecated_fg;
-  color_t      gui_filter_valid_bg, gui_filter_invalid_bg, gui_filter_deprecated_bg;
-  bool         restore_filter_after_following_stream;
-  int          gui_toolbar_main_style;
-  char        *gui_font_name;
-  int          gui_color_scheme;
-  color_t      gui_active_fg;
-  color_t      gui_active_bg;
-  int          gui_active_style;
-  color_t      gui_inactive_fg;
-  color_t      gui_inactive_bg;
-  int          gui_inactive_style;
-  color_t      gui_marked_fg;
-  color_t      gui_marked_bg;
-  color_t      gui_ignored_fg;
-  color_t      gui_ignored_bg;
-  char        *gui_colorized_fg;
-  char        *gui_colorized_bg;
-  bool         gui_geometry_save_position;
-  bool         gui_geometry_save_size;
-  bool         gui_geometry_save_maximized;
-  unsigned     gui_recent_df_entries_max;
-  unsigned     gui_recent_files_count_max;
-  unsigned     gui_fileopen_style;
-  char        *gui_fileopen_dir;
-  unsigned     gui_fileopen_preview;
-  char        *gui_tlskeylog_command;
-  bool         gui_ask_unsaved;
-  bool         gui_autocomplete_filter;
-  bool         gui_find_wrap;
-  char        *gui_window_title;
-  char        *gui_prepend_window_title;
-  char        *gui_start_title;
-  version_info_e gui_version_placement;
-  unsigned     gui_max_export_objects;
-  unsigned     gui_max_tree_items;
-  unsigned     gui_max_tree_depth;
-  bool         gui_welcome_page_show_recent;
-  layout_type_e gui_layout_type;
-  layout_pane_content_e gui_layout_content_1;
-  layout_pane_content_e gui_layout_content_2;
-  layout_pane_content_e gui_layout_content_3;
-  splitter_layout_e gui_packet_dialog_layout;
-  char        *gui_interfaces_hide_types;
-  bool         gui_interfaces_show_hidden;
-  bool         gui_interfaces_remote_display;
-  bool         gui_io_graph_automatic_update;
-  bool         gui_io_graph_enable_legend;
-  bool         gui_plot_automatic_update;
-  bool         gui_plot_enable_legend;
-  bool         gui_plot_enable_auto_scroll;
-  bool         gui_packet_details_show_byteview;
-  char        *capture_device;
-  char        *capture_devices_linktypes;
-  char        *capture_devices_descr;
-  char        *capture_devices_hide;
-  char        *capture_devices_monitor_mode;
-  char        *capture_devices_buffersize;
-  char        *capture_devices_snaplen;
-  char        *capture_devices_pmode;
-  char        *capture_devices_filter; /* XXX - Mostly unused. Deprecate? */
-  bool         capture_prom_mode;
-  bool         capture_monitor_mode;
-  bool         capture_pcap_ng;
-  bool         capture_real_time;
-  unsigned     capture_update_interval;
-  bool         capture_no_interface_load;
-  bool         capture_no_extcap;
-  bool         capture_show_info;
-  GList       *capture_columns;
-  unsigned     tap_update_interval;
-  bool         display_hidden_proto_items;
-  bool         display_byte_fields_with_spaces;
-  abs_time_format_e display_abs_time_ascii;
-  bool         enable_incomplete_dissectors_check;
-  bool         incomplete_dissectors_check_debug;
-  bool         strict_conversation_tracking_heuristics;
-  int          conversation_deinterlacing_key;
-  bool         ignore_dup_frames;
-  unsigned     ignore_dup_frames_cache_entries;
-  bool         filter_expressions_old;  /* true if old filter expressions preferences were loaded. */
-  bool         cols_hide_new; /* true if the new (index-based) gui.column.hide preference was loaded. */
-  bool         gui_update_enabled;
-  software_update_channel_e gui_update_channel;
-  int          gui_update_interval;
-  int          gui_debounce_timer;
-  char        *saved_at_version;
-  bool         unknown_prefs; /* unknown or obsolete pref(s) */
-  bool         gui_packet_list_separator;
-  bool         gui_packet_header_column_definition;
-  bool         gui_packet_list_hover_style; /* Enable/Disable mouse-over colorization */
-  bool         gui_show_selected_packet;
-  bool         gui_show_file_load_time;
-  elide_mode_e gui_packet_list_elide_mode;
-  copy_format_e gui_packet_list_copy_format_options_for_keyboard_shortcut;
-  bool         gui_packet_list_copy_text_with_aligned_columns;
-  bool         gui_packet_list_show_related;
-  bool         gui_packet_list_show_minimap;
-  bool         gui_packet_list_sortable;
-  unsigned     gui_packet_list_cached_rows_max;
-  int          gui_decimal_places1; /* Used for type 1 calculations */
-  int          gui_decimal_places2; /* Used for type 2 calculations */
-  int          gui_decimal_places3; /* Used for type 3 calculations */
-  bool         gui_rtp_player_use_disk1;
-  bool         gui_rtp_player_use_disk2;
-  unsigned     flow_graph_max_export_items;
-  bool         st_enable_burstinfo;
-  bool         st_burst_showcount;
-  int          st_burst_resolution;
-  int          st_burst_windowlen;
-  bool         st_sort_casesensitve;
-  bool         st_sort_rng_fixorder;
-  bool         st_sort_rng_nameonly;
-  int          st_sort_defcolflag;
-  bool         st_sort_defdescending;
-  bool         st_sort_showfullname;
-  int          st_format;
-  bool         conv_machine_readable;
-  bool         extcap_save_on_start;
-} e_prefs;
-
-WS_DLL_PUBLIC e_prefs prefs;
-
-/*
- * Routines to let modules that have preference settings register
- * themselves by name, and to let them register preference settings
- * by name.
- */
-struct pref_module;
-
-struct pref_custom_cbs;
-
-typedef struct pref_module module_t;
-
-/** Sets up memory used by proto routines. Called at program startup */
-void prefs_init(void);
-
-/** Reset preferences to default values.  Called at profile change */
-WS_DLL_PUBLIC void prefs_reset(void);
-
-/** Frees memory used by proto routines. Called at program shutdown */
-void prefs_cleanup(void);
-
-/** Store whether the current UI theme is dark so that we can adjust colors
-* @param is_dark set to true if the UI's theme is dark
-*/
-WS_DLL_PUBLIC void prefs_set_gui_theme_is_dark(bool is_dark);
-
-/**
- * Register that a protocol has preferences.
- * @param id the value returned by "proto_register_protocol()" when
- *                the protocol was registered.
- * @param apply_cb callback routine that is called when preferences are
- *                      applied. It may be NULL, which inhibits the callback.
- * @return a preferences module which can be used to register a user 'preference'
- */
-WS_DLL_PUBLIC module_t *prefs_register_protocol(int id, void (*apply_cb)(void));
-
-/**
- * Register an alias for a preference module.
- * @param name the preference module's alias. Only ASCII letters, numbers,
- *                  underscores, hyphens, and dots may appear in the name
- * @param module the module to create an alias for
- */
-WS_DLL_PUBLIC void prefs_register_module_alias(const char *name, module_t *module);
-
-/**
- * Deregister preferences from a protocol.
- * @param id the value returned by "proto_register_protocol()" when
- *                the protocol was registered.
- */
-void prefs_deregister_protocol(int id);
-
-/**
- * Register that a statistical tap has preferences.
- *
- * @param name the name for the tap to use on the command line with "-o"
- *             and in preference files.
- * @param title is a short human-readable name for the tap.
- * @param description is a longer human-readable description of the tap.
- * @param apply_cb routine to call back after we apply the preferences
- * @return a preferences module which can be used to register a user 'preference'
- */
-WS_DLL_PUBLIC module_t *prefs_register_stat(const char *name, const char *title,
-    const char *description, void (*apply_cb)(void));
-
-/**
- * Register that a codec has preferences.
- *
- * @param name is a name for the codec to use on the command line with "-o"
- *             and in preference files.
- * @param title is a short human-readable name for the codec.
- * @param description is a longer human-readable description of the codec.
- * @param apply_cb routine to call back after we apply the preferences
- * @return a preferences module which can be used to register a user 'preference'
- */
-WS_DLL_PUBLIC module_t *prefs_register_codec(const char *name, const char *title,
-    const char *description, void (*apply_cb)(void));
-
-/**
- * Register that a protocol has preferences and group it under a single
- * subtree
- * @param subtree the tree node name for grouping preferences
- *                the protocol was registered.
- * @param id the value returned by "proto_register_protocol()" when
- *                the protocol was registered.
- * @param apply_cb Callback routine that is called when preferences are
- *                      applied. It may be NULL, which inhibits the callback.
- * @return a preferences module which can be used to register a user 'preference'
- */
-WS_DLL_PUBLIC module_t *prefs_register_protocol_subtree(const char *subtree, int id,
-    void (*apply_cb)(void));
-
-/**
- * Register that a protocol used to have preferences but no longer does,
- * by creating an "obsolete" module for it.
- * @param id the value returned by "proto_register_protocol()" when
- *                the protocol was registered.
- * @return a preferences module which can be used to register a user 'preference'
- */
-WS_DLL_PUBLIC module_t *prefs_register_protocol_obsolete(int id);
-
-/**
- * Callback function for module list scanners.
- */
-typedef unsigned (*module_cb)(module_t *module, void *user_data);
-
-/**
- * Returns true if a preferences module has any submodules
- * @param module a preferences module which can be used to register a user 'preference'
- * @return true if a preferences module has any submodules, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_module_has_submodules(module_t *module);
-
-/**
- * Call a callback function, with a specified argument, for each module
- * in the list of all modules.  (This list does not include subtrees.)
- *
- * Ignores "obsolete" modules; their sole purpose is to allow old
- * preferences for dissectors that no longer have preferences to be
- * silently ignored in preference files.
- *
- * @param callback the callback to call
- * @param user_data additional data to pass to the callback
- */
-WS_DLL_PUBLIC unsigned prefs_modules_foreach(module_cb callback, void *user_data);
-
-/**
- * Call a callback function, with a specified argument, for each submodule
- * of a specified module. If the module is NULL, goes through the top-level
- * list in the display tree of modules.
- *
- * Ignores "obsolete" modules; their sole purpose is to allow old
- * preferences for dissectors that no longer have preferences to be
- * silently ignored in preference files.  Does not ignore subtrees,
- * as this can be used when walking the display tree of modules.
- *
- * @param module the top-level module to walk through the submodules,
- *               or NULL for the top-level list in the display tree of modules
- * @param callback the callback to call
- * @param user_data additional data to pass to the callback
- */
-WS_DLL_PUBLIC unsigned prefs_modules_foreach_submodules(module_t *module, module_cb callback, void *user_data);
-
-/**
- * Call the "apply" callback function for each module if any of its
- * preferences have changed, and then clear the flag saying its
- * preferences have changed, as the module has been notified of that
- * fact.
- */
-WS_DLL_PUBLIC void prefs_apply_all(void);
-
-/**
- * Call the "apply" callback function for a specific module if any of
- * its preferences have changed, and then clear the flag saying its
- * preferences have changed, as the module has been notified of that
- * fact.
- * @param module the module to call the 'apply' callback function for
- */
-WS_DLL_PUBLIC void prefs_apply(module_t *module);
-
-
-struct preference;
-
-typedef struct preference pref_t;
-
-/**
- * Returns true if the provided protocol has registered preferences.
- * @param name the name of the protocol to look up
- * @return true if the given protocol has registered preferences, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_is_registered_protocol(const char *name);
-
-/**
- * Returns the module title of a registered protocol (or NULL if unknown).
- * @param name the name of the protocol to look up
- * @return the module title of a registered protocol, otherwise NULL
- */
-WS_DLL_PUBLIC const char *prefs_get_title_by_name(const char *name);
-
-/** Given a module name, return a pointer to its pref_module struct,
- * or NULL if it's not found.
- *
- * @param name The preference module name.  Usually the same as the protocol
- * name, e.g. "tcp".
- * @return A pointer to the corresponding preference module, or NULL if it
- * wasn't found.
- */
-WS_DLL_PUBLIC module_t *prefs_find_module(const char *name);
-
-/** Given a module and a preference name, return a pointer to the given
- * module's given preference or NULL if it's not found.
- *
- * @param module The preference module name.  Usually the same as the protocol
- * name, e.g. "tcp".
- * @param pref The preference name, e.g. "desegment".
- * @return A pointer to the corresponding preference, or NULL if it
- * wasn't found.
- */
-WS_DLL_PUBLIC pref_t *prefs_find_preference(module_t * module, const char *pref);
-
-/**
- * Register a preference with an unsigned integral value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title the title in the preferences dialog
- * @param description the description included in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param base the base the unsigned integer is expected to be in. See strtoul(3)
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box
- */
-WS_DLL_PUBLIC void prefs_register_uint_preference(module_t *module, const char *name,
-    const char *title, const char *description, unsigned base, unsigned *var);
-
-/*
- * prefs_register_ callers must conform to the following:
- *
- * Names must be in lowercase letters only (underscore allowed).
- * Titles and descriptions must be valid UTF-8 or NULL.
- * Titles must be short (less than 80 characters)
- * Titles must not contain newlines.
- */
-
-/**
- * Register a preference with an Boolean value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box
- */
-WS_DLL_PUBLIC void prefs_register_bool_preference(module_t *module, const char *name,
-    const char *title, const char *description, bool *var);
-
-/**
- * Register a preference with an enumerated value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box
- * @param enumvals a null-terminated array of enum_val_t structures
- * @param radio_buttons true if the field is to be displayed in the
- *                  preferences dialog as a set of radio buttons,
- *                  false if it is to be displayed as an option menu
- */
-WS_DLL_PUBLIC void prefs_register_enum_preference(module_t *module, const char *name,
-    const char *title, const char *description, int *var,
-    const enum_val_t *enumvals, bool radio_buttons);
-
-/**
- * Register a preference with a character-string value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box. Note that
- *          with string preferences the given pointer is overwritten
- *          with a pointer to a new copy of the string during the
- *          preference registration. The passed-in string may be
- *          freed, but you must keep another pointer to the string
- *          in order to free it
- */
-WS_DLL_PUBLIC void prefs_register_string_preference(module_t *module, const char *name,
-    const char *title, const char *description, const char **var);
-
-/**
- * Register a preference with a file name (string) value.
- *
- * File name preferences are basically like string preferences
- * except that the GUI gives the user the ability to browse for the
- * file.
- *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box. Note that
- *          the given pointer is overwritten
- *          with a pointer to a new copy of the string during the
- *          preference registration. The passed-in string may be
- *          freed, but you must keep another pointer to the string
- *          in order to free it
- * @param for_writing true to display a Save dialog, false to display an Open dialog.
- */
-WS_DLL_PUBLIC void prefs_register_filename_preference(module_t *module, const char *name,
-    const char *title, const char *description, const char **var, bool for_writing);
-
-/**
- * Register a preference with a directory name (string) value.
- * Directory name preferences are basically like string preferences
- * except that the GUI gives the user the ability to browse for a
- * directory.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box. Note that
- *          the given pointer is overwritten
- *          with a pointer to a new copy of the string during the
- *          preference registration. The passed-in string may be
- *          freed, but you must keep another pointer to the string
- *          in order to free it
- */
-WS_DLL_PUBLIC void prefs_register_directory_preference(module_t *module, const char *name,
-    const char *title, const char *description, const char **var);
-
-/**
- * Register a preference with a ranged value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box.
- * @param max_value the maximum allowed value for a range (0 is the minimum)
- */
-WS_DLL_PUBLIC void prefs_register_range_preference(module_t *module, const char *name,
-    const char *title, const char *description, range_t **var,
-    uint32_t max_value);
-
-/**
- * Register a static text 'preference'. It can be used to add some info/explanation.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- */
-WS_DLL_PUBLIC void prefs_register_static_text_preference(module_t *module, const char *name,
-    const char *title, const char *description);
-
-/**
- * Register a uat (User Accessible Table) 'preference'. It adds a button that opens the uat's window in the
- * preferences tab of the module.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param uat the uat object that will be updated when the
- *                    field is changed in the preference dialog box
- */
-WS_DLL_PUBLIC void prefs_register_uat_preference(module_t *module,
-    const char *name, const char* title, const char *description,  struct epan_uat* uat);
-
-/**
- * Register a color preference.  Currently does not have any "GUI Dialog" support
- * so the color data needs to be managed independently.  Currently used by the
- * "GUI preferences" to aid in reading/writing the preferences file, but the
- * "data" is still managed by the specific "GUI preferences" dialog.
- *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param color the color object that will be updated when the
- *                    field is changed in the preference dialog box
- */
-void prefs_register_color_preference(module_t *module, const char *name,
-    const char *title, const char *description, color_t *color);
-
-/**
- * Register a custom preference.  Currently does not have any "GUI Dialog" support
- * so data needs to be managed independently.  Currently used by the
- * "GUI preferences" to aid in reading/writing the preferences file, but the
- * "data" is still managed by the specific "GUI preferences" dialog.
- *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param custom_cbs a structure with the custom preference's callbacks
- * @param custom_data currently unused
- */
-void prefs_register_custom_preference(module_t *module, const char *name,
-    const char *title, const char *description, struct pref_custom_cbs* custom_cbs,
-    void** custom_data);
-
-/**
- * Register a (internal) "Decode As" preference with a ranged value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box.
- * @param max_value the maximum allowed value for a range (0 is the minimum)
- * @param dissector_table the name of the dissector table
- * @param dissector_description the handle description
- */
-void prefs_register_decode_as_range_preference(module_t *module, const char *name,
-    const char *title, const char *description, range_t **var,
-    uint32_t max_value, const char *dissector_table, const char *dissector_description);
-
-/**
- * Register a preference with an password (password is never stored).
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title the title in the preferences dialog
- * @param description the description included in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box
- */
-WS_DLL_PUBLIC void prefs_register_password_preference(module_t *module, const char *name,
-    const char *title, const char *description, const char **var);
-
-/**
- * Register a preference with a dissector name.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box. Note that
- *          with string preferences the given pointer is overwritten
- *          with a pointer to a new copy of the string during the
- *          preference registration. The passed-in string may be
- *          freed, but you must keep another pointer to the string
- *          in order to free it
- */
-WS_DLL_PUBLIC void prefs_register_dissector_preference(module_t *module, const char *name,
-    const char *title, const char *description, const char **var);
-
-/**
- * Register a preference that used to be supported but no longer is.
- *
- * Note that a warning will pop up if you've saved such preference to the
- * preference file and you subsequently take the code out. The way to make
- * a preference obsolete is to register it with prefs_register_obsolete_preference()
- *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- */
-WS_DLL_PUBLIC void prefs_register_obsolete_preference(module_t *module,
-    const char *name);
-
-/**
- * Register a preference with an enumerated value.
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- * @param title Field's title in the preferences dialog
- * @param description description to include in the preferences file
- *                    and shown as tooltip in the GUI, or NULL
- * @param var pointer to the storage location that is updated when the
- *                    field is changed in the preference dialog box
- * @param enumvals a null-terminated array of enum_val_t structures
- * @param radio_buttons true if the field is to be displayed in the
- *                  preferences dialog as a set of radio buttons,
- *                  false if it is to be displayed as an option menu
- */
-WS_DLL_PUBLIC void prefs_register_custom_preference_TCP_Analysis(module_t *module, const char *name,
-    const char *title, const char *description, int *var,
-    const enum_val_t *enumvals, bool radio_buttons);
-
-/**
- * Mark a preference that affects fields change. This works for bool, enum,
- * int, string (containing filename), range preferences. UAT is not included,
- * because you can specified UAT_AFFECTS_FIELDS at uat_new().
-  *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param name the preference's identifier. This is appended to the name of the
- *             protocol, with a "." between them, to create a unique identifier.
- *             The identifier should not include the protocol name, as the name in
- *             the preference file will already have it. Make sure that
- *             only lower-case ASCII letters, numbers, underscores and
- *             dots appear in the preference name.
- */
-WS_DLL_PUBLIC void prefs_set_preference_effect_fields(module_t *module,
-    const char *name);
-
-
-typedef unsigned (*pref_cb)(pref_t *pref, void *user_data);
-
-/**
- * Call a callback function, with a specified argument, for each preference
- * in a given module.
- *
- * If any of the callbacks return a non-zero value, stop and return that
- * value, otherwise return 0.
- *
- * @param module the preferences module returned by prefs_register_protocol() or
- *               prefs_register_protocol_subtree()
- * @param callback the callback to call
- * @param user_data additional data to pass to the callback
- * @return If any of the callbacks return a non-zero value, stop and return that
- *         value, otherwise return 0.
- */
-WS_DLL_PUBLIC unsigned prefs_pref_foreach(module_t *module, pref_cb callback,
-    void *user_data);
-
-/**
- * Parse through a list of comma-separated, possibly quoted strings.
- * Return a list of the string data.
- *
- * Commas, whitespace, and the quotes surrounding entries are removed.
- * Quotes and backslashes escaped with a backslash (\") will remain.
- *
- * @param str a list of comma-separated, possibly quoted strings
- * @return a list of the string data, or NULL if there's an error
- */
-WS_DLL_PUBLIC GList *prefs_get_string_list(const char *str);
-
-/**
- * Clear the given list of string data.
- * @param sl the GList to clear
- */
-WS_DLL_PUBLIC void prefs_clear_string_list(GList *sl);
-
-/** Fetch a short preference type name, e.g. "Integer".
- *
- * @param pref A preference.
- *
- * @return The preference type name. May be NULL.
- */
-WS_DLL_PUBLIC
-const char *prefs_pref_type_name(pref_t *pref);
-
-/** Fetch a long description of the preference type
- *
- * @param pref A preference.
- *
- * @return A description of the preference type including allowed
- * values for enums. The description may include newlines. Must be
- * g_free()d.
- */
-WS_DLL_PUBLIC
-char *prefs_pref_type_description(pref_t *pref);
-
-/** Fetch a string representation of the preference.
- *
- * @param pref A preference.
- * @param source Which value of the preference to return, see pref_source_t.
- *
- * @return A string representation of the preference. Must be g_free()d.
- */
-WS_DLL_PUBLIC
-char *prefs_pref_to_str(pref_t *pref, pref_source_t source);
-
-/** Fetch whether a preference is marked obsolete.
- *
- * @param pref A preference.
- *
- * @return A boolean indication the obsolesence of the preference.
- */
-WS_DLL_PUBLIC
-bool prefs_is_preference_obsolete(pref_t *pref);
-
-/**
- * Read the preferences file, fill in "prefs", and return a pointer to it.
- * If we got an error (other than "it doesn't exist") we report it through
- * the UI.
- *
- * This is called by epan_load_settings(); programs should call that
- * rather than individually calling the routines it calls.
- *
- * @return a pointer to the filled in prefs object
-*/
-extern e_prefs *read_prefs(void);
-
-/**
- * Write out "prefs" to the user's preferences file, and return 0.
- *
- * If we got an error, stuff a pointer to the path of the preferences file
- * into "*pf_path_return", and return the errno.
- *
- * @param pf_path_return The path to write preferences to or NULL for stdout
- * @return 0 if success, otherwise errno
-*/
-WS_DLL_PUBLIC int write_prefs(char **pf_path_return);
-
-/**
- * Result of setting a preference.
- */
-typedef enum {
-    PREFS_SET_OK,               /* succeeded */
-    PREFS_SET_SYNTAX_ERR,       /* syntax error in string */
-    PREFS_SET_NO_SUCH_PREF,     /* no such preference */
-    PREFS_SET_OBSOLETE          /* preference used to exist but no longer does */
-} prefs_set_pref_e;
-
-/**
- * Given a string of the form "<pref name>:<pref value>", as might appear
- * as an argument to a "-o" option, parse it and set the preference in
- * question.  Return an indication of whether it succeeded or failed
- * in some fashion.
- *
- * For syntax errors (return value PREFS_SET_SYNTAX_ERR), details (when
- * available) are written into "errmsg" which must be freed with g_free.
- *
- * @param prefarg a string of the form "<pref name>:<pref value>"
- * @param errmsg storage for syntax error details
- * @return the result from attempting to set the preference
- */
-WS_DLL_PUBLIC prefs_set_pref_e prefs_set_pref(char *prefarg, char **errmsg);
-
-/**
- * Get the current range preference value (maintained by pref, so it doesn't need to be freed). This allows the
- * preference structure to remain hidden from those that doesn't really need it.
- *
- * @param module_name the preference module name. Usually the same as the protocol
- *                    name, e.g. "tcp".
- * @param pref_name the preference name, e.g. "desegment".
- * @return the preference's value
- */
-WS_DLL_PUBLIC range_t* prefs_get_range_value(const char *module_name, const char* pref_name);
-
-/**
- * Returns true if the specified capture device is hidden
- * @param name the name of the capture device
- * @return true if the specified capture device is hidden, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_is_capture_device_hidden(const char *name);
-
-/**
- * Returns true if the given device should capture in monitor mode by default
- * @param name the name of the capture device
- * @return true if the specified capture device should capture in monitor mode by default, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_capture_device_monitor_mode(const char *name);
-
-/**
- * Returns true if the user has marked this column as visible
- *
- * @param column the name of the column
- * @return true if this column as visible, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_capture_options_dialog_column_is_visible(const char *column);
-
-/**
- * Returns true if the layout pane content is enabled
- *
- * @param layout_pane_content the layout pane content to check
- * @return true if the layout pane content is enabled, otherwise false
- */
-WS_DLL_PUBLIC bool prefs_has_layout_pane_content (layout_pane_content_e layout_pane_content);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* prefs.h */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
-/* End embedded header */
-
-/* Begin epan/epan.h */
-/** @file
- *
- * Wireshark Protocol Analyzer Library
- *
- * Copyright (c) 2001 by Gerald Combs <gerald@wireshark.org>
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __EPAN_H__
-#define __EPAN_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-/** Global variable holding the content of the corresponding environment variable
- * to save fetching it repeatedly.
- */
-extern bool wireshark_abort_on_dissector_bug;
-extern bool wireshark_abort_on_too_many_items;
-
-/** Report a dissector bug (and optionally abort).
- @param format printf like format string
- @param ... printf like parameters */
-WS_DLL_PUBLIC void ws_dissector_bug(const char *format, ...)
-    G_GNUC_PRINTF(1,2);
-
-/** Report a dissector OOPS (and optionally abort).
- @param format printf like format string *literal*
- @param ... printf like parameters */
-#define ws_dissector_oops(_fmt, ...) ws_dissector_bug("OOPS: " _fmt, __VA_ARGS__)
-
-typedef struct epan_dissect epan_dissect_t;
-
-struct epan_dfilter;
-struct epan_column_info;
-
-/**
- * Opaque structure provided when an epan_t is created; it contains
- * information needed to allow the user of libwireshark to provide
- * time stamps, comments, and other information outside the packet
- * data itself.
- */
-struct packet_provider_data;
-
-/**
- * Structure containing pointers to functions supplied by the user
- * of libwireshark.
- */
-struct packet_provider_funcs {
-	const nstime_t *(*get_frame_ts)(struct packet_provider_data *prov, uint32_t frame_num);
-	const char *(*get_interface_name)(struct packet_provider_data *prov, uint32_t interface_id, unsigned section_number);
-	const char *(*get_interface_description)(struct packet_provider_data *prov, uint32_t interface_id, unsigned section_number);
-	wtap_block_t (*get_modified_block)(struct packet_provider_data *prov, const frame_data *fd);
-	int32_t(*get_process_id)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number);
-	const char *(*get_process_name)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number);
-	const uint8_t *(*get_process_uuid)(struct packet_provider_data *prov, uint32_t process_info_id, unsigned section_number, size_t *uuid_size);
-};
-
-/**
-	@section Epan The Enhanced Packet ANalyzer
-
-	XXX
-
-	@b Sections:
-*/
-/*
-Ref 1
-Epan
-Enhanced Packet ANalyzer, aka the packet analyzing engine. Source code can be found in the epan directory.
-
-Protocol-Tree - Keep data of the capture file protocol information.
-
-Dissectors - The various protocol dissectors in epan/dissectors.
-
-Plugins - Some of the protocol dissectors are implemented as plugins. Source code can be found at plugins.
-
-Display-Filters - the display filter engine at epan/dfilter
-
-*/
-
-/**
- * Init the whole epan module.
- *
- * Must be called only once in a program.
- *
- * Returns true on success, false on failure.
- */
-WS_DLL_PUBLIC
-bool epan_init(register_cb cb, void *client_data, bool load_plugins);
-
-/**
- * Load all settings, from the current profile, that affect epan.
- */
-WS_DLL_PUBLIC
-e_prefs *epan_load_settings(void);
-
-/** cleanup the whole epan module, this is used to be called only once in a program */
-WS_DLL_PUBLIC
-void epan_cleanup(void);
-
-typedef struct {
-	void (*init)(void);		/* Called before proto_init() */
-	void (*post_init)(void);	/* Called at the end of epan_init() */
-	void (*dissect_init)(epan_dissect_t *);
-	void (*dissect_cleanup)(epan_dissect_t *);
-	void (*cleanup)(void);
-	void (*register_all_protocols)(register_cb, void *);
-	void (*register_all_handoffs)(register_cb, void *);
-	void (*register_all_tap_listeners)(void);
-} epan_plugin;
-
-WS_DLL_PUBLIC void epan_register_plugin(const epan_plugin *plugin);
-
-/** Returns_
- *     0 if plugins can be loaded for all of libwireshark (tap, dissector, epan).
- *     1 if plugins are not supported by the platform.
- *    -1 if plugins were disabled in the build configuration.
- */
-WS_DLL_PUBLIC int epan_plugins_supported(void);
-
-/**
- * Initialize the table of conversations.  Conversations are identified by
- * their endpoints; they are used for protocols such as IP, TCP, and UDP,
- * where packets contain endpoint information but don't contain a single
- * value indicating to which flow the packet belongs.
- */
-void epan_conversation_init(void);
-
-/** A client will create one epan_t for an entire dissection session.
- * A single epan_t will be used to analyze the entire sequence of packets,
- * sequentially, in a single session. A session corresponds to a single
- * packet trace file. The reasons epan_t exists is that some packets in
- * some protocols cannot be decoded without knowledge of previous packets.
- * This inter-packet "state" is stored in the epan_t.
- */
-typedef struct epan_session epan_t;
-
-WS_DLL_PUBLIC epan_t *epan_new(struct packet_provider_data *prov,
-    const struct packet_provider_funcs *funcs);
-
-WS_DLL_PUBLIC wtap_block_t epan_get_modified_block(const epan_t *session, const frame_data *fd);
-
-WS_DLL_PUBLIC const char *epan_get_interface_name(const epan_t *session, uint32_t interface_id, unsigned section_number);
-
-WS_DLL_PUBLIC const char *epan_get_interface_description(const epan_t *session, uint32_t interface_id, unsigned section_number);
-
-WS_DLL_PUBLIC int32_t epan_get_process_id(const epan_t *session, uint32_t process_info_id, unsigned section_number);
-
-WS_DLL_PUBLIC const char *epan_get_process_name(const epan_t *session, uint32_t process_info_id, unsigned section_number);
-
-WS_DLL_PUBLIC const uint8_t *epan_get_process_uuid(const epan_t *session, uint32_t process_info_id, unsigned section_number, size_t *uuid_size);
-
-
-const nstime_t *epan_get_frame_ts(const epan_t *session, uint32_t frame_num);
-
-WS_DLL_PUBLIC void epan_free(epan_t *session);
-
-WS_DLL_PUBLIC const char*
-epan_get_version(void);
-
-WS_DLL_PUBLIC void epan_get_version_number(int *major, int *minor, int *micro);
-
-/**
- * Set/unset the tree to always be visible when epan_dissect_init() is called.
- * This state change sticks until cleared, rather than being done per function call.
- * This is currently used when Lua scripts request all fields be generated.
- * By default it only becomes visible if epan_dissect_init() makes it so, usually
- * only when a packet is selected.
- * Setting this overrides that so it's always visible, although it will still not be
- * created if create_proto_tree is false in the call to epan_dissect_init().
- * Clearing this reverts the decision to epan_dissect_init() and proto_tree_visible.
- */
-WS_DLL_PUBLIC
-void epan_set_always_visible(bool force);
-
-/** initialize an existing single packet dissection */
-WS_DLL_PUBLIC
-void
-epan_dissect_init(epan_dissect_t *edt, epan_t *session, const bool create_proto_tree, const bool proto_tree_visible);
-
-/** get a new single packet dissection
- * should be freed using epan_dissect_free() after packet dissection completed
- */
-WS_DLL_PUBLIC
-epan_dissect_t*
-epan_dissect_new(epan_t *session, const bool create_proto_tree, const bool proto_tree_visible);
-
-WS_DLL_PUBLIC
-void
-epan_dissect_reset(epan_dissect_t *edt);
-
-/** Indicate whether we should fake protocols or not */
-WS_DLL_PUBLIC
-void
-epan_dissect_fake_protocols(epan_dissect_t *edt, const bool fake_protocols);
-
-/** run a single packet dissection */
-WS_DLL_PUBLIC
-void
-epan_dissect_run(epan_dissect_t *edt, int file_type_subtype,
-        wtap_rec *rec, frame_data *fd, struct epan_column_info *cinfo);
-
-WS_DLL_PUBLIC
-void
-epan_dissect_run_with_taps(epan_dissect_t *edt, int file_type_subtype,
-        wtap_rec *rec, frame_data *fd, struct epan_column_info *cinfo);
-
-/** run a dissection of file data */
-WS_DLL_PUBLIC
-void
-epan_dissect_file_run(epan_dissect_t *edt, wtap_rec *rec,
-        frame_data *fd, struct epan_column_info *cinfo);
-
-WS_DLL_PUBLIC
-void
-epan_dissect_file_run_with_taps(epan_dissect_t *edt, wtap_rec *rec,
-        frame_data *fd, struct epan_column_info *cinfo);
-
-/** Prime an epan_dissect_t's proto_tree using the fields/protocols used in a dfilter. */
-WS_DLL_PUBLIC
-void
-epan_dissect_prime_with_dfilter(epan_dissect_t *edt, const struct epan_dfilter *dfcode);
-
-/** Prime an epan_dissect_t's proto_tree using the fields/protocols used in a dfilter, marked for print. */
-WS_DLL_PUBLIC
-void
-epan_dissect_prime_with_dfilter_print(epan_dissect_t *edt, const struct epan_dfilter *dfcode);
-
-/** Prime an epan_dissect_t's proto_tree with a field/protocol specified by its hfid */
-WS_DLL_PUBLIC
-void
-epan_dissect_prime_with_hfid(epan_dissect_t *edt, int hfid);
-
-/** Prime an epan_dissect_t's proto_tree with a set of fields/protocols specified by their hfids in a GArray */
-WS_DLL_PUBLIC
-void
-epan_dissect_prime_with_hfid_array(epan_dissect_t *edt, GArray *hfids);
-
-/** fill the dissect run output into the packet list columns */
-WS_DLL_PUBLIC
-void
-epan_dissect_fill_in_columns(epan_dissect_t *edt, const bool fill_col_exprs, const bool fill_fd_colums);
-
-/** Check whether a dissected packet contains a given named field */
-WS_DLL_PUBLIC
-bool
-epan_dissect_packet_contains_field(epan_dissect_t* edt,
-                                   const char *field_name);
-
-/** releases resources attached to the packet dissection. DOES NOT free the actual pointer */
-WS_DLL_PUBLIC
-void
-epan_dissect_cleanup(epan_dissect_t* edt);
-
-/** free a single packet dissection */
-WS_DLL_PUBLIC
-void
-epan_dissect_free(epan_dissect_t* edt);
-
-/** Sets custom column */
-const char *
-epan_custom_set(epan_dissect_t *edt, GSList *ids, int occurrence, bool display_details,
-				char *result, char *expr, const int size);
-
-/**
- * Get compile-time information for libraries used by libwireshark.
- */
-WS_DLL_PUBLIC
-void
-epan_gather_compile_info(feature_list l);
-
-/**
- * Get runtime information for libraries used by libwireshark.
- */
-WS_DLL_PUBLIC
-void
-epan_gather_runtime_info(feature_list l);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __EPAN_H__ */
-/* End embedded header */
-
-/* Begin epan/column-utils.h */
-/** @file
- * Definitions for column utility structures and routines
- * Utility routines used by packet*.c
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __COLUMN_UTILS_H__
-#define __COLUMN_UTILS_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#define COL_MAX_LEN 2048
-#define COL_MAX_INFO_LEN 4096
-
-/* A regex to split possibly multifield custom columns into components
- *
- * Split on operator "||" (with optional space around it) and on "or"
- * (which must have space around it to avoid matching in the middle of
- * a word, field in the "synphasor" protocol, etc. This is somewhat too
- * strict, as "or" adjacent to parentheses ought to be fine so long
- * as the filter matches the grammar, like "(tcp.port)or(udp.port)",
- * but that's the cost of using regex instead of the real parser.)
- * Also split on space at the beginning or end of the expression (in
- * lieu of always stripping whitespace at the beginning and end, but it
- * does mean that we have to ignore any empty tokens in the result.)
- *
- * Use negative lookahead to avoid matching "||" or "or" that are contained
- * within parentheses. Don't match if a close parenthesis comes before an
- * open parenthesis. The regex doesn't help with unmatched parentheses, but
- * such an expression already won't satisfy the grammar and won't compile.
- */
-#define COL_CUSTOM_PRIME_REGEX "(?:^ *| *\\|\\| *| +or +| *$)(?![^(]*\\))"
-
-struct epan_dissect;
-
-/**
- *  Helper routines for column utility structures and routines.
- */
-
-struct epan_column_info;
-typedef struct epan_column_info column_info;
-
-/**
- * All of the possible columns in summary listing.
- *
- * NOTE1: The entries MUST remain in this order, or else you need to reorder
- *        the slist[] and dlist[] arrays in column.c to match!
- *
- * NOTE2: Please add the COL_XYZ entry in the appropriate spot, such that the
- *        dlist[] array remains in alphabetical order!
- */
-enum {
-  COL_ABS_YMD_TIME,   /**< 0) Absolute date, as YYYY-MM-DD, and time */
-  COL_ABS_YDOY_TIME,  /**< 1) Absolute date, as YYYY/DOY, and time */
-  COL_ABS_TIME,       /**< 2) Absolute time */
-  COL_CUMULATIVE_BYTES, /**< 3) Cumulative number of bytes */
-  COL_CUSTOM,         /**< 4) Custom column (any filter name's contents) */
-  COL_DELTA_TIME,     /**< 5) Delta time */
-  COL_DELTA_TIME_DIS, /**< 6) Delta time displayed*/
-  COL_RES_DST,        /**< 7) Resolved dest */
-  COL_UNRES_DST,      /**< 8) Unresolved dest */
-  COL_RES_DST_PORT,   /**< 9) Resolved dest port */
-  COL_UNRES_DST_PORT, /**< 10) Unresolved dest port */
-  COL_DEF_DST,        /**< 11) Destination address */
-  COL_DEF_DST_PORT,   /**< 12) Destination port */
-  COL_EXPERT,         /**< 13) Expert Info */
-  COL_IF_DIR,         /**< 14) FW-1 monitor interface/direction */
-  COL_FREQ_CHAN,      /**< 15) IEEE 802.11 (and WiMax?) - Channel */
-  COL_DEF_DL_DST,     /**< 16) Data link layer dest address */
-  COL_DEF_DL_SRC,     /**< 17) Data link layer source address */
-  COL_RES_DL_DST,     /**< 18) Resolved DL dest */
-  COL_UNRES_DL_DST,   /**< 19) Unresolved DL dest */
-  COL_RES_DL_SRC,     /**< 20) Resolved DL source */
-  COL_UNRES_DL_SRC,   /**< 21) Unresolved DL source */
-  COL_RSSI,           /**< 22) IEEE 802.11 - received signal strength */
-  COL_TX_RATE,        /**< 23) IEEE 802.11 - TX rate in Mbps */
-  COL_DSCP_VALUE,     /**< 24) IP DSCP Value */
-  COL_INFO,           /**< 25) Description */
-  COL_RES_NET_DST,    /**< 26) Resolved net dest */
-  COL_UNRES_NET_DST,  /**< 27) Unresolved net dest */
-  COL_RES_NET_SRC,    /**< 28) Resolved net source */
-  COL_UNRES_NET_SRC,  /**< 29) Unresolved net source */
-  COL_DEF_NET_DST,    /**< 30) Network layer dest address */
-  COL_DEF_NET_SRC,    /**< 31) Network layer source address */
-  COL_NUMBER,         /**< 32) Packet list item number */
-  COL_NUMBER_DIS,     /**< 33) Packet list item number displayed */
-  COL_PACKET_LENGTH,  /**< 34) Packet length in bytes */
-  COL_PROTOCOL,       /**< 35) Protocol */
-  COL_REL_TIME,       /**< 36) Relative time */
-  COL_DEF_SRC,        /**< 37) Source address */
-  COL_DEF_SRC_PORT,   /**< 38) Source port */
-  COL_RES_SRC,        /**< 39) Resolved source */
-  COL_UNRES_SRC,      /**< 40) Unresolved source */
-  COL_RES_SRC_PORT,   /**< 41) Resolved source port */
-  COL_UNRES_SRC_PORT, /**< 42) Unresolved source port */
-  COL_UTC_YMD_TIME,   /**< 43) UTC date, as YYYY-MM-DD, and time */
-  COL_UTC_YDOY_TIME,  /**< 44) UTC date, as YYYY/DOY, and time */
-  COL_UTC_TIME,       /**< 45) UTC time */
-  COL_CLS_TIME,       /**< 46) Command line-specified time (default relative) */
-  NUM_COL_FMTS        /**< 47) Should always be last */
-};
-
-/** Are the columns writable?
- *
- * @param cinfo the current packet row
- * @param col the writable column, -1 for checking the state of all columns
- * @return true if it's writable, false if not
- */
-WS_DLL_PUBLIC bool col_get_writable(column_info *cinfo, const int col);
-
-/** Set the columns writable.
- *
- * @param cinfo the current packet row
- * @param col the column to set, -1 for all
- * @param writable true if it's writable, false if not
- */
-WS_DLL_PUBLIC void col_set_writable(column_info *cinfo, const int col, const bool writable);
-
-/** Sets a fence for the current column content,
- * so this content won't be affected by further col_... function calls.
- *
- * This can be useful if a protocol is more than once in a single packet,
- * e.g. multiple HTTP calls in a single TCP packet.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_set_fence(column_info *cinfo, const int col);
-
-/** Clears a fence for the current column content
- *
- * This can be useful if a protocol wants to remove whatever
- * a previous protocol has added to the column.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_clear_fence(column_info *cinfo, const int col);
-
-/** Gets the text of a column element.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- *
- * @return the text string
- */
-WS_DLL_PUBLIC const char *col_get_text(column_info *cinfo, const int col);
-
-/** Clears the text of a column element.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- */
-WS_DLL_PUBLIC void col_clear(column_info *cinfo, const int col);
-
-/** Set (replace) the text of a column element, the text won't be formatted or copied.
- *
- * Use this for simple static strings like protocol names. Don't use for untrusted
- * strings, strings that may contain unprintable characters, or strings which are
- * freed before the packet_info (and hence column_info) struct.
- *
- * Usually used to set const strings!
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to set
- */
-WS_DLL_PUBLIC void col_set_str(column_info *cinfo, const int col, const char * str);
-
-/** Add (replace) the text of a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to add
- */
-WS_DLL_PUBLIC void col_add_str(column_info *cinfo, const int col, const char *str);
-
-/* terminator argument for col_add_lstr() function */
-#define COL_ADD_LSTR_TERMINATOR (const char *) -1
-
-WS_DLL_PUBLIC void col_add_lstr(column_info *cinfo, const int el, const char *str, ...);
-
-/** Add (replace) the text of a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * Same function as col_add_str() but using a printf-like format string.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_add_fstr(column_info *cinfo, const int col, const char *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Append the given text to a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param str the string to append
- */
-WS_DLL_PUBLIC void col_append_str(column_info *cinfo, const int col, const char *str);
-
-/** Append <abbrev>=<val> to a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param abbrev the string to append
- * @param val the value to append
- * @param sep an optional separator to _prepend_ to abbrev
- */
-WS_DLL_PUBLIC void col_append_str_uint(column_info *cinfo, const int col, const char *abbrev, uint32_t val, const char *sep);
-
-/** Append a transport port pair to a column element, the text will be copied.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param typ the port type to resolve, e.g. PT_UDP
- * @param src the source port value to append
- * @param dst the destination port value to append
- */
-WS_DLL_PUBLIC void col_append_ports(column_info *cinfo, const int col, port_type typ, uint16_t src, uint16_t dst);
-
-/** Append a frame number and signal that we have updated
- * column information.
- *
- * @param pinfo the current packet info
- * @param col the column to use, e.g. COL_INFO
- * @param fmt_str format string, e.g. "reassembled in %u".
- * @param frame_num frame number
- */
-WS_DLL_PUBLIC void col_append_frame_number(packet_info *pinfo, const int col, const char *fmt_str, unsigned frame_num);
-
-/* Append the given strings (terminated by COL_ADD_LSTR_TERMINATOR) to a column element,
- *
- * Same result as col_append_str() called for every string element.
- */
-WS_DLL_PUBLIC void col_append_lstr(column_info *cinfo, const int el, const char *str, ...);
-
-/** Append the given text to a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * Same function as col_append_str() but using a printf-like format string.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_append_fstr(column_info *cinfo, const int col, const char *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Prepend the given text to a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_prepend_fstr(column_info *cinfo, const int col, const char *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Prepend the given text to a column element, the text will be formatted and copied.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * This function is similar to col_prepend_fstr() but this function will
- * unconditionally set a fence to the end of the prepended data even if there
- * were no fence before.
- * The col_prepend_fstr() will only prepend the data before the fence IF
- * there is already a fence created. This function will create a fence in case
- * it does not yet exist.
- */
-WS_DLL_PUBLIC void col_prepend_fence_fstr(column_info *cinfo, const int col, const char *format, ...)
-    G_GNUC_PRINTF(3, 4);
-
-/** Append the given text (prepended by a separator) to a column element.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * Much like col_append_str() but will prepend the given separator if the column isn't empty.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param sep the separator string or NULL for default: ", "
- * @param str the string to append
- */
-WS_DLL_PUBLIC void col_append_sep_str(column_info *cinfo, const int col, const char *sep,
-		const char *str);
-
-/** Append the given text (prepended by a separator) to a column element.
- *
- * Unprintable characters according to g_ascii_isprint() are escaped.
- *
- * Much like col_append_fstr() but will prepend the given separator if the column isn't empty.
- *
- * @param cinfo the current packet row
- * @param col the column to use, e.g. COL_INFO
- * @param sep the separator string or NULL for default: ", "
- * @param format the format string
- * @param ... the variable number of parameters
- */
-WS_DLL_PUBLIC void col_append_sep_fstr(column_info *cinfo, const int col, const char *sep,
-		const char *format, ...)
-    G_GNUC_PRINTF(4, 5);
-
-/** Set the given (relative) time to a column element.
- *
- * Used by dissectors to set the time in a column
- *
- * @param cinfo		the current packet row
- * @param col		the column to use, e.g. COL_INFO
- * @param ts		the time to set in the column
- * @param fieldname	the fieldname to use for creating a filter (when
- *			  applying/preparing/copying as filter)
- */
-WS_DLL_PUBLIC void col_set_time(column_info *cinfo, const int col,
-			const nstime_t *ts, const char *fieldname);
-
-WS_DLL_PUBLIC void set_fd_time(const struct epan_session *epan, frame_data *fd, char *buf);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* __COLUMN_UTILS_H__ */
-/* End embedded header */
-
-/* Begin epan/packet.h */
-/** @file
- * Definitions for packet disassembly structures and routines
- *
- * Wireshark - Network traffic analyzer
- * By Gerald Combs <gerald@wireshark.org>
- * Copyright 1998 Gerald Combs
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
-#ifndef __PACKET_H__
-#define __PACKET_H__
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-
-
-/** @defgroup packet General Packet Dissection
- *
- * @{
- */
-
-#define hi_nibble(b) (((b) & 0xf0) >> 4)
-#define lo_nibble(b) ((b) & 0x0f)
-
-/* Check whether the "len" bytes of data starting at "offset" is
- * entirely inside the captured data for this packet. */
-#define	BYTES_ARE_IN_FRAME(offset, captured_len, len) \
-	((unsigned)(offset) + (unsigned)(len) > (unsigned)(offset) && \
-	 (unsigned)(offset) + (unsigned)(len) <= (unsigned)(captured_len))
-
-/* 0 is case sensitive for backwards compatibility with tables that
- * used false or BASE_NONE for case sensitive, which was the default.
- */
-#define STRING_CASE_SENSITIVE 0
-#define STRING_CASE_INSENSITIVE 1
-
-extern void packet_init(void);
-extern void packet_cache_proto_handles(void);
-extern void packet_all_tables_sort_handles(void);
-extern void packet_cleanup(void);
-
-/* Handle for dissectors you call directly or register with "dissector_add_uint()".
-   This handle is opaque outside of "packet.c". */
-struct dissector_handle;
-typedef struct dissector_handle *dissector_handle_t;
-
-/* Hash table for matching unsigned integers, or strings, and dissectors;
-   this is opaque outside of "packet.c". */
-struct dissector_table;
-typedef struct dissector_table *dissector_table_t;
-
-/*
- * Dissector that returns:
- *
- *	The amount of data in the protocol's PDU, if it was able to
- *	dissect all the data;
- *
- *	0, if the tvbuff doesn't contain a PDU for that protocol;
- *
- *	The negative of the amount of additional data needed, if
- *	we need more data (e.g., from subsequent TCP segments) to
- *	dissect the entire PDU.
- */
-typedef int (*dissector_t)(tvbuff_t *, packet_info *, proto_tree *, void *);
-
-/* Same as dissector_t with an extra parameter for callback pointer */
-typedef int (*dissector_cb_t)(tvbuff_t *, packet_info *, proto_tree *, void *, void *);
-
-/** Type of a heuristic dissector, used in heur_dissector_add().
- *
- * @param tvb the tvbuff with the (remaining) packet data
- * @param pinfo the packet info of this packet (additional info)
- * @param tree the protocol tree to be build or NULL
- * @return true if the packet was recognized by the sub-dissector (stop dissection here)
- */
-typedef bool (*heur_dissector_t)(tvbuff_t *tvb, packet_info *pinfo,
-	proto_tree *tree, void *);
-
-typedef enum {
-    HEURISTIC_DISABLE,
-    HEURISTIC_ENABLE
-} heuristic_enable_e;
-
-typedef void (*DATFunc) (const char *table_name, ftenum_t selector_type,
-    void *key, void *value, void *user_data);
-typedef void (*DATFunc_handle) (const char *table_name, void *value,
-    void *user_data);
-typedef void (*DATFunc_table) (const char *table_name, const char *ui_name,
-    void *user_data);
-
-/* Opaque structure - provides type checking but no access to components */
-typedef struct dtbl_entry dtbl_entry_t;
-
-WS_DLL_PUBLIC dissector_handle_t dtbl_entry_get_handle (dtbl_entry_t *dtbl_entry);
-WS_DLL_PUBLIC dissector_handle_t dtbl_entry_get_initial_handle (dtbl_entry_t * entry);
-
-/** Iterate over dissectors in a table with non-default "decode as" settings.
- *
- * Walk one dissector table calling a user supplied function only on
- * any entry that has been changed from its original state.
- *
- * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
- * @param[in] func The function to call for each dissector.
- * @param[in] user_data User data to pass to the function.
- */
-void dissector_table_foreach_changed (const char *table_name, DATFunc func,
-    void *user_data);
-
-/** Iterate over dissectors in a table.
- *
- * Walk one dissector table's hash table calling a user supplied function
- * on each entry.
- *
- * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
- * @param[in] func The function to call for each dissector.
- * @param[in] user_data User data to pass to the function.
- */
-WS_DLL_PUBLIC void dissector_table_foreach (const char *table_name, DATFunc func,
-    void *user_data);
-
-/** Iterate over dissectors with non-default "decode as" settings.
- *
- * Walk all dissector tables calling a user supplied function only on
- * any "decode as" entry that has been changed from its original state.
- *
- * @param[in] func The function to call for each dissector.
- * @param[in] user_data User data to pass to the function.
- */
-WS_DLL_PUBLIC void dissector_all_tables_foreach_changed (DATFunc func,
-    void *user_data);
-
-/** Iterate over dissectors in a table by handle.
- *
- * Walk one dissector table's list of handles calling a user supplied
- * function on each entry.
- *
- * @param[in] table_name The name of the dissector table, e.g. "ip.proto".
- * @param[in] func The function to call for each dissector.
- * @param[in] user_data User data to pass to the function.
- */
-WS_DLL_PUBLIC void dissector_table_foreach_handle(const char *table_name, DATFunc_handle func,
-    void *user_data);
-
-/** Iterate over all dissector tables.
- *
- * Walk the set of dissector tables calling a user supplied function on each
- * table.
- * @param[in] func The function to call for each table.
- * @param[in] user_data User data to pass to the function.
- * @param[in] compare_key_func Function used to sort the set of tables before
- * calling the function.  No sorting is done if NULL. */
-WS_DLL_PUBLIC void dissector_all_tables_foreach_table (DATFunc_table func,
-    void *user_data, GCompareFunc compare_key_func);
-
-/* a protocol uses the function to register a sub-dissector table
- *
- * 'param' is the display base for integer tables, STRING_CASE_SENSITIVE
- * or STRING_CASE_INSENSITIVE for string tables, and ignored for other
- * table types.
- */
-WS_DLL_PUBLIC dissector_table_t register_dissector_table(const char *name,
-    const char *ui_name, const int proto, const ftenum_t type, const int param);
-
-/*
- * Similar to register_dissector_table, but with a "custom" hash function
- * to store subdissectors.
- */
-WS_DLL_PUBLIC dissector_table_t register_custom_dissector_table(const char *name,
-    const char *ui_name, const int proto, GHashFunc hash_func, GEqualFunc key_equal_func,
-    GDestroyNotify key_destroy_func);
-
-/** Register a dissector table alias.
- * This is for dissectors whose original name has changed, e.g. SSL to TLS.
- * @param dissector_table dissector table returned by register_dissector_table.
- * @param alias_name alias for the dissector table name.
- */
-WS_DLL_PUBLIC void register_dissector_table_alias(dissector_table_t dissector_table,
-    const char *alias_name);
-
-/** Deregister the dissector table by table name. */
-void deregister_dissector_table(const char *name);
-
-/* Find a dissector table by table name. */
-WS_DLL_PUBLIC dissector_table_t find_dissector_table(const char *name);
-
-/* Get the UI name for a sub-dissector table, given its internal name */
-WS_DLL_PUBLIC const char *get_dissector_table_ui_name(const char *name);
-
-/* Get the field type for values of the selector for a dissector table,
-   given the table's internal name */
-WS_DLL_PUBLIC ftenum_t get_dissector_table_selector_type(const char *name);
-
-/* Get the param set for the sub-dissector table,
-   given the table's internal name */
-WS_DLL_PUBLIC int get_dissector_table_param(const char *name);
-
-/* Dump all dissector tables to the standard output (not the entries,
-   just the information about the tables) */
-WS_DLL_PUBLIC void dissector_dump_dissector_tables(void);
-
-/* Add an entry to a uint dissector table. */
-WS_DLL_PUBLIC void dissector_add_uint(const char *name, const uint32_t pattern,
-    dissector_handle_t handle);
-
-/* Add an entry to a uint dissector table with "preference" automatically added. */
-WS_DLL_PUBLIC void dissector_add_uint_with_preference(const char *name, const uint32_t pattern,
-    dissector_handle_t handle);
-
-/** Add an range of entries to a uint dissector table. */
-WS_DLL_PUBLIC void dissector_add_uint_range(const char *abbrev, range_t *range,
-    dissector_handle_t handle);
-
-/** Add an range of entries to a uint dissector table with "preference" automatically added. */
-WS_DLL_PUBLIC void dissector_add_uint_range_with_preference(const char *abbrev, const char* range_str,
-    dissector_handle_t handle);
-
-/** Delete the entry for a dissector in a uint dissector table
-   with a particular pattern. */
-WS_DLL_PUBLIC void dissector_delete_uint(const char *name, const uint32_t pattern,
-    dissector_handle_t handle);
-
-/** Delete an range of entries from a uint dissector table. */
-WS_DLL_PUBLIC void dissector_delete_uint_range(const char *abbrev, range_t *range,
-    dissector_handle_t handle);
-
-/** Delete all entries from a dissector table. */
-WS_DLL_PUBLIC void dissector_delete_all(const char *name, dissector_handle_t handle);
-
-/** Change the entry for a dissector in a uint dissector table
-   with a particular pattern to use a new dissector handle. */
-WS_DLL_PUBLIC void dissector_change_uint(const char *abbrev, const uint32_t pattern,
-    dissector_handle_t handle);
-
-/** Reset an entry in a uint dissector table to its initial value. */
-WS_DLL_PUBLIC void dissector_reset_uint(const char *name, const uint32_t pattern);
-
-/** Return true if an entry in a uint dissector table is found and has been
- * changed (i.e. dissector_change_uint() has been called, such as from
- * Decode As, prefs registered via dissector_add_uint_[range_]with_preference),
- * etc.), otherwise return false.
- */
-WS_DLL_PUBLIC bool dissector_is_uint_changed(dissector_table_t const sub_dissectors, const uint32_t uint_val);
-
-/** Look for a given value in a given uint dissector table and, if found,
-   call the dissector with the arguments supplied, and return the number
-   of bytes consumed, otherwise return 0. */
-WS_DLL_PUBLIC int dissector_try_uint(dissector_table_t sub_dissectors,
-    const uint32_t uint_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-
-/** Look for a given value in a given uint dissector table and, if found,
-   call the dissector with the arguments supplied, and return the number
-   of bytes consumed, otherwise return 0. */
-
-WS_DLL_PUBLIC int dissector_try_uint_with_data(dissector_table_t sub_dissectors,
-    const uint32_t uint_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
-
-WS_DEPRECATED_X("Use dissector_try_uint_with_data instead")
-static inline int dissector_try_uint_new(dissector_table_t sub_dissectors,
-	const uint32_t uint_val, tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data) \
-{	return dissector_try_uint_with_data(sub_dissectors, uint_val, tvb, pinfo, tree, add_proto_name, data); }
-
-/** Look for a given value in a given uint dissector table and, if found,
- * return the current dissector handle for that value.
- *
- * @param[in] sub_dissectors Dissector table to search.
- * @param[in] uint_val Value to match, e.g. the port number for the TCP dissector.
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_uint_handle(
-    dissector_table_t const sub_dissectors, const uint32_t uint_val);
-
-/** Look for a given value in a given uint dissector table and, if found,
- * return the default dissector handle for that value.
- *
- * @param[in] name Dissector table name.
- * @param[in] uint_val Value to match, e.g. the port number for the TCP dissector.
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_default_uint_handle(
-    const char *name, const uint32_t uint_val);
-
-/* Add an entry to a string dissector table. */
-WS_DLL_PUBLIC void dissector_add_string(const char *name, const char *pattern,
-    dissector_handle_t handle);
-
-/* Delete the entry for a dissector in a string dissector table
-   with a particular pattern. */
-WS_DLL_PUBLIC void dissector_delete_string(const char *name, const char *pattern,
-	dissector_handle_t handle);
-
-/* Change the entry for a dissector in a string dissector table
-   with a particular pattern to use a new dissector handle. */
-WS_DLL_PUBLIC void dissector_change_string(const char *name, const char *pattern,
-    dissector_handle_t handle);
-
-/* Reset an entry in a string sub-dissector table to its initial value. */
-WS_DLL_PUBLIC void dissector_reset_string(const char *name, const char *pattern);
-
-/* Return true if an entry in a string dissector table is found and has been
- * changed (i.e. dissector_change_string() has been called, such as from
- * Decode As), otherwise return false.
- */
-WS_DLL_PUBLIC bool dissector_is_string_changed(dissector_table_t const subdissectors, const char *string);
-
-
-/** Look for a given string in a given dissector table and, if found, call
-   the dissector with the arguments supplied, and return the number of
-   bytes consumed, otherwise return 0. */
-WS_DLL_PUBLIC int dissector_try_string_with_data(dissector_table_t sub_dissectors,
-	const char* string, tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data);
-
-/* Look for a given string in a given dissector table and, if found, call
-   the dissector with the arguments supplied, and return the number of
-   bytes consumed, otherwise return 0. */
-WS_DEPRECATED_X("Use dissector_try_string_with_data instead")
-static inline int
-dissector_try_string(dissector_table_t sub_dissectors, const char* string,\
-	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data) \
-	{ return dissector_try_string_with_data(sub_dissectors, string, tvb, pinfo, tree, true, data); }
-
-WS_DEPRECATED_X("Use dissector_try_string_with_data instead")
-static inline int
-dissector_try_string_new(dissector_table_t sub_dissectors, const char* string, \
-	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data) \
-{ return dissector_try_string_with_data(sub_dissectors, string, tvb, pinfo, tree, add_proto_name, data); }
-
-
-/** Look for a given value in a given string dissector table and, if found,
- * return the current dissector handle for that value.
- *
- * @param[in] sub_dissectors Dissector table to search.
- * @param[in] string Value to match, e.g. the OID for the BER dissector.
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_string_handle(
-    dissector_table_t sub_dissectors, const char *string);
-
-/** Look for a given value in a given string dissector table and, if found,
- * return the default dissector handle for that value.
- *
- * @param[in] name Dissector table name.
- * @param[in] string Value to match, e.g. the OID for the BER dissector.
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_default_string_handle(
-    const char *name, const char *string);
-
-/* Add an entry to a "custom" dissector table. */
-WS_DLL_PUBLIC void dissector_add_custom_table_handle(const char *name, void *pattern,
-    dissector_handle_t handle);
-
-/** Look for a given key in a given "custom" dissector table and, if found,
- * return the current dissector handle for that key.
- *
- * @param[in] sub_dissectors Dissector table to search.
- * @param[in] key Value to match, e.g. RPC key for its subdissectors
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_custom_table_handle(
-    dissector_table_t sub_dissectors, void *key);
-/* Key for GUID dissector tables.  This is based off of DCE/RPC needs
-   so some dissector tables may not need the ver portion of the hash
- */
-typedef struct _guid_key {
-    e_guid_t guid;
-    uint16_t ver;
-} guid_key;
-
-/* Add an entry to a guid dissector table. */
-WS_DLL_PUBLIC void dissector_add_guid(const char *name, guid_key* guid_val,
-    dissector_handle_t handle);
-
-/** Look for a given value in a given guid dissector table and, if found,
-   call the dissector with the arguments supplied, and return true,
-   otherwise return false. */
-WS_DLL_PUBLIC int dissector_try_guid_with_data(dissector_table_t sub_dissectors,
-    guid_key* guid_val, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
-
-/* Delete a GUID from a dissector table. */
-WS_DLL_PUBLIC void dissector_delete_guid(const char *name, guid_key* guid_val,
-    dissector_handle_t handle);
-
-/** Look for a given value in a given guid dissector table and, if found,
- * return the current dissector handle for that value.
- *
- * @param[in] sub_dissectors Dissector table to search.
- * @param[in] guid_val Value to match, e.g. the GUID number for the GUID dissector.
- * @return The matching dissector handle on success, NULL if no match is found.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_guid_handle(
-    dissector_table_t const sub_dissectors, guid_key* guid_val);
-
-/* Use the currently assigned payload dissector for the dissector table and,
-   if any, call the dissector with the arguments supplied, and return the
-   number of bytes consumed, otherwise return 0. */
-WS_DLL_PUBLIC int dissector_try_payload_with_data(dissector_table_t sub_dissectors,
-    tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const bool add_proto_name, void *data);
-
-WS_DEPRECATED_X("Use dissector_try_payload_with_data instead")
-static inline int dissector_try_payload_new(dissector_table_t sub_dissectors,
-	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, const bool add_proto_name, void* data){ \
-	return dissector_try_payload_with_data(sub_dissectors, tvb, pinfo, tree, add_proto_name, data); \
-}
-
-/* Use the currently assigned payload dissector for the dissector table and,
-   if any, call the dissector with the arguments supplied, and return the
-   number of bytes consumed, otherwise return 0. */
-WS_DEPRECATED_X("Use dissector_try_payload_with_data instead")
-static inline int dissector_try_payload(dissector_table_t sub_dissectors,
-	tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
-	\
-	return dissector_try_payload_with_data(sub_dissectors, tvb, pinfo, tree, true, NULL); \
-}
-
-/* Change the entry for a dissector in a payload (FT_NONE) dissector table
-   with a particular pattern to use a new dissector handle. */
-WS_DLL_PUBLIC void dissector_change_payload(const char *abbrev, dissector_handle_t handle);
-
-/* Reset payload (FT_NONE) dissector table to its initial value. */
-WS_DLL_PUBLIC void dissector_reset_payload(const char *name);
-
-/* Given a payload dissector table (type FT_NONE), return the handle of
-   the dissector that is currently active, i.e. that was selected via
-   Decode As. */
-WS_DLL_PUBLIC dissector_handle_t dissector_get_payload_handle(
-        dissector_table_t const dissector_table);
-
-/* Add a handle to the list of handles that *could* be used with this
-   table.  That list is used by the "Decode As"/"-d" code in the UI. */
-WS_DLL_PUBLIC void dissector_add_for_decode_as(const char *name,
-    dissector_handle_t handle);
-
-/* Same as dissector_add_for_decode_as, but adds preference for dissector table value */
-WS_DLL_PUBLIC void dissector_add_for_decode_as_with_preference(const char *name,
-    dissector_handle_t handle);
-
-/** Get the list of handles for a dissector table
- */
-WS_DLL_PUBLIC GSList *dissector_table_get_dissector_handles(dissector_table_t dissector_table);
-
-/** Get a handle to dissector out of a dissector table given the description
- * of what the dissector dissects.
- */
-WS_DLL_PUBLIC dissector_handle_t dissector_table_get_dissector_handle(dissector_table_t dissector_table, const char* description);
-
-/** Get a dissector table's type
- */
-WS_DLL_PUBLIC ftenum_t dissector_table_get_type(dissector_table_t dissector_table);
-
-/** Mark a dissector table as allowing "Decode As"
- *
- * XXX - Why is this WS_DLL_PUBLIC? This is called by register_decode_as, and
- * anything that marks a table as allowing "Decode As" should call that instead.
- */
-WS_DLL_PUBLIC void dissector_table_allow_decode_as(dissector_table_t dissector_table);
-
-/** Returns true if dissector table allows "Decode As"
- */
-WS_DLL_PUBLIC bool dissector_table_supports_decode_as(dissector_table_t dissector_table);
-
-/* List of "heuristic" dissectors (which get handed a packet, look at it,
-   and either recognize it as being for their protocol, dissect it, and
-   return true, or don't recognize it and return false) to be called
-   by another dissector.
-
-   This is opaque outside of "packet.c". */
-struct heur_dissector_list;
-typedef struct heur_dissector_list *heur_dissector_list_t;
-
-
-typedef struct heur_dtbl_entry {
-	heur_dissector_t dissector;
-	protocol_t *protocol; /* this entry's protocol */
-	char *list_name;     /* the list name this entry is in the list of */
-	const char *display_name;     /* the string used to present heuristic to user */
-	char *short_name;     /* string used for "internal" use to uniquely identify heuristic */
-	bool enabled;
-	bool enabled_by_default;
-} heur_dtbl_entry_t;
-
-/** A protocol uses this function to register a heuristic sub-dissector list.
- *  Call this in the parent dissectors proto_register function.
- *
- * @param name a unique short name for the list
- * @param ui_name the name used in the user interface
- * @param proto the value obtained when registering the protocol
- */
-WS_DLL_PUBLIC heur_dissector_list_t register_heur_dissector_list_with_description(const char *name, const char *ui_name, const int proto);
-
-/** Get description of heuristic sub-dissector list.
- *
- * @param list the dissector list
- */
-WS_DLL_PUBLIC const char *heur_dissector_list_get_description(heur_dissector_list_t list);
-
-/** A protocol uses this function to register a heuristic sub-dissector list.
- *  Call this in the parent dissectors proto_register function.
- *
- * @param name the name of this protocol
- * @param proto the value obtained when registering the protocol
- */
-WS_DLL_PUBLIC heur_dissector_list_t register_heur_dissector_list(const char *name, const int proto);
-
-/** Deregister a heuristic dissector list by unique short name. */
-void deregister_heur_dissector_list(const char *name);
-
-typedef void (*DATFunc_heur) (const char *table_name,
-    struct heur_dtbl_entry *entry, void *user_data);
-typedef void (*DATFunc_heur_table) (const char *table_name,
-    struct heur_dissector_list *table, void *user_data);
-
-/** Iterate over heuristic dissectors in a table.
- *
- * Walk one heuristic dissector table's list calling a user supplied function
- * on each entry.
- *
- * @param[in] table_name The name of the dissector table, e.g. "tcp".
- * @param[in] func The function to call for each dissector.
- * @param[in] user_data User data to pass to the function.
- */
-WS_DLL_PUBLIC void heur_dissector_table_foreach(const char *table_name,
-    DATFunc_heur func, void *user_data);
-
-/** Iterate over all heuristic dissector tables.
- *
- * Walk the set of heuristic dissector tables calling a user supplied function
- * on each table.
- * @param[in] func The function to call for each table.
- * @param[in] user_data User data to pass to the function.
- * @param[in] compare_key_func Function used to sort the set of tables before
- * calling the function.  No sorting is done if NULL. */
-WS_DLL_PUBLIC void dissector_all_heur_tables_foreach_table (DATFunc_heur_table func,
-    void *user_data, GCompareFunc compare_key_func);
-
-/* true if a heur_dissector list of that name exists to be registered into */
-WS_DLL_PUBLIC bool has_heur_dissector_list(const char *name);
-
-/** Try all the dissectors in a given heuristic dissector list. This is done,
- *  until we find one that recognizes the protocol.
- *  Call this while the parent dissector running.
- *
- * @param sub_dissectors the sub-dissector list
- * @param tvb the tvbuff with the (remaining) packet data
- * @param pinfo the packet info of this packet (additional info)
- * @param tree the protocol tree to be build or NULL
- * @param hdtbl_entry returns the last tried dissectors hdtbl_entry.
- * @param data parameter to pass to subdissector
- * @return true if the packet was recognized by the sub-dissector (stop dissection here)
- */
-WS_DLL_PUBLIC bool dissector_try_heuristic(heur_dissector_list_t sub_dissectors,
-    tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, heur_dtbl_entry_t **hdtbl_entry, void *data);
-
-/** Find a heuristic dissector table by table name.
- *
- * @param name name of the dissector table
- * @return pointer to the table on success, NULL if no such table exists
- */
-WS_DLL_PUBLIC heur_dissector_list_t find_heur_dissector_list(const char *name);
-
-/** Find a heuristic dissector by the unique short protocol name provided during registration.
- *
- * @param short_name short name of the protocol to look at
- * @return pointer to the heuristic dissector entry, NULL if not such dissector exists
- */
-WS_DLL_PUBLIC heur_dtbl_entry_t* find_heur_dissector_by_unique_short_name(const char *short_name);
-
-/** Add a sub-dissector to a heuristic dissector list.
- *  Call this in the proto_handoff function of the sub-dissector.
- *
- * @param name the name of the heuristic dissector table into which to register the dissector, e.g. "tcp"
- * @param dissector the sub-dissector to be registered
- * @param display_name the string used to present heuristic to user, e.g. "HTTP over TCP"
- * @param internal_name the string used for "internal" use to identify heuristic, e.g. "http_tcp"
- * @param proto the protocol id of the sub-dissector
- * @param enable initially enabled or not
- */
-WS_DLL_PUBLIC void heur_dissector_add(const char *name, heur_dissector_t dissector,
-    const char *display_name, const char *internal_name, const int proto, heuristic_enable_e enable);
-
-/** Remove a sub-dissector from a heuristic dissector list.
- *  Call this in the prefs_reinit function of the sub-dissector.
- *
- * @param name the name of the "parent" protocol, e.g. "tcp"
- * @param dissector the sub-dissector to be unregistered
- * @param proto the protocol id of the sub-dissector
- */
-WS_DLL_PUBLIC void heur_dissector_delete(const char *name, heur_dissector_t dissector, const int proto);
-
-/** Register a new dissector. */
-WS_DLL_PUBLIC dissector_handle_t register_dissector(const char *name, dissector_t dissector, const int proto);
-
-/** Register a new dissector with a description. */
-WS_DLL_PUBLIC dissector_handle_t register_dissector_with_description(const char *name, const char *description, dissector_t dissector, const int proto);
-
-/** Register a new dissector with a callback pointer. */
-WS_DLL_PUBLIC dissector_handle_t register_dissector_with_data(const char *name, dissector_cb_t dissector, const int proto, void *cb_data);
-
-/** Deregister a dissector. */
-void deregister_dissector(const char *name);
-
-/** Get the long name of the protocol for a dissector handle. */
-WS_DLL_PUBLIC const char *dissector_handle_get_protocol_long_name(const dissector_handle_t handle);
-
-/** Get the short name of the protocol for a dissector handle. */
-WS_DLL_PUBLIC const char *dissector_handle_get_protocol_short_name(const dissector_handle_t handle);
-
-/* For backwards source and binary compatibility */
-G_DEPRECATED_FOR(dissector_handle_get_protocol_short_name)
-WS_DLL_PUBLIC const char *dissector_handle_get_short_name(const dissector_handle_t handle);
-
-/** Get the description for what the dissector for a dissector handle dissects. */
-WS_DLL_PUBLIC const char *dissector_handle_get_description(const dissector_handle_t handle);
-
-/** Get the index of the protocol for a dissector handle. */
-WS_DLL_PUBLIC int dissector_handle_get_protocol_index(const dissector_handle_t handle);
-
-/** Get a GList of all registered dissector names. */
-WS_DLL_PUBLIC GList* get_dissector_names(void);
-
-/** Find a dissector by name. */
-WS_DLL_PUBLIC dissector_handle_t find_dissector(const char *name);
-
-/** Find a dissector by name and add parent protocol as a dependency. */
-WS_DLL_PUBLIC dissector_handle_t find_dissector_add_dependency(const char *name, const int parent_proto);
-
-/** Get a dissector name from handle. */
-WS_DLL_PUBLIC const char *dissector_handle_get_dissector_name(const dissector_handle_t handle);
-
-WS_DLL_PUBLIC const char *dissector_handle_get_pref_suffix(const dissector_handle_t handle);
-
-/** Create an anonymous, unregistered dissector handle. Unregistered means that
- * other dissectors can't find the dissector through this API. The typical use
- * case is dissectors added to dissector tables that shouldn't be called by other
- * dissectors, perhaps if some data structure must be passed to the dissector.
- *
- * @param dissector The dissector the handle will call
- * @param proto The value obtained when registering the protocol
- *
- * @note The protocol short name will be used as the user-visible description.
- */
-WS_DLL_PUBLIC dissector_handle_t create_dissector_handle(dissector_t dissector,
-    const int proto);
-
-/** Create an named, unregistered dissector handle.
- * A non-NULL name is needed for dissector_add_for_decode_add_with_preference().
- *
- * @param dissector The dissector the handle will call
- * @param proto The value obtained when registering the protocol
- * @param name a short, machine-friendly name for the dissector. Does not have
- * to be globally unique, but should be unique for any table the handle will be
- * registered to. Can be NULL, which creates an anonymous dissector.
- *
- * @note The protocol short name will be used as the user-visible description.
- */
-WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_name(dissector_t dissector,
-    const int proto, const char* name);
-
-/** Create an named, unregistered handle dissector handle with a description.
- * A non-NULL name is needed for dissector_add_for_decode_add_with_preference().
- * The description is used to allow a user to distinguish dissectors for the
- * same protocol, e.g. when registered to the same table.
- *
- * @param dissector The dissector the handle will call
- * @param proto The value obtained when registering the protocol
- * @param name a short, machine-friendly name for the dissector. Does not have
- * to be globally unique, but should be unique for any table the handle will be
- * registered to. Can be NULL, which creates an anonymous dissector.
- * @param description Freeform text designed to be shown to a user. Must be
- * unique for any table the dissector is registered in. Can be NULL, in which
- * case the protocol short name is used as the user-visible description.
- */
-WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_name_and_description(dissector_t dissector,
-    const int proto, const char* name, const char* description);
-WS_DLL_PUBLIC dissector_handle_t create_dissector_handle_with_data(dissector_cb_t dissector,
-    const int proto, void* cb_data);
-
-/* Dump all registered dissectors to the standard output */
-WS_DLL_PUBLIC void dissector_dump_dissectors(void);
-
-/** Call a dissector through a handle and if no dissector was found
- * pass it over to the "data" dissector instead.
- *
- *   @param handle The dissector to call.
- *   @param  tvb The buffer to dissect.
- *   @param  pinfo Packet Info.
- *   @param  tree The protocol tree.
- *   @param  data parameter to pass to dissector
- *   @return  If the protocol for that handle isn't enabled call the data
- *   dissector. Otherwise, if the handle refers to a new-style
- *   dissector, call the dissector and return its return value, otherwise call
- *   it and return the length of the tvbuff pointed to by the argument.
- */
-WS_DLL_PUBLIC int call_dissector_with_data(dissector_handle_t handle, tvbuff_t *tvb,
-    packet_info *pinfo, proto_tree *tree, void *data);
-WS_DLL_PUBLIC int call_dissector(dissector_handle_t handle, tvbuff_t *tvb,
-    packet_info *pinfo, proto_tree *tree);
-
-WS_DLL_PUBLIC int call_data_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-
-/** Call a dissector through a handle but if no dissector was found
- * just return 0 and do not call the "data" dissector instead.
- *
- *   @param handle The dissector to call.
- *   @param  tvb The buffer to dissect.
- *   @param  pinfo Packet Info.
- *   @param  tree The protocol tree.
- *   @param  data parameter to pass to dissector
- *   @return  If the protocol for that handle isn't enabled, return 0 without
- *   calling the dissector. Otherwise, if the handle refers to a new-style
- *   dissector, call the dissector and return its return value, otherwise call
- *   it and return the length of the tvbuff pointed to by the argument.
- */
-WS_DLL_PUBLIC int call_dissector_only(dissector_handle_t handle, tvbuff_t *tvb,
-    packet_info *pinfo, proto_tree *tree, void *data);
-
-/**
- *   @param heur_dtbl_entry The heur_dtbl_entry of the dissector to call.
- *   @param  tvb The buffer to dissect.
- *   @param  pinfo Packet Info.
- *   @param  tree The protocol tree.
- *   @param  data parameter to pass to dissector
- */
-
-WS_DLL_PUBLIC void call_heur_dissector_direct(heur_dtbl_entry_t *heur_dtbl_entry, tvbuff_t *tvb,
-    packet_info *pinfo, proto_tree *tree, void *data);
-
-/* This is opaque outside of "packet.c". */
-struct depend_dissector_list;
-typedef struct depend_dissector_list *depend_dissector_list_t;
-
-/** Register a protocol dependency
- * This is done automatically when registering with a dissector or
- * heuristic table.  This is for "manual" registration when a dissector
- * ends up calling another through call_dissector (or similar) so
- * dependencies can be determined
- *
- *   @param parent "Parent" protocol short name
- *   @param dependent "Dependent" protocol short name
- *   @return  return true if dependency was successfully registered
- */
-WS_DLL_PUBLIC bool register_depend_dissector(const char* parent, const char* dependent);
-
-/** Unregister a protocol dependency
- * This is done automatically when removing from a dissector or
- * heuristic table.  This is for "manual" deregistration for things
- * like Lua.
- *
- *   @param parent "Parent" protocol short name
- *   @param dependent "Dependent" protocol short name
- *   @return  return true if dependency was successfully unregistered
- */
-WS_DLL_PUBLIC bool deregister_depend_dissector(const char* parent, const char* dependent);
-
-/** Find the list of protocol dependencies
- *
- *   @param name Protocol short name to search for
- *   @return  return list of dependent was successfully registered
- */
-WS_DLL_PUBLIC depend_dissector_list_t find_depend_dissector_list(const char* name);
-
-/*
- * Given a tvbuff, and a length from a packet header, adjust the length
- * of the tvbuff to reflect the specified length.
- */
-WS_DLL_PUBLIC void set_actual_length(tvbuff_t *tvb, const unsigned specified_len);
-
-/**
- * Allow protocols to register "init" routines, which are called before
- * we make a pass through a capture file and dissect all its packets
- * (e.g., when we read in a new capture file, or run a "filter packets"
- * or "colorize packets" pass over the current capture file or when the
- * preferences are changed).
- */
-WS_DLL_PUBLIC void register_init_routine(void (*func)(void));
-
-/**
- * Allows protocols to register "cleanup" routines, which are called
- * after closing a capture file (or when preferences are changed, in
- * that case these routines are called before the init routines are
- * executed). It can be used to release resources that are allocated in
- * an "init" routine.
- */
-WS_DLL_PUBLIC void register_cleanup_routine(void (*func)(void));
-
-/*
- * Allows protocols to register "shutdown" routines, which are called
- * once, just before program exit
- */
-WS_DLL_PUBLIC void register_shutdown_routine(void (*func)(void));
-
-/* Initialize all data structures used for dissection. */
-void init_dissection(void);
-
-/* Free data structures allocated for dissection. */
-void cleanup_dissection(void);
-
-/* Allow protocols to register a "cleanup" routine to be
- * run after the initial sequential run through the packets.
- * Note that the file can still be open after this; this is not
- * the final cleanup. */
-WS_DLL_PUBLIC void register_postseq_cleanup_routine(void (*func)(void));
-
-/* Call all the registered "postseq_cleanup" routines. */
-WS_DLL_PUBLIC void postseq_cleanup_all_protocols(void);
-
-/* Allow dissectors to register a "final_registration" routine
- * that is run like the proto_register_XXX() routine, but the end
- * end of the epan_init() function; that is, *after* all other
- * subsystems, liked dfilters, have finished initializing. This is
- * useful for dissector registration routines which need to compile
- * display filters. dfilters can't initialize itself until all protocols
- * have registered themselves. */
-WS_DLL_PUBLIC void
-register_final_registration_routine(void (*func)(void));
-
-/* Call all the registered "final_registration" routines. */
-extern void
-final_registration_all_protocols(void);
-
-// XXX Should we move frame_data.encoding here?
-typedef enum {
-    DS_MEDIA_TYPE_APPLICATION_OCTET_STREAM,
-    DS_MEDIA_TYPE_APPLICATION_JSON,
-} data_source_media_type_e;
-
-struct data_source;
-
-/**
- * Add a new data source to the list of data sources for a frame, given
- * the tvbuff for the data source and its name. The media type will be
- * set to DS_MEDIA_TYPE_APPLICATION_OCTET_STREAM.
- * @param pinfo Packet info.
- * @param tvb The tvbuff to associate with the data source.
- * @param name A display-freindly name of the data source.
- * @return An opaque pointer to the data source.
- */
-WS_DLL_PUBLIC struct data_source* add_new_data_source(packet_info *pinfo, tvbuff_t *tvb,
-    const char *name);
-
-/**
- * Set the name for the data source.
- * @param pinfo pinfo from whose pool to allocate a copy of the data source
- * @param src The data source.
- * @param name new name for the data source
- */
-WS_DLL_PUBLIC void set_data_source_name(packet_info *pinfo, struct data_source *src, const char *name);
-
-/**
- * Set the media type for the data source. This will be used as a hint
- * to display the source's tvbuff.
- * @param src The data source.
- * @param media_type A valid media type.
- */
-WS_DLL_PUBLIC void set_data_source_media_type(struct data_source *src, data_source_media_type_e media_type);
-
-/* Removes the last-added data source, if it turns out it wasn't needed */
-WS_DLL_PUBLIC void remove_last_data_source(packet_info *pinfo);
-
-/*
- * Return the data source description.
- */
-WS_DLL_PUBLIC char *get_data_source_description(const struct data_source *src);
-
-/*
- * Return the tvb for the data source.
- */
-WS_DLL_PUBLIC tvbuff_t *get_data_source_tvb(const struct data_source *src);
-
-/**
- * Find and return data source with the given name.
- * @param pinfo packet_info for the packet whose data sources are to be searched
- * @param name name of the data source
- * @return the data source or NULL if not found
- */
-WS_DLL_PUBLIC struct data_source *get_data_source_by_name(const packet_info *pinfo, const char *name);
-
-/**
- * Find and return data source with the given tvb.
- * @param pinfo packet_info for the packet whose data sources are to be searched
- * @param tvb tvb of the data source
- * @return the data source or NULL if not found
- */
-WS_DLL_PUBLIC struct data_source *get_data_source_by_tvb(const packet_info *pinfo, const tvbuff_t *tvb);
-
-/**
- * Get a data source's media type.
- * @param src The data source.
- * @return A media type.
- */
-WS_DLL_PUBLIC data_source_media_type_e get_data_source_media_type(const struct data_source *src);
-
-/*
- * Free up a frame's list of data sources.
- */
-extern void free_data_sources(packet_info *pinfo);
-
-/* Mark another frame as depended upon by the current frame.
- *
- * This information is used to ensure that the depended-upon frame is saved
- * if the user does a File->Save-As of only the Displayed packets and the
- * current frame passed the display filter.
- */
-WS_DLL_PUBLIC void mark_frame_as_depended_upon(frame_data *fd, uint32_t frame_num);
-
-/* Structure passed to the frame dissector */
-typedef struct frame_data_s
-{
-    int file_type_subtype;
-    /*
-     * This might be the block from the packet's wtap_rec or it might
-     * be a modified copy of that, as, for example, the comments
-     * might have been edited but not yet saved to the file.
-     */
-    wtap_block_t pkt_block;         /**< NULL if not available */
-    struct epan_dissect *color_edt; /** Used strictly for "coloring rules" */
-
-} frame_data_t;
-
-/* Structure passed to the file dissector */
-typedef struct file_data_s
-{
-    wtap_block_t pkt_block;         /**< NULL if not available */
-    struct epan_dissect *color_edt; /** Used strictly for "coloring rules" */
-
-} file_data_t;
-
-/*
- * Dissectors should never modify the record data.
- */
-extern void dissect_record(struct epan_dissect *edt, int file_type_subtype,
-    wtap_rec *rec, frame_data *fd, column_info *cinfo);
-
-/*
- * Dissectors should never modify the file data.
- */
-extern void dissect_file(struct epan_dissect *edt,
-    wtap_rec *rec, frame_data *fd, column_info *cinfo);
-
-/* Structure passed to the ethertype dissector */
-typedef struct ethertype_data_s
-{
-    uint16_t etype;
-    int payload_offset;
-    proto_tree *fh_tree;
-    int trailer_id;
-    int fcs_len;
-} ethertype_data_t;
-
-/*
- * Dump layer/selector/dissector records in a fashion similar to the
- * proto_registrar_dump_* routines.
- */
-WS_DLL_PUBLIC void dissector_dump_decodes(void);
-
-/*
- * For each heuristic dissector table, dump list of dissectors (filter_names) for that table
- */
-WS_DLL_PUBLIC void dissector_dump_heur_decodes(void);
-
-/*
- * postdissectors are to be called by packet-frame.c after every other
- * dissector has been called.
- */
-
-/*
- * Register a postdissector; the argument is the dissector handle for it.
- */
-WS_DLL_PUBLIC void register_postdissector(dissector_handle_t handle);
-
-/*
- * Specify a set of hfids that the postdissector will need on the first pass.
- * This ensures that the fields will not be faked, and can be retrieved with
- * proto_get_finfo_ptr_array.
- *
- * @note There is no way to guarantee that fields added by other postdissectors
- * will be available. (Issue #19804) This is for postdissectors that examine
- * fields added by other dissectors on the first linear pass, and then store
- * their own results in persistent memory for retrieval and adding in later
- * passes. Postdissectors that need field values on later passes should call
- * something else, like epan_set_always_visible() (which slows dissection.)
- *
- * @param handle The dissector handle used to register the postdissector.
- * @param wanted_hfids An array of hfids (type int), which should be NULL to
- * clear the list. This function will take ownership of the array.
- */
-WS_DLL_PUBLIC void set_postdissector_wanted_hfids(dissector_handle_t handle,
-    GArray *wanted_hfids);
-
-/*
- * Deregister a postdissector.  Not for use in (post)dissectors or
- * applications; only to be used by libwireshark itself.
- */
-void deregister_postdissector(dissector_handle_t handle);
-
-/*
- * Return true if we have at least one postdissector, false if not.
- * Not for use in (post)dissectors or applications; only to be used
- * by libwireshark itself.
- */
-extern bool have_postdissector(void);
-
-/*
- * Call all postdissectors, handing them the supplied arguments.
- * Not for use in (post)dissectors or applications; only to be used
- * by libwireshark itself.
- */
-extern void call_all_postdissectors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-
-/*
- * Return true if at least one postdissector needs at least one hfid,
- * false otherwise.
- */
-WS_DLL_PUBLIC bool postdissectors_want_hfids(void);
-
-/*
- * Prime an epan_dissect_t with all the hfids wanted by postdissectors
- * on the first pass. Not for use in (post)dissectors or applications;
- * only to be used by libwireshark itself, which will call this automatically
- * when dissecting a frame that has not been visited yet.
- */
-extern void
-prime_epan_dissect_with_postdissector_wanted_hfids(epan_dissect_t *edt);
-
-/** Increment the dissection depth.
- * This should be used to limit recursion outside the tree depth checks in
- * call_dissector and dissector_try_heuristic.
- * @param pinfo Packet Info.
- */
-
-WS_DLL_PUBLIC void increment_dissection_depth(packet_info *pinfo);
-
-/** Decrement the dissection depth.
- * @param pinfo Packet Info.
- */
-
-WS_DLL_PUBLIC void decrement_dissection_depth(packet_info *pinfo);
-
-/** @} */
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#endif /* packet.h */
 /* End embedded header */
 
 /* Begin epan/asn1.h */
