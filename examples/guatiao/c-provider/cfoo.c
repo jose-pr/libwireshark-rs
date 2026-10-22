@@ -3,10 +3,12 @@
  * FOO; the `ctap` tap listener, counting frames; and the `c_double`
  * display-filter function. libwireshark-guatiao loads this library and
  * registers what it describes. It links nothing: the tables come from
- * libwireshark_api.h, the value types from guatiao.h. Its description and
- * its bindings are literal trees, which record no allocator: guatiao.h's
- * rule for an answer built anywhere but the carrier's allocator is that
- * the caller copies it, and this host does before using it.
+ * libwireshark_api.h, the value types from guatiao.h. Its answers are
+ * literal trees and buffers it owns, which record no allocator. guatiao.h
+ * asks a provider to build an answer in the allocator the carrier names;
+ * a Rust caller such as libwireshark-guatiao copies any answer as the call
+ * returns, which is what these rely on. A provider for other hosts builds
+ * through the carrier's `alloc`.
  *
  * The header is declared, not parsed: the host decodes it and adds its
  * fields, and `dissect` reads the decoded values by name.
@@ -258,9 +260,9 @@ static guatiao_status double_describe(void *ctx, guatiao_map *out, guatiao_provi
   return GUATIAO_OK;
 }
 
-/* The answer's digits: the host copies them before the next call, which
- * comes from the same thread. */
-static char doubled[24];
+/* The answer's digits, per thread: the host copies them as the call
+ * returns. */
+static _Thread_local char doubled[24];
 
 /* Twice an integer field's value; null (no answer) for anything else. */
 static guatiao_status double_call(void *ctx, const guatiao_value *value, guatiao_value *out,
@@ -275,7 +277,14 @@ static guatiao_status double_call(void *ctx, const guatiao_value *value, guatiao
   }
   char digits[24] = {0};
   memcpy(digits, value->payload.number.ptr, value->payload.number.len);
-  int len = snprintf(doubled, sizeof(doubled), "%llu", strtoull(digits, NULL, 10) * 2);
+  if (digits[0] == '-') {
+    return GUATIAO_OK; /* a negative value: no answer */
+  }
+  unsigned long long number = strtoull(digits, NULL, 10);
+  if (number > 0xFFFFFFFFull / 2) {
+    return GUATIAO_OK; /* twice it is past a 32-bit count: no answer */
+  }
+  int len = snprintf(doubled, sizeof(doubled), "%llu", number * 2);
   out->tag = (uint32_t)GUATIAO_NUMBER;
   out->payload.number.ptr = (uint8_t *)doubled;
   out->payload.number.len = len > 0 ? (size_t)len : 0;

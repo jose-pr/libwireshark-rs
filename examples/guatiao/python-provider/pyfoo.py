@@ -139,6 +139,9 @@ class PyDouble(provide.Provider, FilterFunction):
         return value * 2 if isinstance(value, int) else None
 
 
+#: The most bytes of one record.
+MAX_CAPTURED = 262_144
+
 #: PYGCAP's first bytes.
 MAGIC = b"PYGCAP\0\x01"
 
@@ -152,7 +155,12 @@ class PygCapReader(CaptureReader):
         if header is None:
             return None
         time_ns, captured, original = struct.unpack("<QII", header)
-        return Record(file.read_exact(captured) or b"", time_ns=time_ns, original_len=original)
+        if captured > MAX_CAPTURED:
+            raise ValueError(f"pygcap: a record of {captured} bytes")
+        data = file.read_exact(captured) if captured else b""
+        if data is None:
+            raise EOFError("pygcap: a record without its bytes")
+        return Record(data, time_ns=time_ns, original_len=original)
 
 
 class PygCap(provide.Provider, FileType):

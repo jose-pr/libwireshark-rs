@@ -31,18 +31,23 @@ release line like any `libwireshark` plugin; installed in `epan/`.
 
 - Each provider of `wireshark_tap`, `wireshark_filter_function`,
   `wireshark_file_type` and `wireshark_codec` is described once and
-  registered through `libwireshark::dynamic` (32 of each kind at most).
+  registered through `libwireshark::dynamic` (32 filter functions, file
+  types and codecs at most; taps have no limit).
   Names are checked (`[a-z][a-z0-9...]`: taps also `_.-`, functions and
   formats `_`); a name another provider of the kind took is skipped.
 - Tap: each `-z` invocation `open`s a listener; a packet crosses as a
-  `TapPacket` map; a refused call is reported once per invocation; a
-  refused `open` leaves an invocation that reports nothing.
+  `TapPacket` map; a refused `packet` or `reset` is reported once per
+  invocation, a refused `draw` when it happens; a refused `open` leaves an
+  invocation that reports nothing.
 - Filter function: an integer field's value crosses as a number, any
-  other as its display text; an answer of the wrong kind is no answer.
+  other as its display text; an answer of the wrong kind is no answer, and
+  a refused call is no answer, reported once per function.
 - File type (4.6 on): `open` and `read` get a `CaptureSource` lent for the
-  call over Wireshark's file (from another thread it reads nothing);
-  `NOT_FOUND` from `open` means another format, any other refusal a read
-  error. Registered from `epan/`, the format serves the programs that
+  call over Wireshark's file (from another thread `read` and `position`
+  answer -1, an error); `NOT_FOUND` from `open` means another format, any
+  other refusal is reported and counts as another format too (an error
+  would stop Wireshark trying the formats after it); a refused `read` is a
+  read error. Registered from `epan/`, the format serves the programs that
   dissect, not the wiretap-only tools.
 - Codec: a decoder per stream (`open` with its `StreamFormat`); samples
   cross as little-endian bytes. sharkd and Wireshark register codecs, tshark
