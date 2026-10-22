@@ -201,15 +201,13 @@ impl Plugin {
         const CODEC: u32 = 1 << 2;
         const TAP_LISTENER: u32 = 1 << 4;
         const DFILTER: u32 = 1 << 5;
-        // Wireshark registers a plugin before describing it; before that, a
-        // builder counts as a dissector.
         let built = self.built();
         let dynamic = |count: fn(&Built) -> usize| built.map_or(0, count);
-        let protocols = built.map_or(usize::from(self.dynamic.is_some()), |built| {
-            built.protocols.len()
-        });
-        [
-            (self.protocols.len() + protocols, DISSECTOR),
+        let flags = [
+            (
+                self.protocols.len() + dynamic(|built| built.protocols.len()),
+                DISSECTOR,
+            ),
             (
                 self.file_types.len() + dynamic(|built| built.file_types.len()),
                 FILE_TYPE,
@@ -229,7 +227,14 @@ impl Plugin {
         ]
         .into_iter()
         .filter(|&(count, _)| count > 0)
-        .fold(0, |flags, (_, flag)| flags | flag)
+        .fold(0, |flags, (_, flag)| flags | flag);
+        // A builder that registered nothing (or has not run) still makes a
+        // dissector plugin, the kind it is installed as.
+        if flags == 0 && self.dynamic.is_some() {
+            DISSECTOR
+        } else {
+            flags
+        }
     }
 
     /// `plugin_register`: hands Wireshark the table of each interface the
