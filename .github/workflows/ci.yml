@@ -1,0 +1,27 @@
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: ["1.89.0", stable]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Resolve workspace metadata
+        run: cargo metadata --format-version 1 --no-deps
+      - name: Build standalone tooling
+        run: cargo build -p cargo-wireshark
+      - name: Check optional plugin macro
+        run: cargo check -p libwireshark-macros

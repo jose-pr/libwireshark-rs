@@ -1,6 +1,20 @@
+/.*
+!/.gitignore
+!/.gitattributes
+!/.github/
+.agents
+*.local.*
+CLAUDE*
+.claude
+
+/target/
 /wireshark-src
-/target
-/.vscode/c_cpp_properties.json
-/Cargo.lock
-/foo_dissector/Cargo.lock
 /libwireshark-dev
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated header bundles live on the `headers` branch.
+/crates/libwireshark-sys/headers/
