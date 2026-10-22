@@ -25,7 +25,7 @@ from libwireshark import (
     Table,
     TypedPacket,
 )
-from libwireshark.kinds import Dissector, Packet
+from libwireshark.kinds import Dissector, Engine, Packet, Session
 
 HEADER_FILE = (
     Path(__file__).resolve().parents[3] / "crates" / "libwireshark-api" / "include" / "libwireshark_api.h"
@@ -206,6 +206,8 @@ def test_the_kind_classes_carry_the_c_headers_hashes() -> None:
     for kind, table in (
         (Dissector, "wireshark_dissector_vtable"),
         (Packet, "wireshark_packet_vtable"),
+        (Engine, "wireshark_engine_vtable"),
+        (Session, "wireshark_session_vtable"),
     ):
         hash_ = int(re.search(rf"#define {table}_FLOOR_HASH (\d+)", header).group(1))  # type: ignore[union-attr]
         assert kind.kind.floor_hash == hash_, table

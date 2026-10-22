@@ -11,6 +11,9 @@ which loads providers and registers what they describe with Wireshark.
 - `Packet` (`wireshark_packet`): one packet, lent by the host for a call:
   fields, columns, expert findings.
 - `Description` and the types it holds: the shape `describe` answers.
+- `engine::Engine` and `engine::Session` (`wireshark_engine`,
+  `wireshark_session`): the other direction, which `libwireshark-engine`
+  provides — a host opens Wireshark's engine and dissects with it.
 
 A protocol is written in each language as `libwireshark`'s `Dissector` is
 in Rust: its **header** is a struct, laid out field by field, which the

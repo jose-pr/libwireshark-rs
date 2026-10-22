@@ -22,15 +22,21 @@ header = """
  * kind=wireshark_dissector. The host lends a wireshark_packet object for
  * each dissect call: call its slots during the call, never keep it, never
  * call its destroy. dissect's conversation map is lent too.
+ *
+ * wireshark_engine and wireshark_session go the other way: the
+ * libwireshark-engine library provides them, and a host opens a session
+ * to dissect frames and read captures with Wireshark itself.
  */
 """
 
 [export]
-include = ["DissectorVtable", "PacketVtable"]
+include = ["DissectorVtable", "PacketVtable", "EngineVtable", "SessionVtable"]
 
 [export.rename]
 "DissectorVtable" = "wireshark_dissector_vtable"
 "PacketVtable" = "wireshark_packet_vtable"
+"EngineVtable" = "wireshark_engine_vtable"
+"SessionVtable" = "wireshark_session_vtable"
 
 [parse]
 parse_deps = false

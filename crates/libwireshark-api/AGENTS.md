@@ -45,6 +45,8 @@ pub trait Packet: Send {
 | --- | --- |
 | `wireshark_dissector` | 1003939949 |
 | `wireshark_packet` | 2387250941 |
+| `wireshark_engine` | 2496675255 |
+| `wireshark_session` | 1680421174 |
 
 - `describe` is asked once, when the host loads the provider.
 - `dissect_on` is asked when the protocol is handed off and whenever
@@ -69,6 +71,28 @@ pub trait Packet: Send {
   `dissect` sees whole messages. Answer the length including the header;
   with -1, or less than the header, the rest of the segment is handed to
   `dissect` as one message.
+
+### The other direction: Wireshark as a provider (`engine`)
+
+```rust
+#[guatiao::kind(name = "wireshark_engine")]
+pub trait Engine: Send + Sync {
+    fn open(&self, config: &Map) -> Result<Object<dyn Session>, ProviderError>; // EngineConfig
+}
+#[guatiao::kind(object, name = "wireshark_session")]                    // owned by the opener
+pub trait Session: Send {
+    fn dissect(&mut self, data: &[u8], encapsulation: i64, time_ns: i64) -> Result<Map, ProviderError>; // Dissected
+    fn open_file(&mut self, path: &str, display_filter: &str) -> Result<(), ProviderError>;          // "" = all
+    fn next(&mut self) -> Result<Map, ProviderError>;                    // Dissected; {} at the end
+}
+```
+
+`libwireshark-engine` provides these; a host opens a session to dissect
+with Wireshark itself. Models in `libwireshark_api::engine`:
+`EngineConfig { plugins, skip_installed_plugins, config_dir, preferences }`,
+`Dissected { frame, columns: [Column { title, text }], tree: [Node] }`,
+`Node { abbrev, name, label, value?, offset, length, hidden, generated,
+children }`, with `Dissected::{to_map, from_map, get, all}`.
 
 ## The description (`Description`)
 

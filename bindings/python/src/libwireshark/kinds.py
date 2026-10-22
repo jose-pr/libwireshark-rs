@@ -5,12 +5,13 @@ the table (the repository's tests compare them).
 
 A dissector usually subclasses `libwireshark.ProtocolDissector`, which
 implements `Dissector` from typed classes; the host lends a `Packet` to
-`dissect`.
+`dissect`. `Engine` and `Session` go the other way: the libwireshark-engine
+library provides them, and `libwireshark.Engine` drives them.
 """
 
 from __future__ import annotations
 
-__all__ = ["Dissector", "Packet"]
+__all__ = ["Dissector", "Engine", "Packet", "Session"]
 
 from typing import Protocol
 
@@ -111,3 +112,45 @@ class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1
     ) -> I64: ...
 
     def message_len(self, header: bytes) -> I64: ...
+
+
+class Session(
+    KindProtocol,
+    Protocol,
+    kind="wireshark_session",
+    floor_hash=1680421174,
+    is_object=True,
+):
+    """`wireshark_session_vtable`: an open engine, owned by whoever opened it.
+
+    `dissect` answers one frame (the crate's `Dissected` map) of a
+    `WTAP_ENCAP_*` link type captured `time_ns` after the Unix epoch;
+    `open_file` opens a capture for `next`, keeping the frames that match
+    the display filter (all when empty); `next` answers the next one, an
+    empty map at the end.
+    """
+
+    @required
+    @fallible
+    def dissect(self, data: bytes, encapsulation: I64, time_ns: I64) -> MapAnswer: ...
+
+    @required
+    @fallible
+    def open_file(self, path: str, display_filter: str) -> None: ...
+
+    @required
+    @fallible
+    def next(self) -> MapAnswer: ...
+
+
+class Engine(KindProtocol, Protocol, kind="wireshark_engine", floor_hash=2496675255):
+    """`wireshark_engine_vtable`: starts Wireshark in the calling process.
+
+    `open` takes the crate's `EngineConfig` map (`plugins`,
+    `skip_installed_plugins`, `config_dir`, `preferences`) and answers the
+    session; one may be open at a time.
+    """
+
+    @required
+    @fallible
+    def open(self, config: Map) -> Session: ...

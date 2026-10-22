@@ -8,6 +8,7 @@ extern crate alloc;
 /// through this path so both sides use one copy.
 pub use guatiao;
 
+pub mod engine;
 mod model;
 mod typed;
 

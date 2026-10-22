@@ -1,6 +1,7 @@
 //! The contract a built provider depends on: the kinds' hashes, the C
 //! header, the Python classes, and the description's encoding.
 
+use libwireshark_api::engine::{Engine, Session};
 use libwireshark_api::guatiao::library::Kind;
 use libwireshark_api::guatiao::{FromValue, Map, Schema, ToValue};
 use libwireshark_api::{
@@ -12,6 +13,8 @@ use libwireshark_api::{
 /// that means to.
 const DISSECTOR_FLOOR_HASH: u32 = 1_003_939_949;
 const PACKET_FLOOR_HASH: u32 = 2_387_250_941;
+const ENGINE_FLOOR_HASH: u32 = 2_496_675_255;
+const SESSION_FLOOR_HASH: u32 = 1_680_421_174;
 
 fn floor_hash<K: Kind + ?Sized>() -> u32 {
     K::FLOOR_HASH
@@ -23,6 +26,10 @@ fn the_kinds_hashes_are_pinned() {
     assert_eq!(floor_hash::<dyn Packet>(), PACKET_FLOOR_HASH);
     assert_eq!(<dyn Dissector as Kind>::NAME, "wireshark_dissector");
     assert_eq!(<dyn Packet as Kind>::NAME, "wireshark_packet");
+    assert_eq!(floor_hash::<dyn Engine>(), ENGINE_FLOOR_HASH);
+    assert_eq!(floor_hash::<dyn Session>(), SESSION_FLOOR_HASH);
+    assert_eq!(<dyn Engine as Kind>::NAME, "wireshark_engine");
+    assert_eq!(<dyn Session as Kind>::NAME, "wireshark_session");
 }
 
 fn shipped(path: &str) -> String {
@@ -44,6 +51,16 @@ fn the_c_header_and_the_python_classes_carry_the_same_hashes() {
             "wireshark_packet_vtable",
             "wireshark_packet",
             PACKET_FLOOR_HASH,
+        ),
+        (
+            "wireshark_engine_vtable",
+            "wireshark_engine",
+            ENGINE_FLOOR_HASH,
+        ),
+        (
+            "wireshark_session_vtable",
+            "wireshark_session",
+            SESSION_FLOOR_HASH,
         ),
     ] {
         assert!(
