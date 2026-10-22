@@ -302,7 +302,7 @@ fn create_import_library(library: &Path, output_dir: &Path, architecture: &str) 
         .find_map(|line| line.trim().strip_prefix("Arch:").map(str::trim));
     let (expected, machine) = match architecture {
         "aarch64" => ("aarch64", "arm64"),
-        "x86_64" => ("x86_64", "x64"),
+        "x86_64" => ("x86_64", "i386:x86-64"),
         "x86" => ("i386", "i386"),
         other => panic!("cannot create a Wireshark import library for target architecture {other}"),
     };
@@ -328,17 +328,21 @@ fn create_import_library(library: &Path, output_dir: &Path, architecture: &str) 
         contents.push_str(&format!("{name} @{ordinal}\n"));
     }
     std::fs::write(&definition, contents).expect("write the Wireshark DLL export definition");
-    let status = Command::new("llvm-dlltool")
+    let result = Command::new("llvm-dlltool")
         .args(["-m", machine, "-D"])
         .arg(library.file_name().expect("DLL has a file name"))
         .arg("-d")
         .arg(&definition)
         .arg("-l")
         .arg(&output_library)
-        .status()
+        .output()
         .unwrap_or_else(|error| panic!("could not run llvm-dlltool: {error}"));
-    if !status.success() || !output_library.is_file() {
-        panic!("llvm-dlltool failed to create {}", output_library.display());
+    if !result.status.success() || !output_library.is_file() {
+        panic!(
+            "llvm-dlltool failed to create {}: {}",
+            output_library.display(),
+            String::from_utf8_lossy(&result.stderr).trim()
+        );
     }
     output_library
 }

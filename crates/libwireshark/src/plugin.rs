@@ -419,6 +419,8 @@ fn header_field_info(
     field
 }
 
+// bindgen types C enums as i32 on Windows and u32 elsewhere.
+#[allow(clippy::unnecessary_cast)]
 fn field_type(kind: FieldType) -> u32 {
     (match kind {
         FieldType::U8 => sys::ftenum_FT_UINT8,
@@ -441,6 +443,8 @@ fn field_type(kind: FieldType) -> u32 {
     }) as u32
 }
 
+// bindgen types C enums as i32 on Windows and u32 elsewhere.
+#[allow(clippy::unnecessary_cast)]
 fn base(base: Base) -> u32 {
     (match base {
         Base::None => sys::field_display_e_BASE_NONE,
