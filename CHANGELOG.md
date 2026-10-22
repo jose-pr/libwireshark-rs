@@ -26,6 +26,14 @@ First release of the crates under these names.
 - Accepted packets set the Protocol column and add the protocol's tree item,
   so protocol display filters match; plugins report themselves as
   dissectors.
-- Two example plugins, and a test that loads them in tshark.
+- Heuristic dissectors and post-dissectors (`Binding::heuristic`,
+  `Binding::postdissector`), TCP message reassembly (`TcpFraming`),
+  per-conversation state (`PacketView::with_conversation`), expert info
+  (`Dissector::EXPERTS`, `PacketView::add_expert`), named values
+  (`FieldInfo::with_values`, `#[header(values = ...)]`) and `bool`,
+  byte-array, MAC and IP address fields in `#[derive(Header)]`.
+- A protocol whose names Wireshark already has is skipped instead of
+  aborting Wireshark.
+- Three example plugins, and tests that load them in tshark.
 
 [Unreleased]: https://github.com/jose-pr/libwireshark-rs/commits/master

@@ -22,8 +22,9 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
 
 The [examples](examples) are plugins: `basic-dissector` (one protocol with
-fields and a port preference) and `multi-protocol` (two protocols in one
-library).
+fields and a port preference), `multi-protocol` (two protocols in one
+library) and `stream-protocol` (TCP reassembly, conversation state, named
+values and expert findings; a heuristic dissector; a post-dissector).
 
 ## Installation
 

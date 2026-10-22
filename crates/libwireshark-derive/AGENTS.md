@@ -27,6 +27,7 @@ as a direct dependency" when it has none.
 ## Errors
 
 Compile errors, spanned at the offending item: a tuple struct, an enum, a
-`Header` field that is not `u8 u16 u32 u64 i8 i16 i32 i64`, an unknown
-attribute key, a `display`/`endian` value outside its set, a `base` other
-than 8, 10 or 16.
+`Header` field that is not `u8 u16 u32 u64 i8 i16 i32 i64 bool [u8; N]
+Ipv4Addr Ipv6Addr`, an unknown attribute key, a `display`/`endian`/`kind`
+value outside its set, `kind = "ether"` on anything but `[u8; 6]`, `values`
+on anything but an integer of up to 32 bits, a `base` other than 8, 10 or 16.

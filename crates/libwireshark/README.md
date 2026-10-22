@@ -13,13 +13,16 @@ the [API documentation](https://docs.rs/libwireshark).
 
 ## Features
 
-- `Dissector`: a protocol's names, the dissector tables it is attached to
-  (recomputed whenever preferences change), and the function that decodes
-  one packet.
+- `Dissector`: a protocol's names, where Wireshark hands it packets (port
+  and other table entries, heuristic lists, post-dissection; recomputed
+  whenever preferences change), and the function that decodes one packet.
+- TCP reassembly from a length prefix (`TcpFraming`), per-conversation
+  state, and expert findings (`Expert`, `PacketView::add_expert`).
 - `PacketView`: the captured bytes as a `&[u8]`, endian-aware integer reads,
   the Info column, and checked insertion of registered fields.
 - `#[derive(Header)]`: display-filter fields from a struct of integers,
-  added to the protocol tree for you, plus a generated `decode(&[u8])`.
+  flags, byte arrays and addresses, named values, added to the protocol tree
+  for you, plus a generated `decode(&[u8])`.
 - `#[derive(Preferences)]`: protocol preferences from a struct; the dissector
   receives the current values as that struct.
 - `plugin!`: exports what Wireshark's loader reads, for one or more
@@ -139,7 +142,8 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 
 | Item | Purpose |
 | --- | --- |
-| `Dissector`, `DissectResult`, `Binding` | a protocol, an accepted packet, a dissector-table entry |
+| `Dissector`, `DissectResult`, `Binding`, `TcpFraming` | a protocol, an accepted packet, where it gets packets, TCP message framing |
+| `Expert`, `ExpertGroup`, `Severity` | expert findings |
 | `PacketView`, `Encoding`, `PacketFieldError` | one packet during dissection |
 | `Header`, `FieldInfo`, `FieldType`, `Base`, `NoHeader` | registered fields |
 | `prefs` (`Preferences`, `PreferenceValue`, `Declaration`, `Value`) | protocol preferences |

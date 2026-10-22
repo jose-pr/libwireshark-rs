@@ -3,7 +3,7 @@
 `libwireshark-sys` is raw C: every function is `unsafe`. `libwireshark`
 wraps both sides of the boundary, Wireshark calling the plugin and the
 plugin calling Wireshark, so a plugin needs no `unsafe`. Its `unsafe`
-is in two files, `src/packet.rs` and `src/plugin.rs`; a test fails if any
+is in `src/packet.rs` and the `src/plugin/` module; a test fails if any
 other file gains some.
 
 ## Wireshark calling the plugin

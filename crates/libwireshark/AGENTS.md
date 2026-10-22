@@ -17,7 +17,7 @@ The root re-exports everything below except the `prefs` module's contents
 (the root has `prefs::Preferences` and `prefs::NoPreferences`). `sys` is
 `libwireshark-sys`. `__private` is for `plugin!` and the derives only.
 
-`unsafe` is confined to `src/packet.rs` and `src/plugin.rs`; a plugin written
+`unsafe` is confined to `src/packet.rs` and `src/plugin/`; a plugin written
 with this crate needs none.
 
 ## A plugin
@@ -48,16 +48,24 @@ pub trait Dissector: 'static {
     const NAME: &'static str;        // tree label
     const SHORT_NAME: &'static str;  // Protocol column
     const FILTER_NAME: &'static str; // display filter; prefix of fields and preferences
+    const EXPERTS: &'static [Expert] = &[];
     fn dissect_on(preferences: &Self::Preferences) -> Vec<Binding> { Vec::new() }
+    fn tcp_framing() -> Option<TcpFraming> { None }
     fn dissect(preferences: &Self::Preferences, packet: &mut PacketView<'_>)
         -> Option<DissectResult<Self::Header>>;
 }
 ```
 
 - `dissect_on` runs at load and every time Wireshark applies preferences;
-  entries no longer returned are removed, new ones added. Read the
+  bindings no longer returned are removed, new ones added. Read the
   preferences for a configurable port, or ignore them for a fixed one. The
   default attaches to nothing.
+- A protocol whose `NAME`, `SHORT_NAME` or `FILTER_NAME` Wireshark already
+  has (a protocol, or a preference module such as `stream`) is left out:
+  Wireshark would abort the process on the duplicate.
+- With `tcp_framing` returning `Some`, packets arriving over TCP are
+  reassembled and split into whole messages (`tcp_dissect_pdus`); `dissect`
+  then sees one message at a time, possibly several per frame.
 - `dissect` returns `None` to decline the packet. On `Some(result)` the
   runtime sets the Protocol column to `SHORT_NAME`, adds the protocol's tree
   item over `result.size` bytes, adds `result.header` (see `Header::add_to`)
@@ -81,10 +89,28 @@ impl Binding {
     pub const fn uint(table: &'static str, value: u32) -> Self; // "udp.port", "ethertype", ...
     pub const fn tcp_port(port: u16) -> Self;
     pub const fn udp_port(port: u16) -> Self;
-    pub const fn table(&self) -> &'static str;
-    pub const fn value(&self) -> u32;
+    pub const fn heuristic(list: &'static str) -> Self;         // "udp", "tcp", ...
+    pub const fn postdissector() -> Self;
+}
+
+pub struct TcpFraming; // Copy
+impl TcpFraming {
+    pub const fn new(header_len: usize, message_len: fn(&[u8]) -> Option<usize>) -> Self;
+    pub const fn header_len(&self) -> usize;
+    pub fn message_len(&self, header: &[u8]) -> Option<usize>;
 }
 ```
+
+- `heuristic(list)`: packets of that heuristic list no table claimed are
+  offered to `dissect`; `None` passes them on. Registered as
+  `<filter>_<list>`, enabled; users can turn it off in Enabled Protocols.
+- `postdissector()`: every frame, after all other dissection, with the whole
+  frame. The runtime leaves the Protocol column alone and appends the Info
+  text. Wireshark gives plugins no way to remove a post-dissector, so
+  dropping it from `dissect_on` turns it off rather than removing it.
+- `TcpFraming::new(header_len, message_len)`: `message_len` gets the first
+  `header_len` bytes of a message and returns its total length, header
+  included; `None` stops dissection of the rest of the segment.
 
 ## Packets (`PacketView<'packet>`)
 
@@ -101,6 +127,12 @@ fn src_port(&self) -> u32; fn dst_port(&self) -> u32; fn frame_number(&self) -> 
 fn set_info(&mut self, text: &str);               // replace the Info column
 fn append_info(&mut self, text: &str);
 fn has_tree(&self) -> bool;
+fn is_first_pass(&self) -> bool;                  // false when Wireshark dissects the packet again
+fn is_postdissector(&self) -> bool;
+fn with_conversation<T: Default + Send + 'static, R>(&mut self, f: impl FnOnce(&mut T) -> R)
+    -> Option<R>;                                 // per conversation, protocol and type
+fn add_expert(&mut self, name: &str) -> Result<(), PacketFieldError>;
+fn add_expert_text(&mut self, name: &str, text: &str) -> Result<(), PacketFieldError>;
 fn add_item(&mut self, field: &str, offset: usize, length: usize, encoding: Encoding)
     -> Result<(), PacketFieldError>;              // Wireshark decodes by the field's type
 fn add_uint(&mut self, field: &str, offset: usize, value: u32) -> Result<(), PacketFieldError>;   // U8..U32
@@ -117,6 +149,31 @@ fn add_header<H: Header>(&mut self, header: &H) -> Result<(), PacketFieldError>;
 - Text after an interior NUL is dropped from column text.
 - `Encoding`: `BIG_ENDIAN`, `LITTLE_ENDIAN`, `NA`, `ASCII`, `UTF_8`,
   `from_bits(u32)`, `bits()`, and `|`.
+- `with_conversation`: the conversation is Wireshark's (addresses and
+  ports). `T::default()` the first time; values are dropped when another
+  capture is opened. The value is taken out while `f` runs. Update state on
+  `is_first_pass()` only: Wireshark re-dissects packets.
+- `add_expert(name)` reports a finding declared in `Dissector::EXPERTS`
+  (`name` with or without the `<FILTER_NAME>.` prefix) on the protocol's
+  item; `add_expert_text` replaces its summary.
+
+## Expert info
+
+```rust
+pub struct Expert; // Copy
+impl Expert {
+    pub const fn new(abbrev: &'static str, group: ExpertGroup, severity: Severity,
+                     summary: &'static str) -> Self;
+    // getters: abbrev, group, severity, summary
+}
+#[non_exhaustive] pub enum Severity { Comment, Chat, Note, Warning, Error }
+#[non_exhaustive] pub enum ExpertGroup { Checksum, Sequence, ResponseCode, RequestCode,
+    Undecoded, Reassemble, Malformed, Debug, Protocol, Security, Comments, Decryption,
+    Assumption, Deprecated }
+```
+
+An expert's abbreviation is placed under the filter name like a field's, and
+is a display filter (`foo.bad_length`).
 
 ## Fields (`Header`)
 
@@ -133,7 +190,8 @@ impl FieldInfo {
     pub const fn with_base(self, base: Base) -> Self;      // default Base::Dec
     pub const fn with_bitmask(self, bitmask: u64) -> Self;
     pub const fn with_blurb(self, blurb: &'static str) -> Self;
-    // getters: name, abbrev, kind, base, bitmask, blurb
+    pub const fn with_values(self, values: &'static [(u32, &'static str)]) -> Self; // integers <= 32 bits
+    // getters: name, abbrev, kind, base, bitmask, blurb, values
 }
 #[non_exhaustive] pub enum FieldType { U8, U16, U24, U32, U64, I8, I16, I24, I32, I64,
     Bool, Bytes, String, Ipv4, Ipv6, Ether, None }  // FieldType::width() -> Option<usize>
@@ -144,14 +202,18 @@ An abbreviation not starting with `<FILTER_NAME>.` is registered under it:
 `version` in protocol `foo` is `foo.version`.
 
 `#[derive(Header)]` (feature `derive`) on a struct with named fields of
-`u8 u16 u32 u64 i8 i16 i32 i64`:
+`u8 u16 u32 u64 i8 i16 i32 i64` (inserted with the struct's value), or
+`bool` (one byte), `[u8; N]` (bytes; a MAC address with `kind = "ether"` on
+`[u8; 6]`), `Ipv4Addr`, `Ipv6Addr` (inserted by Wireshark from the packet
+bytes at the field's offset):
 
 ```rust
 #[derive(Header)]
 #[header(endian = "little")]        // optional; default "big"
 struct H {
     #[header(abbrev = "foo.ver", name = "Version", blurb = "...", display = "hex",
-             bitmask = 0xf0, offset = 0, endian = "big")]  // every key optional
+             bitmask = 0xf0, offset = 0, endian = "big",
+             values = KINDS)]  // every key optional; values: &[(u32, &str)]
     version: u8,
 }
 // generated besides the trait impl:
@@ -211,7 +273,11 @@ Both implement `Display` and `core::error::Error`.
 
 - A plugin loads only in the Wireshark release line (major.minor)
   `libwireshark-sys` was built against; build once per line.
-- Two protocols on the same table entry: the one attached last wins.
+- Two protocols on the same table entry: the one attached last wins, and
+  Wireshark's own plugins (`gryphon` on TCP 7000, for instance) attach after
+  yours. `tshark -G decodes` shows who holds an entry.
+- TCP and UDP offer a packet to the lower of its two ports first: a client
+  port another protocol claims (SAP NI's 40000) wins over your server port.
 - String preferences are allocated with GLib's `g_strdup` (Wireshark frees
   them); GLib is loaded at run time (`glib-2.0-0.dll`,
   `libglib-2.0.0.dylib`, `libglib-2.0.so.0`). If it cannot be loaded, string
