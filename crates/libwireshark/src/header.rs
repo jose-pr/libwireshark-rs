@@ -1,92 +1,202 @@
-use crate::bindings;
-use std::ffi::CString;
+//! The display-filter fields a protocol registers, and the decoded header
+//! value that fills them for one packet.
 
-/// Provides the registered display-filter fields for a protocol header.
+use crate::packet::{PacketFieldError, PacketView};
+
+/// A protocol's registered fields, and how a decoded value of this type is
+/// added to the protocol tree.
+///
+/// `#[derive(Header)]` (feature `derive`) writes both methods from a struct
+/// of integer fields.
 pub trait Header {
-    /// Returns field descriptors in registration order.
-    fn fields() -> &'static [HeaderFieldInfo];
+    /// The fields to register, in registration order.
+    fn fields() -> &'static [FieldInfo];
 
-    /// Adds the values in this decoded header to the current packet tree.
-    fn add_to(
-        &self,
-        packet: &mut crate::dissector::PacketView<'_>,
-    ) -> Result<(), crate::dissector::PacketFieldError>;
+    /// Adds this decoded value's fields to `packet`'s protocol tree.
+    ///
+    /// # Errors
+    ///
+    /// The first [`PacketFieldError`] an insertion returns.
+    fn add_to(&self, packet: &mut PacketView<'_>) -> Result<(), PacketFieldError>;
 }
 
-/// Header type for protocols without registered display-filter fields.
-#[derive(Clone, Copy, Debug, Default)]
+/// The header of a protocol that registers no fields.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct NoHeader;
 
 impl Header for NoHeader {
-    fn fields() -> &'static [HeaderFieldInfo] {
+    fn fields() -> &'static [FieldInfo] {
         &[]
     }
 
-    fn add_to(
-        &self,
-        _: &mut crate::dissector::PacketView<'_>,
-    ) -> Result<(), crate::dissector::PacketFieldError> {
+    fn add_to(&self, _: &mut PacketView<'_>) -> Result<(), PacketFieldError> {
         Ok(())
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct HeaderFieldInfo {
-    pub name: &'static str,
-    pub abbrev: &'static str,
-    pub type_: i32,
-    pub display: i32,
-    //strings
-    pub bitmask: u64,
-    pub blurb: &'static str,
-}
-/// Registers the fields for a protocol with Wireshark.
+/// One display-filter field: its label, filter name, type and display base.
 ///
-/// # Safety
-/// `proto_id` must be a live protocol identifier returned by Wireshark.
-pub unsafe fn register_fields<Arr: AsMut<[(Box<i32>, HeaderFieldInfo)]>>(
-    proto_id: i32,
-    fields: &mut Arr,
-) -> (Vec<bindings::hf_register_info>, Vec<CString>) {
-    let mut strings = Vec::with_capacity(fields.as_mut().len() * 3);
-    let hf: Vec<bindings::hf_register_info> = fields
-        .as_mut()
-        .iter_mut()
-        .map(|(id, field)| {
-            let name = CString::new(field.name).expect("field names must not contain NUL bytes");
-            let abbrev =
-                CString::new(field.abbrev).expect("field filters must not contain NUL bytes");
-            let blurb =
-                CString::new(field.blurb).expect("field descriptions must not contain NUL bytes");
-            let info = bindings::header_field_info {
-                name: name.as_ptr(),
-                abbrev: abbrev.as_ptr(),
-                type_: field.type_,
-                display: field.display,
-                strings: std::ptr::null(),
-                bitmask: field.bitmask,
-                blurb: blurb.as_ptr(),
-                id: -1,
-                parent: 0,
-                ref_type: bindings::hf_ref_type_HF_REF_TYPE_NONE,
-                same_name_prev_id: -1,
-                same_name_next: std::ptr::null_mut(),
-            };
-            strings.extend([name, abbrev, blurb]);
-            bindings::hf_register_info {
-                p_id: id.as_mut() as *mut i32,
-                hfinfo: info,
-            }
-        })
-        .collect();
-    let len = hf.len() as i32;
-    // SAFETY: Caller supplies a live protocol ID; descriptors and strings are retained by ProtocolPlugin.
-    unsafe {
-        bindings::proto_register_field_array(
-            proto_id,
-            hf.as_ptr() as *mut bindings::hf_register_info,
-            len,
-        );
+/// An abbreviation that does not start with the protocol's filter name is
+/// registered below it: `version` in protocol `foo` is `foo.version`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FieldInfo {
+    name: &'static str,
+    abbrev: &'static str,
+    kind: FieldType,
+    base: Base,
+    bitmask: u64,
+    blurb: &'static str,
+}
+
+impl FieldInfo {
+    /// A field shown as `name`, filtered as `abbrev`, in decimal, with no
+    /// bitmask or description.
+    pub const fn new(name: &'static str, abbrev: &'static str, kind: FieldType) -> Self {
+        Self {
+            name,
+            abbrev,
+            kind,
+            base: Base::Dec,
+            bitmask: 0,
+            blurb: "",
+        }
     }
-    (hf, strings)
+
+    /// The same field shown in `base`.
+    #[must_use]
+    pub const fn with_base(mut self, base: Base) -> Self {
+        self.base = base;
+        self
+    }
+
+    /// The same field limited to the bits of `bitmask`.
+    #[must_use]
+    pub const fn with_bitmask(mut self, bitmask: u64) -> Self {
+        self.bitmask = bitmask;
+        self
+    }
+
+    /// The same field with a description, shown as the field's tooltip.
+    #[must_use]
+    pub const fn with_blurb(mut self, blurb: &'static str) -> Self {
+        self.blurb = blurb;
+        self
+    }
+
+    /// The label shown in the protocol tree.
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// The display-filter abbreviation as declared, relative or full.
+    pub const fn abbrev(&self) -> &'static str {
+        self.abbrev
+    }
+
+    /// The field's value type.
+    pub const fn kind(&self) -> FieldType {
+        self.kind
+    }
+
+    /// The base integers are shown in.
+    pub const fn base(&self) -> Base {
+        self.base
+    }
+
+    /// The bits of the value this field shows; `0` for all of them.
+    pub const fn bitmask(&self) -> u64 {
+        self.bitmask
+    }
+
+    /// The field's description.
+    pub const fn blurb(&self) -> &'static str {
+        self.blurb
+    }
+}
+
+/// The value type of a field, Wireshark's `FT_*`.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FieldType {
+    /// `FT_UINT8`.
+    U8,
+    /// `FT_UINT16`.
+    U16,
+    /// `FT_UINT24`.
+    U24,
+    /// `FT_UINT32`.
+    U32,
+    /// `FT_UINT64`.
+    U64,
+    /// `FT_INT8`.
+    I8,
+    /// `FT_INT16`.
+    I16,
+    /// `FT_INT24`.
+    I24,
+    /// `FT_INT32`.
+    I32,
+    /// `FT_INT64`.
+    I64,
+    /// `FT_BOOLEAN`.
+    Bool,
+    /// `FT_BYTES`.
+    Bytes,
+    /// `FT_STRING`.
+    String,
+    /// `FT_IPv4`.
+    Ipv4,
+    /// `FT_IPv6`.
+    Ipv6,
+    /// `FT_ETHER`.
+    Ether,
+    /// `FT_NONE`: a label with no value.
+    None,
+}
+
+impl FieldType {
+    /// Width in bytes of a fixed-width integer type.
+    pub const fn width(self) -> Option<usize> {
+        match self {
+            Self::U8 | Self::I8 => Some(1),
+            Self::U16 | Self::I16 => Some(2),
+            Self::U24 | Self::I24 => Some(3),
+            Self::U32 | Self::I32 => Some(4),
+            Self::U64 | Self::I64 => Some(8),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn is_unsigned(self) -> bool {
+        matches!(
+            self,
+            Self::U8 | Self::U16 | Self::U24 | Self::U32 | Self::U64
+        )
+    }
+
+    pub(crate) const fn is_signed(self) -> bool {
+        matches!(
+            self,
+            Self::I8 | Self::I16 | Self::I24 | Self::I32 | Self::I64
+        )
+    }
+}
+
+/// How an integer field is shown, Wireshark's `BASE_*`.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum Base {
+    /// No base: for non-integer fields.
+    None,
+    /// Decimal.
+    #[default]
+    Dec,
+    /// Hexadecimal.
+    Hex,
+    /// Octal.
+    Oct,
+    /// Decimal, then hexadecimal in parentheses.
+    DecHex,
+    /// Hexadecimal, then decimal in parentheses.
+    HexDec,
 }
