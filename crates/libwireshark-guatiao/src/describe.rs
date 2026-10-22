@@ -9,8 +9,23 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Text Wireshark keeps for the process.
-fn leak(text: &str) -> &'static str {
+pub(crate) fn leak(text: &str) -> &'static str {
     String::from(text).leak()
+}
+
+/// `name`, kept for the process, when it is a lower-case letter followed by
+/// lower-case letters, digits and `others`; else why not, for a `what`.
+pub(crate) fn name(what: &str, name: &str, others: &str) -> Result<&'static str, String> {
+    let mut chars = name.chars();
+    if chars.next().is_some_and(|first| first.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || others.contains(c))
+    {
+        Ok(leak(name))
+    } else {
+        Err(format!(
+            "{what} name {name:?}: a lower-case letter, then lower-case letters, digits or {others:?}"
+        ))
+    }
 }
 
 /// The protocol `description` describes: its header fields first, then the

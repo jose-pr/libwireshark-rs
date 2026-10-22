@@ -1,4 +1,4 @@
-//! Finding providers and turning each into a protocol.
+//! Finding providers, and turning each dissector into a protocol.
 
 use crate::describe::{self, Names};
 use crate::dirs::{PATH_VARIABLE, plugin_dirs};
@@ -6,24 +6,47 @@ use crate::header::{self, Laid};
 use crate::packet::Lent;
 use alloc::sync::Arc;
 use guatiao::Map;
-use guatiao::library::{Kind, Order, Registry, ScanRules, SearchPath, Skipped, scan_path};
-use libwireshark::dynamic::{DynamicDissector, Protocol};
+use guatiao::library::{Kind, Order, Registry, SearchPath, Skipped, scan_path_with};
+use libwireshark::dynamic::{DynamicDissector, Protocol, Registrations};
 use libwireshark::prefs::PreferenceMap;
 use libwireshark::{Binding, PacketView};
-use libwireshark_api::{Description, Dissector};
+use libwireshark_api::{Codec, Description, Dissector, FileType, FilterFunction, Tap};
 use std::path::Path;
 
 /// Set to anything: report what loaded, not only what failed.
 const LOG_VARIABLE: &str = "LIBWIRESHARK_GUATIAO_LOG";
 
-fn report(verbose: bool, line: &str) {
+/// Writes `line` to stderr when it is a problem (`verbose`) or when
+/// `LIBWIRESHARK_GUATIAO_LOG` asks for everything.
+pub(crate) fn report(verbose: bool, line: &str) {
     if verbose || std::env::var_os(LOG_VARIABLE).is_some() {
         eprintln!("libwireshark-guatiao: {line}");
     }
 }
 
-/// Every dissector the search path and its sources offer, as protocols.
-pub(crate) fn protocols() -> Vec<Protocol> {
+/// The kinds this host serves: a library declaring none is not mapped.
+const KINDS: [&str; 5] = [
+    <dyn Dissector as Kind>::NAME,
+    <dyn Tap as Kind>::NAME,
+    <dyn FilterFunction as Kind>::NAME,
+    <dyn FileType as Kind>::NAME,
+    <dyn Codec as Kind>::NAME,
+];
+
+/// Everything the search path and its sources offer, registered with
+/// Wireshark when it loads this plugin.
+pub(crate) fn registrations() -> Registrations {
+    let registry = load();
+    let mut registrations = Registrations::from(protocols(registry));
+    registrations.taps = crate::tap::taps(registry);
+    registrations.filters = crate::filter::functions(registry);
+    registrations.file_types = crate::file_type::formats(registry);
+    registrations.codecs = crate::codec::codecs(registry);
+    registrations
+}
+
+/// The registry of every provider on the search path.
+fn load() -> &'static Registry {
     let mut path = SearchPath::parse(&std::env::var(PATH_VARIABLE).unwrap_or_default());
     for dir in plugin_dirs() {
         path = path.with(dir);
@@ -34,9 +57,13 @@ pub(crate) fn protocols() -> Vec<Protocol> {
         "libwireshark-guatiao",
         env!("CARGO_PKG_VERSION"),
     )));
-    let rules = ScanRules::parse(&[format!("kind={}", <dyn Dissector as Kind>::NAME)])
-        .expect("a rule written here");
-    let scanned = scan_path(registry, &path, Order::Ascending, &rules);
+    let scanned = scan_path_with(registry, &path, Order::Ascending, |declared| {
+        if KINDS.iter().any(|kind| declared.has("kind", kind)) {
+            Ok(())
+        } else {
+            Err(format!("serves none of {}", KINDS.join(", ")))
+        }
+    });
     for (file, key) in &scanned.loaded {
         report(false, &format!("loaded {} as {key}", file.display()));
     }
@@ -62,17 +89,33 @@ pub(crate) fn protocols() -> Vec<Protocol> {
     for refused in &refreshed.refused {
         report(true, &format!("{}: {}", refused.source, refused.reason));
     }
+    registry
+}
 
-    let mut protocols = Vec::new();
-    for offer in registry.offers::<dyn Dissector>() {
+/// Each provider of `K` with its default instance, by key; one built only
+/// from a configuration, or whose table does not read, is reported.
+pub(crate) fn served<K: ?Sized + Kind>(registry: &Registry) -> Vec<(String, Arc<K>)> {
+    let mut served = Vec::new();
+    for offer in registry.offers::<K>() {
         let key = offer.key().unwrap_or(offer.id()).to_owned();
-        let Some(dissector) = offer.shared() else {
-            report(
+        match offer.shared() {
+            Some(provider) => served.push((key, provider)),
+            None => report(
                 true,
                 &format!("{key}: built only from a configuration, which this host does not give"),
-            );
-            continue;
-        };
+            ),
+        }
+    }
+    for (provider, mismatch) in registry.mismatches::<K>() {
+        report(true, &format!("{}: {mismatch}", provider.key()));
+    }
+    served
+}
+
+/// Every dissector offered, as protocols.
+fn protocols(registry: &Registry) -> Vec<Protocol> {
+    let mut protocols = Vec::new();
+    for (key, dissector) in served::<dyn Dissector>(registry) {
         let description = match dissector
             .describe()
             .and_then(|map| Description::from_map(&map))
@@ -111,9 +154,6 @@ pub(crate) fn protocols() -> Vec<Protocol> {
                 names: Names::default(),
             },
         ));
-    }
-    for (provider, mismatch) in registry.mismatches::<dyn Dissector>() {
-        report(true, &format!("{}: {mismatch}", provider.key()));
     }
     protocols
 }
