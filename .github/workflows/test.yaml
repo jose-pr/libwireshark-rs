@@ -98,7 +98,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
-      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol
+      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec
 
   docs:
     name: Docs
