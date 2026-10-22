@@ -1,93 +1,130 @@
 # libwireshark-rs
 
-`libwireshark-rs` is a Rust workspace for developing native Wireshark dissector plugins. It provides raw Wireshark bindings, a Rust registration layer, a Cargo development command, and plugin examples.
+[![Version](https://img.shields.io/crates/v/libwireshark.svg)](https://crates.io/crates/libwireshark)
+[![Rust version](https://img.shields.io/crates/msrv/libwireshark.svg)](https://crates.io/crates/libwireshark)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
+[![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
-Versioned public-header bundles are stored in `crates/libwireshark-sys/headers/` as `<major>-<minor>-<os>-<arch>.h`. Each bundle embeds Wireshark's source-declared headers, GLib/Gcrypt headers, and generated configuration declarations in one file. The sys crate generates Rust bindings from the bundle matching the installed runtime's Wireshark version and Rust target OS and architecture. A development SDK is optional; the build can use the Wireshark runtime DLL/shared library directly.
+Wireshark dissector plugins in Rust. **A protocol is a type implementing
+`Dissector`, its fields and preferences are derived from plain structs, and
+a plugin is one `plugin!` line**, built with Cargo against an installed
+Wireshark, with no Wireshark SDK, C code or `unsafe`. See
+[`libwireshark`](https://docs.rs/libwireshark).
 
 ## Features
 
-- Raw EPAN and Wireshark C bindings, including the plugin registration interface.
-- Rust helpers for protocol registration, fields, preferences, dissector handles, and table attachment.
-- `Dissector`, `Preferences`, and `Header` traits for mapping Rust protocol descriptions to Wireshark registration descriptors.
-- Optional derives for typed preference structs and display-filter header fields, plus the plugin entry-point attribute.
-- Optional SDK discovery through pkg-config or explicit include and library directories, with runtime-only DLL/shared-library discovery as a fallback.
-- `cargo wireshark doctor`, `version`, `headers`, `configure`, and `bindings` development commands.
-- Basic, TCP, UDP, and dual-transport plugin examples under `examples/`.
+| Crate | What it is |
+| --- | --- |
+| [`libwireshark`](crates/libwireshark) | the plugin API: `Dissector`, `PacketView`, `plugin!`, and the `derive` feature |
+| [`libwireshark-derive`](crates/libwireshark-derive) | `#[derive(Header)]` and `#[derive(Preferences)]`, used through `libwireshark` |
+| [`libwireshark-sys`](crates/libwireshark-sys) | raw bindings, generated from bundled headers for Wireshark 3.0 to 4.6 |
+| [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
+
+The [examples](examples) are plugins: `basic-dissector` (one protocol with
+fields and a port preference) and `multi-protocol` (two protocols in one
+library).
 
 ## Installation
 
-Install the Wireshark runtime matching the plugin's major/minor target before building a plugin. The checked-in header bundle supplies C declarations, so a Wireshark development SDK is not required.
-
-Set `WIRESHARK_DIR` or `WIRESHARK_DLL` when Wireshark is installed outside the standard location. The build detects the major/minor version from the adjacent TShark executable; set `WIRESHARK_VERSION` if that is not available. An installed SDK remains supported and is preferred when pkg-config or explicit include/library paths identify one.
-
-```toml
-[dependencies]
-libwireshark = { path = "crates/libwireshark", features = ["macros"] }
-libwireshark-sys = { path = "crates/libwireshark-sys" }
+```console
+cargo add libwireshark --features derive
 ```
 
-Add `WIRESHARK_BINDGEN_HEADER` to use an explicit umbrella instead of the version-selected one. Bindgen requires Clang/libclang. On Windows, if the runtime install does not include an import library, the build creates one from the DLL export table using `llvm-readobj` and `llvm-dlltool`.
+Make the crate a `cdylib`, and install Clang (bindgen) and the Wireshark
+release you build for. On Windows, `llvm-readobj` and `llvm-dlltool` (LLVM)
+build the import library the Wireshark installer leaves out.
 
 ## Quick start
 
-Start with the [basic dissector example](examples/basic-dissector/src/lib.rs). It registers a UDP dissector and displays the first payload byte as its version. Build examples against an installed Wireshark runtime with:
+```rust,no_run
+use libwireshark::{Binding, DissectResult, Dissector, Header, NoPreferences, PacketView};
 
-```console
-cargo build -p basic-dissector
+#[derive(Header)]
+struct FooHeader {
+    #[header(name = "Version")]
+    version: u8,
+    #[header(name = "Length")]
+    length: u16,
+}
+
+struct Foo;
+
+impl Dissector for Foo {
+    type Preferences = NoPreferences;
+    type Header = FooHeader;
+    const NAME: &'static str = "FOO Protocol";
+    const SHORT_NAME: &'static str = "FOO";
+    const FILTER_NAME: &'static str = "foo";
+
+    fn dissect_on(_: &NoPreferences) -> Vec<Binding> {
+        vec![Binding::udp_port(111)]
+    }
+
+    fn dissect(_: &NoPreferences, packet: &mut PacketView<'_>) -> Option<DissectResult<FooHeader>> {
+        let header = FooHeader::decode(packet.bytes())?;
+        let info = format!("FOO version {}", header.version);
+        Some(DissectResult::new(header, FooHeader::SIZE).with_info(info))
+    }
+}
+
+libwireshark::plugin!(Foo);
 ```
 
-The workspace also includes `tcp-dissector`, `udp-dissector`, and
-`multi-protocol` examples. `FooPlugin` in the latter registers two protocols
-from one plugin library, each with its own dissector and TCP or UDP port table.
-A single protocol can also attach its dissector to multiple tables.
-
-## Command line
-
-Build the independent development command and check Wireshark runtime discovery:
-
-```console
-cargo run -p cargo-wireshark -- doctor
-cargo run -p cargo-wireshark -- version
-```
-
-When the binary is on `PATH`, Cargo exposes the same commands as `cargo wireshark doctor`, `version`, `headers`, `configure`, and `bindings`. The doctor reports runtime, SDK, and source installations separately. Set `WIRESHARK_TSHARK` or `WIRESHARK_SOURCE_DIR` for nonstandard locations.
-
-Generate umbrellas for stable release lines from the cloned `wireshark-src` repository, or generate one for a selected source checkout:
-
-```powershell
-crates\libwireshark-sys\scripts\generate-version-headers.ps1
-```
-
-```console
-cargo wireshark headers --source-dir path/to/wireshark-source --arch aarch64
-```
-
-The command can compare all source-declared public EPAN headers with a Wireshark DLL and optionally write an export-filtered umbrella:
-
-```console
-cargo wireshark headers --source-dir path/to/wireshark-source --arch aarch64
-cargo wireshark headers --source-dir path/to/wireshark-source --dll path/to/libwireshark.dll --filtered-output .wireshark/generated/libwireshark-exported.h
-```
-
-Header generation resolves GLib and Gcrypt development headers from supplied/system paths or downloads Wireshark-declared, SHA-256-verified development archives, then embeds their transitive includes. Older source releases without a suitable archive declaration use the current Wireshark dependency manifest. Generation reads source declarations and does not configure or build Wireshark with CMake. The DLL comparison uses `llvm-readobj` and reports lexical export/header matches; it does not prove ABI compatibility. Bindgen requires Clang/libclang, and a matching Wireshark runtime library is still required to link a plugin.
+`cargo build --release`, then copy the library into
+`<plugins>/<major>.<minor>/epan/` (Help › About Wireshark › Folders shows
+the personal plugin directory). `tshark -Y foo` then filters on it.
 
 ## API overview
 
-| Package | Purpose |
-| --- | --- |
-| `libwireshark-sys` | Raw bindings, native discovery, and linking. |
-| `libwireshark` | Protocol registration and callback-scoped packet and field helpers. See the [runtime API guide](crates/libwireshark/README.md). |
-| `libwireshark-macros` | Optional procedural macro package. |
-| `cargo-wireshark` | Runtime/SDK discovery, header generation, and Rust binding generation. |
+See the crates' READMEs and, for agents, the `AGENTS.md` beside each crate's
+`Cargo.toml`: [libwireshark](crates/libwireshark/AGENTS.md),
+[libwireshark-sys](crates/libwireshark-sys/AGENTS.md),
+[libwireshark-derive](crates/libwireshark-derive/AGENTS.md),
+[cargo-wireshark](crates/cargo-wireshark/AGENTS.md).
+[Architecture](docs/architecture.md) and [FFI safety](docs/ffi-safety.md)
+describe the internals.
 
-See [architecture](docs/architecture.md), [compatibility](docs/compatibility.md), and [FFI safety](docs/ffi-safety.md) for details.
+## Compatibility
+
+Wireshark loads a plugin only in the release line (major.minor) it was built
+for; build one library per line. Bindings exist for every stable line from
+3.0 to 4.6 on Windows, Linux, macOS and FreeBSD, x86_64 and aarch64. CI
+loads the examples in tshark on Linux, macOS and Windows and type-checks the
+runtime against every line.
 
 ## Development
 
+The header bundles live on the `headers` branch; a checkout's build reads
+them from there. To copy them into `crates/libwireshark-sys/headers`, or to
+regenerate them:
+
 ```console
-cargo metadata --format-version 1 --no-deps
-cargo fmt --all --check
-cargo build -p cargo-wireshark
+cargo run -p cargo-wireshark -- wireshark headers fetch
+cargo run -p cargo-wireshark -- wireshark headers generate
+cargo run -p cargo-wireshark -- wireshark headers publish
+git push origin headers
 ```
 
-Building the complete workspace requires the matching Wireshark runtime. See [development setup](docs/development.md).
+Checks, as CI runs them:
+
+```console
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo test -p libwireshark --all-features --test tshark -- --ignored
+```
+
+The last one loads the examples in the installed tshark
+(`LIBWIRESHARK_TEST_TSHARK` names it when it is not on `PATH`).
+
+### Releasing
+
+Bump `workspace.package.version`, give the changelog's Unreleased section
+that version, and push `v<version>`; the release workflow checks the
+packages, creates the GitHub release and publishes the crates in dependency
+order. The test workflow runs on demand or for a `ci-*` tag.
+
+## License
+
+GPL-2.0-or-later, as Wireshark; see [LICENSE](LICENSE).

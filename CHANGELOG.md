@@ -1,27 +1,31 @@
 # Changelog
 
-All notable changes to this project will be documented here.
+All notable changes to this project are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+First release of the crates under these names.
+
 ### Added
 
-- Workspace crates for raw bindings, the Rust runtime, macros, and `cargo-wireshark`.
-- Documentation for architecture, Wireshark compatibility, development setup, and FFI safety.
-- `cargo wireshark doctor` and `cargo wireshark version` commands.
-- `cargo wireshark headers` for no-CMake public-header aggregation and DLL export comparison, plus `cargo wireshark bindings` for Rust FFI output.
-- Optional `#[wireshark_plugin]` entry-point macro and ARM64-aware Windows DLL import-library helper.
-- `#[wireshark_plugin]` resolves renamed `libwireshark` dependencies and rejects unsupported attribute arguments.
-- Callback-scoped `PacketView` access for bounded byte reads, registered unsigned fields, and Info-column text.
-- Big- and little-endian signed and unsigned integer reads, plus checked signed and 64-bit field insertion.
-- Checked generic `PacketView::add_item` insertion for registered Wireshark field types.
-- Basic, TCP, UDP, and dual-transport example plugins.
+- `libwireshark`: the `Dissector` trait, `PacketView` with the captured bytes
+  as a slice, integer reads, columns and checked field insertion, `Binding`
+  for dissector-table entries, typed `prefs`, and `plugin!` exporting a
+  plugin of one or more protocols.
+- `#[derive(Header)]` (registered fields plus `SIZE` and `decode(&[u8])`)
+  and `#[derive(Preferences)]`, behind `libwireshark`'s `derive` feature.
+- `libwireshark-sys`: bindings for Wireshark 3.0 to 4.6, generated from
+  bundled headers for Windows, Linux, macOS and FreeBSD on x86_64 and
+  aarch64; links the runtime without an SDK, or an SDK when one is found;
+  `WIRESHARK_NO_LINK` for builds without Wireshark.
+- `cargo-wireshark`: `doctor`, `version`, `headers generate|fetch|publish`,
+  `configure` and `bindings`.
+- Accepted packets set the Protocol column and add the protocol's tree item,
+  so protocol display filters match; plugins report themselves as
+  dissectors.
+- Two example plugins, and a test that loads them in tshark.
 
-### Changed
-
-- Wireshark development headers and libraries are discovered from pkg-config or explicit SDK paths; public-header aggregation reads source lists directly, while CMake configuration is an explicit optional command.
-- The fallback bindings are restricted to Wireshark 3.2.4 on `x86_64-pc-windows-msvc`; other targets and versions use bindgen.
-- Plugin registration storage and preference strings have retained owners, and Rust panics are contained at C callback boundaries.
-- SDK discovery accepts separate source, generated-header, and native-library paths and reports runtime/source installations independently.
+[Unreleased]: https://github.com/jose-pr/libwireshark-rs/commits/master

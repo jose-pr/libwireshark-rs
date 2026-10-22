@@ -1,73 +1,175 @@
 # libwireshark
 
-Safe Rust runtime helpers for native Wireshark protocol plugins. The crate
-depends on `libwireshark-sys`; building a plugin still requires a matching
-Wireshark development SDK and native libraries.
+[![Version](https://img.shields.io/crates/v/libwireshark.svg)](https://crates.io/crates/libwireshark)
+[![Rust version](https://img.shields.io/crates/msrv/libwireshark.svg)](https://crates.io/crates/libwireshark)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
+[![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
-## Packet access
+Write Wireshark dissector plugins in Rust. **A protocol is a type
+implementing `Dissector`, its fields and preferences are plain structs, and a
+plugin is one `plugin!` line**; no `unsafe`, no C, no Wireshark build. See
+the [API documentation](https://docs.rs/libwireshark).
 
-Wireshark passes a callback-scoped `PacketView` to a protocol's dissector
-function. Packet reads return `None` when the requested bytes are not captured
-or the offset cannot be represented by Wireshark's API.
+## Features
 
-`captured_len` and `reported_len` expose the tvbuff lengths. `PacketView` is
-callback-scoped, exposes no raw Wireshark pointers, and is neither `Send` nor
-`Sync`.
+- `Dissector`: a protocol's names, the dissector tables it is attached to
+  (recomputed whenever preferences change), and the function that decodes
+  one packet.
+- `PacketView`: the captured bytes as a `&[u8]`, endian-aware integer reads,
+  the Info column, and checked insertion of registered fields.
+- `#[derive(Header)]`: display-filter fields from a struct of integers,
+  added to the protocol tree for you, plus a generated `decode(&[u8])`.
+- `#[derive(Preferences)]`: protocol preferences from a struct; the dissector
+  receives the current values as that struct.
+- `plugin!`: exports what Wireshark's loader reads, for one or more
+  protocols.
+- The runtime sets the Protocol column and adds the protocol's own tree item,
+  so `-Y <protocol>` filters work.
 
-`PacketView` provides `get_u8`, plus `get_u16_be/le`, `get_u24_be/le`,
-`get_u32_be/le`, and `get_u64_be/le`. Signed reads are available as `get_i8`,
-`get_i16_be/le`, `get_i24_be/le`, `get_i32_be/le`, and `get_i64_be/le`.
-The `_be` methods use network byte order; `_le` methods use little-endian byte
-order. Twenty-four-bit signed reads sign-extend into `i32`.
+## Installation
 
-Typed dissectors return `Option<DissectResult<Header>>`. `None` declines the
-packet; a result carries the decoded header, consumed byte count, and optional
-Info-column text. The runtime adds the header fields and Info text to Wireshark
-after the dissector returns. The mutable `PacketView` remains available for
-protocol-specific tree items that are not represented by the header.
+```console
+cargo add libwireshark --features derive
+```
 
-## Protocol tree fields
+| Feature | Adds | Default |
+| --- | --- | --- |
+| `derive` | `#[derive(Header)]` and `#[derive(Preferences)]` | no |
 
-`add_uint(field, offset, width, value)` adds an `FT_UINT8`, `FT_UINT16`,
-`FT_UINT24`, or `FT_UINT32` field. `add_int` supports the matching signed
-field types. `add_uint64` and `add_int64` add 64-bit fields. Each method checks
-the registered field type, field width, representable value, and captured
-packet range before calling Wireshark.
+The plugin crate is a `cdylib`:
 
-`add_item(field, offset, length, encoding)` uses Wireshark's generic field
-decoder for any registered field type. Pass `ENC_*` flags from
-`libwireshark::bindings` for byte order or text encoding. It checks the field,
-tree, and complete captured byte range before calling EPAN.
+```toml
+[lib]
+crate-type = ["cdylib"]
+```
 
-Field insertion returns `PacketFieldError`, which distinguishes a missing
-tree, unknown field, unsupported type, width mismatch, out-of-range packet
-bytes, and a value that does not fit the field width.
+Building needs Clang (for bindgen) and the Wireshark release the plugin is
+for: its runtime library, or a development SDK. On Windows, `llvm-readobj`
+and `llvm-dlltool` make the import library Wireshark does not ship.
+`libwireshark-sys` describes how the installation is found.
 
-With the `macros` feature, `#[derive(Header)]` on a named integer struct
-declares its registered fields and implements `Header::add_to`. Decode the
-values into that struct, then call `packet.add_header(&header)` to add them to
-the packet tree. `#[derive(Preferences)]` maps a named struct to Wireshark
-preferences.
+## Quick start
 
-Implement `Dissector` with associated `Preferences` and `Header` types. Fixed
-table mappings are declared as the static `DISSECT_ON` slice. Protocols whose
-table mapping depends on a preference set `PREFERENCE_DRIVEN_DISSECT_ON` and
-override `dissect_on`; Wireshark invokes the runtime apply callback to update
-the mapping when preferences change.
+A protocol on a fixed port, with no fields or preferences:
 
-`add_info(text)` appends to the Info column when the callback has column data.
-It returns `NulError` for text containing an interior NUL byte.
+```rust,no_run
+use libwireshark::{Binding, DissectResult, Dissector, NoHeader, NoPreferences, PacketView};
 
-## Plugin entry point
+struct Echo;
 
-With the `macros` feature, apply `#[libwireshark::wireshark_plugin]` to a type
-implementing `WiresharkPlugin`. Its `protocols()` method returns a static slice
-of `ProtocolRegistration` values, so fixed registrations need no `Vec`. Use
-`ProtocolRegistration::dissector::<FooDissector>()` for a type implementing
-`Dissector`, or `ProtocolRegistration::custom(build_protocol)` for a custom
-protocol builder. Each protocol can bind its dissector to one or more Wireshark
-tables. `PluginOptions` can override the exported plugin version string, which
-defaults to the Cargo package version. Preferences remain scoped to protocols.
-A synchronous zero-argument function returning `Protocol` is also supported
-for a simple single-protocol plugin. The macro resolves renamed runtime
-dependencies and exports Wireshark's metadata and `plugin_register` entry point.
+impl Dissector for Echo {
+    type Preferences = NoPreferences;
+    type Header = NoHeader;
+    const NAME: &'static str = "Echo Protocol";
+    const SHORT_NAME: &'static str = "ECHO";
+    const FILTER_NAME: &'static str = "echo";
+
+    fn dissect_on(_: &NoPreferences) -> Vec<Binding> {
+        vec![Binding::udp_port(7)]
+    }
+
+    fn dissect(_: &NoPreferences, packet: &mut PacketView<'_>) -> Option<DissectResult<NoHeader>> {
+        let length = packet.captured_len();
+        Some(DissectResult::new(NoHeader, length).with_info(format!("echo, {length} bytes")))
+    }
+}
+
+libwireshark::plugin!(Echo);
+```
+
+Fields and a configurable port, with the `derive` feature:
+
+```rust,ignore (needs the derive feature)
+use libwireshark::{Binding, DissectResult, Dissector, Header, PacketView, Preferences};
+
+#[derive(Preferences)]
+struct FooPreferences {
+    #[preference(title = "UDP port", description = "UDP port FOO is decoded on")]
+    port: u16,
+}
+
+impl Default for FooPreferences {
+    fn default() -> Self {
+        Self { port: 111 }
+    }
+}
+
+/// Filter on `foo.version` and `foo.length`.
+#[derive(Header)]
+struct FooHeader {
+    #[header(name = "Version", display = "hex")]
+    version: u8,
+    #[header(name = "Length")]
+    length: u16,
+}
+
+struct Foo;
+
+impl Dissector for Foo {
+    type Preferences = FooPreferences;
+    type Header = FooHeader;
+    const NAME: &'static str = "FOO Protocol";
+    const SHORT_NAME: &'static str = "FOO";
+    const FILTER_NAME: &'static str = "foo";
+
+    fn dissect_on(preferences: &FooPreferences) -> Vec<Binding> {
+        vec![Binding::udp_port(preferences.port)]
+    }
+
+    fn dissect(_: &FooPreferences, packet: &mut PacketView<'_>) -> Option<DissectResult<FooHeader>> {
+        let header = FooHeader::decode(packet.bytes())?;
+        let info = format!("FOO version {}", header.version);
+        Some(DissectResult::new(header, FooHeader::SIZE).with_info(info))
+    }
+}
+
+libwireshark::plugin!(Foo);
+```
+
+Build it with `cargo build --release` and copy the library into Wireshark's
+personal plugin directory for its release line, `<dir>/<major>.<minor>/epan/`.
+**Help › About Wireshark › Folders** shows the directory: on Windows it is
+`%APPDATA%\Wireshark\plugins`, elsewhere `~/.local/lib/wireshark/plugins`.
+
+## API overview
+
+| Item | Purpose |
+| --- | --- |
+| `Dissector`, `DissectResult`, `Binding` | a protocol, an accepted packet, a dissector-table entry |
+| `PacketView`, `Encoding`, `PacketFieldError` | one packet during dissection |
+| `Header`, `FieldInfo`, `FieldType`, `Base`, `NoHeader` | registered fields |
+| `prefs` (`Preferences`, `PreferenceValue`, `Declaration`, `Value`) | protocol preferences |
+| `plugin!` | the plugin's exported entry points |
+| `sys` | the raw `libwireshark-sys` bindings |
+
+## Compatibility
+
+A plugin is built for one Wireshark release line (major.minor) and loads
+only in that line; build once per line you support. The bindings cover
+3.0 to 4.6 on Windows, Linux, macOS and FreeBSD, x86_64 and aarch64.
+
+## Development
+
+From the repository root (the build reads the header bundles from the
+`headers` branch by itself):
+
+```console
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo test -p libwireshark --all-features --test tshark -- --ignored
+```
+
+The last command loads the example plugins in the installed tshark.
+
+### Releasing
+
+Bump `workspace.package.version`, move the changelog's Unreleased section
+under the new version, and push a `v<version>` tag; the release workflow
+publishes the crates in dependency order.
+
+## License
+
+GPL-2.0-or-later, as Wireshark; see
+[LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).

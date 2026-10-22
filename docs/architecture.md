@@ -1,40 +1,54 @@
 # Architecture
 
-## Workspace components
+## Crates
 
-| Component | Responsibility |
-| --- | --- |
-| `crates/libwireshark-sys` | Generates Rust declarations from a versioned self-contained public-header bundle and links a matching Wireshark SDK or runtime library. |
-| `crates/libwireshark` | Exposes the plugin runtime, typed preference and header traits, protocol registration, table attachment, and callback-scoped packet access. |
-| `crates/libwireshark-macros` | Provides optional derives for preferences and header fields and the plugin-entry attribute. |
-| `crates/cargo-wireshark` | Provides independent runtime/SDK inspection and header/binding generation commands. |
-| `examples/` | Builds example `cdylib` plugins. |
+| Crate | Depends on | Holds |
+| --- | --- | --- |
+| `libwireshark-sys` | bindgen, pkg-config (build) | bindings generated from the header bundles; links Wireshark |
+| `libwireshark` | `libwireshark-sys`, libloading; `libwireshark-derive` with `derive` | the plugin API and its runtime |
+| `libwireshark-derive` | syn, quote | `#[derive(Header)]`, `#[derive(Preferences)]` |
+| `cargo-wireshark` | clap, bindgen, ureq, archive readers | installation discovery; bundle generation and the `headers` branch |
 
-Runtime dependencies point from `libwireshark` to `libwireshark-sys`. The optional macro dependency points from `libwireshark` to `libwireshark-macros`; generated code calls the runtime API. `cargo-wireshark` has no runtime dependency and can be used independently.
+`examples/` are plugin `cdylib`s; `libwireshark`'s tshark test loads them.
 
-## Plugin description and registration
+## Header bundles
 
-One plugin shared library may register multiple protocols. A type implementing `WiresharkPlugin` returns a static slice of `ProtocolRegistration` values from `protocols()`. A registration can construct a protocol from a `Dissector` implementation or from a custom builder function. Each protocol descriptor has its own fields, preferences, dissector callback, and table attachments. The runtime retains one callback context per protocol and routes Wireshark's callback data to the matching descriptor. A `Dissector` implementation declares protocol names, associated `Preferences` and `Header` types, a packet callback returning `Option<DissectResult<Header>>`, and a static slice of fixed table attachments. A successful result carries the decoded header, consumed byte count, and optional Info-column text; the runtime applies these to Wireshark. Header field metadata and fixed table attachments are static slices. Preference-dependent table attachments are recomputed by `dissect_on` when Wireshark applies protocol preferences. `Dissector::protocol()` converts these declarations into the runtime `Protocol` descriptor. The callback bridge reads Wireshark's current preference map into the associated Rust preference type before calling the dissector. `PluginOptions` currently supplies the exported plugin version; protocol preferences remain per-protocol.
+A bundle is one self-contained C header. `wireshark-<major>-<minor>.h` holds
+a release line's declared public headers (`epan`, `epan/dfilter`,
+`epan/ftypes`, and the TCP/UDP dissector headers) with their transitive
+includes and the `config.h`/`ws_version.h` defines; it is the same for every
+target. `deps-<os>-<arch>.h` holds the GLib and Gcrypt headers of one
+target, reachable from `glib.h`, `gmodule.h` and `gcrypt.h`; one per target
+serves every release line. Embedded files are labelled by their path below
+their include root, never by where the generator found them.
 
-The `Preferences` derive emits the `prefs::Preferences` implementation for named structs with `bool`, `u32`, and `String` fields. The `Header` derive implements field registration and applies decoded struct values to a packet tree for named structs whose fields have supported signed or unsigned integer types. `PacketView::add_header` is the runtime application method. `#[preference(...)]` and `#[header(...)]` attributes set Wireshark-facing names, descriptions, display formats, masks, and byte offsets. Both derive macros are available only with the runtime's `macros` feature; the traits and manual descriptor API remain available without it.
+`cargo wireshark headers generate` writes them from Wireshark's release tags
+without configuring or building Wireshark; `publish` commits them to the
+`headers` branch. The sys crate's build looks for its two bundles in
+`WIRESHARK_BUNDLE_DIR`, the crate's `headers/` (where the published crate
+carries them), then the checkout's `headers` branch, and runs bindgen over
+an umbrella that includes the deps bundle first.
 
-Wireshark loads the plugin shared library and reads its plugin metadata symbols. `plugin_register` registers protocol metadata. The protocol callback registers fields and preferences for each protocol; the handoff callback creates data-bearing dissector handles and attaches them to tables. Each handle's retained callback data identifies its protocol descriptor. The dissector callback receives borrowed packet, packet-info, and tree pointers. The runtime converts these to a callback-scoped `PacketView`, and contains Rust panics at C callback boundaries.
+## A plugin at run time
 
-## Native bindings
-
-`libwireshark-sys` selects `headers/<major>-<minor>-<os>-<arch>.h` based on the detected Wireshark version and Cargo target OS and architecture, unless `WIRESHARK_BINDGEN_HEADER` names an explicit header. It generates Rust bindings into Cargo's build output using bindgen. SDK discovery through pkg-config or explicit include/library paths is supported. When no SDK is found, the build links the installed runtime library; on Windows it creates an import library from DLL exports when needed. The self-contained C bundle embeds Wireshark, GLib, and Gcrypt header bodies plus generated configuration declarations, so runtime-only binding generation does not need SDK headers or Wireshark source. The sys crate does not build Wireshark.
-
-`cargo wireshark headers` reads public header declarations from Wireshark source without running CMake. It resolves GLib/Gcrypt headers from supplied or system paths, or downloads hash-verified development archives declared by Wireshark, then embeds the transitive contents in the single-file output. Older source trees use the current Wireshark dependency manifest when their own declarations do not cover the target. The command can compare declarations with a DLL export table and emit a smaller export-filtered header. `crates/libwireshark-sys/scripts/generate-version-headers.ps1` checks out stable release-line tags in `wireshark-src` and generates OS- and architecture-suffixed bundles.
-
-## Registration and dissection flow
+`plugin!(A, B)` expands, in the plugin crate, to a `static` `Plugin` built
+from `Protocol::of::<A>()` and `Protocol::of::<B>()` (each a table of
+functions monomorphised for that `Dissector`), three `extern "C"` callbacks
+that forward to it, and the exports Wireshark's loader reads.
 
 ```mermaid
 flowchart TD
-    A[Wireshark loads plugin] --> B[plugin_register]
-    B --> C[Register protocol, fields, preferences]
-    C --> D[Register handoff]
-    D --> E[Attach dissector handle to table]
-    E --> F[Wireshark calls dissector with packet context]
-    F --> G[Build typed preferences and PacketView]
-    G --> H[Return consumed byte count]
+    L[Wireshark loads the library] --> R[plugin_register: proto_register_plugin]
+    R --> P[register_protoinfo: protocol, fields, subtree, preferences]
+    P --> H[register_handoff: dissector handle, dissect_on entries]
+    H --> A[preferences applied: reload typed preferences, re-run dissect_on]
+    A --> D[packet: PacketView, Dissector::dissect]
+    D --> C[accepted: Protocol column, tree item, header fields, Info]
 ```
+
+Each protocol's field ids, subtree id and short name are fixed once
+registered and live in a boxed `Shared` whose address is the dissector
+handle's callback data. Its typed preferences are an `Arc` rebuilt only
+when Wireshark applies preferences, so a packet costs a mutex lock and a
+reference-count increment, and no allocation. Registration state is guarded
+by the plugin's mutex and lives for the process.
