@@ -129,7 +129,20 @@ pub fn generate_release_lines(
     }
     let scratch =
         std::env::temp_dir().join(format!("cargo-wireshark-worktrees-{}", std::process::id()));
-    for line in &lines {
+    let generated = generate_worktrees(config, &lines, &scratch);
+    // Each worktree is removed as it finishes; this removes their parent,
+    // on failure too.
+    let _ = std::fs::remove_dir(&scratch);
+    generated.map(|()| lines)
+}
+
+fn generate_worktrees(
+    config: &ReleaseBundlesConfig,
+    lines: &[ReleaseLine],
+    scratch: &Path,
+) -> Result<(), GenerateError> {
+    let repository = &config.repository;
+    for line in lines {
         let worktree = scratch.join(&line.tag);
         git(
             Some(repository),
@@ -163,8 +176,7 @@ pub fn generate_release_lines(
         )?;
         generated?;
     }
-    let _ = std::fs::remove_dir(&scratch);
-    Ok(lines)
+    Ok(())
 }
 
 /// Copies every bundle on `remote`'s [`BUNDLE_BRANCH`] into `output_dir`,
