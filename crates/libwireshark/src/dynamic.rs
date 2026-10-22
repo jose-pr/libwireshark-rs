@@ -6,12 +6,14 @@ use crate::dissector::Binding;
 use crate::expert::Expert;
 use crate::header::FieldInfo;
 use crate::packet::PacketView;
+use crate::prefs::{Declaration, PreferenceMap};
 use alloc::vec::Vec;
 
 pub use crate::__private::Protocol;
 
-/// A protocol's names, fields and expert findings, as
-/// [`Dissector`](crate::Dissector)'s constants say them for a static one.
+/// A protocol's names, fields, expert findings and preferences, as
+/// [`Dissector`](crate::Dissector)'s constants and types say them for a
+/// static one.
 ///
 /// Wireshark keeps what is registered for the process: build owned text
 /// into `&'static str` with `String::leak`.
@@ -28,6 +30,8 @@ pub struct ProtocolSpec {
     pub fields: Vec<FieldInfo>,
     /// Expert findings, abbreviations relative to `filter_name`.
     pub experts: Vec<Expert>,
+    /// Preferences, in the order Wireshark shows them.
+    pub preferences: Vec<Declaration>,
 }
 
 impl ProtocolSpec {
@@ -39,6 +43,7 @@ impl ProtocolSpec {
             filter_name,
             fields: Vec::new(),
             experts: Vec::new(),
+            preferences: Vec::new(),
         }
     }
 
@@ -55,6 +60,13 @@ impl ProtocolSpec {
         self.experts = experts;
         self
     }
+
+    /// The same protocol with `preferences`.
+    #[must_use]
+    pub fn with_preferences(mut self, preferences: Vec<Declaration>) -> Self {
+        self.preferences = preferences;
+        self
+    }
 }
 
 /// What dissects a protocol registered with [`Protocol::dynamic`].
@@ -66,9 +78,18 @@ impl ProtocolSpec {
 /// columns lower layers wrote: append to the Info column
 /// ([`PacketView::append_info`]) when [`PacketView::is_postdissector`].
 pub trait DynamicDissector: Send + Sync + 'static {
+    /// What `dissect_on` and `dissect` read: built from the protocol's
+    /// preference values each time Wireshark applies them.
+    type Preferences: Send + Sync + 'static;
+
+    /// The preferences from Wireshark's current values, keyed by
+    /// [`Declaration::name`]; `None` keeps the last ones that built.
+    fn preferences(&self, values: &PreferenceMap) -> Option<Self::Preferences>;
+
     /// Where the protocol gets packets; asked when it is handed off and
-    /// whenever Wireshark applies preferences.
-    fn bindings(&self) -> Vec<Binding>;
+    /// whenever Wireshark applies preferences. Bindings no longer
+    /// returned are removed.
+    fn dissect_on(&self, preferences: &Self::Preferences) -> Vec<Binding>;
 
     /// For messages framed over TCP: the fixed header length
     /// [`message_len`](Self::message_len) reads a message's length from.
@@ -79,9 +100,9 @@ pub trait DynamicDissector: Send + Sync + 'static {
     }
 
     /// A framed message's whole length, header included, from its first
-    /// [`tcp_header_len`](Self::tcp_header_len) bytes. `None`, or less than
-    /// the header length, marks the rest of the segment as not this
-    /// protocol's.
+    /// [`tcp_header_len`](Self::tcp_header_len) bytes. With `None`, or less
+    /// than the header length, the rest of the segment is handed to
+    /// `dissect` as one message, which may decline it.
     fn message_len(&self, header: &[u8]) -> Option<usize> {
         let _ = header;
         None
@@ -89,5 +110,9 @@ pub trait DynamicDissector: Send + Sync + 'static {
 
     /// Dissects the packet: the bytes it takes, or `None` to decline. A
     /// declining dissector adds nothing to `packet` first.
-    fn dissect(&self, packet: &mut PacketView<'_>) -> Option<usize>;
+    fn dissect(
+        &self,
+        preferences: &Self::Preferences,
+        packet: &mut PacketView<'_>,
+    ) -> Option<usize>;
 }

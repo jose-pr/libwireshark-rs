@@ -7,9 +7,9 @@
 //! executables when they are not on `PATH` or in Wireshark's default
 //! Windows location.
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+mod harness;
+
+use harness::{Profile, Segment, capture_time, frame, pcap, program, since, tshark};
 
 /// Each example plugin, the directory Wireshark loads it from, and what
 /// `-G plugins` reports it as.
@@ -22,63 +22,10 @@ const PLUGINS: [(&str, &str, &str); 6] = [
     ("audio_codec", "codecs", "codec"),
 ];
 
-/// Whether the release line the tests were built for is at least `line`.
-fn since(line: (u32, u32)) -> bool {
-    (
-        libwireshark::sys::VERSION_MAJOR,
-        libwireshark::sys::VERSION_MINOR,
-    ) >= line
-}
-
-/// The client's port: above every server port here and claimed by no
-/// dissector, since TCP and UDP offer a packet to the lower port first.
-const CLIENT_PORT: u16 = 61000;
-
-/// A transport segment from 192.0.2.1:61000 to 192.0.2.2.
-enum Segment<'a> {
-    Udp(u16, &'a [u8]),
-    /// Destination port, sequence number, payload.
-    Tcp(u16, u32, &'a [u8]),
-}
-
-/// `segment` in IPv4 in Ethernet.
-fn frame(segment: &Segment<'_>) -> Vec<u8> {
-    let (protocol, transport) = match segment {
-        Segment::Udp(port, payload) => {
-            let mut udp = Vec::new();
-            udp.extend(CLIENT_PORT.to_be_bytes());
-            udp.extend(port.to_be_bytes());
-            udp.extend((8 + payload.len() as u16).to_be_bytes());
-            udp.extend([0, 0]);
-            udp.extend(*payload);
-            (17, udp)
-        }
-        Segment::Tcp(port, seq, payload) => {
-            let mut tcp = Vec::new();
-            tcp.extend(CLIENT_PORT.to_be_bytes());
-            tcp.extend(port.to_be_bytes());
-            tcp.extend(seq.to_be_bytes());
-            tcp.extend(1u32.to_be_bytes());
-            tcp.extend([0x50, 0x18, 0x20, 0x00, 0, 0, 0, 0]);
-            tcp.extend(*payload);
-            (6, tcp)
-        }
-    };
-    let total = (20 + transport.len()) as u16;
-    let mut ip = vec![0x45, 0, 0, 0, 0, 1, 0, 0, 64, protocol, 0, 0];
-    ip.extend([192, 0, 2, 1, 192, 0, 2, 2]);
-    ip[2..4].copy_from_slice(&total.to_be_bytes());
-    let sum = ip
-        .chunks(2)
-        .map(|word| u32::from(u16::from_be_bytes([word[0], word[1]])))
-        .sum::<u32>();
-    let sum = !(((sum & 0xffff) + (sum >> 16)) as u16);
-    ip[10..12].copy_from_slice(&sum.to_be_bytes());
-    let mut frame = vec![0; 12];
-    frame.extend([0x08, 0x00]);
-    frame.extend(ip);
-    frame.extend(transport);
-    frame
+/// A profile holding every example plugin and the capture of [`frames`].
+fn profile(test: &str) -> Profile {
+    let plugins = PLUGINS.map(|(name, kind, _)| (name, kind));
+    Profile::new(test, &plugins, &frames())
 }
 
 /// The frames of the capture most tests read:
@@ -102,30 +49,6 @@ fn frames() -> Vec<Vec<u8>> {
     ]
 }
 
-/// The capture time of frame `index` (from 0): one per second.
-fn capture_time(index: usize) -> u32 {
-    1_700_000_000 + index as u32
-}
-
-/// `frames` as a pcap file.
-fn pcap(frames: &[Vec<u8>]) -> Vec<u8> {
-    let mut pcap = Vec::new();
-    pcap.extend(0xa1b2_c3d4u32.to_le_bytes());
-    pcap.extend(2u16.to_le_bytes());
-    pcap.extend(4u16.to_le_bytes());
-    pcap.extend([0u8; 8]);
-    pcap.extend(65535u32.to_le_bytes());
-    pcap.extend(1u32.to_le_bytes());
-    for (index, frame) in frames.iter().enumerate() {
-        pcap.extend(capture_time(index).to_le_bytes());
-        pcap.extend(0u32.to_le_bytes());
-        pcap.extend((frame.len() as u32).to_le_bytes());
-        pcap.extend((frame.len() as u32).to_le_bytes());
-        pcap.extend(frame);
-    }
-    pcap
-}
-
 /// One record of the capture-file example's RSCAP format.
 fn rscap_record(nanos: u64, frame: &[u8], original: u32) -> Vec<u8> {
     let mut record = Vec::new();
@@ -146,153 +69,10 @@ fn rscap(frames: &[Vec<u8>]) -> Vec<u8> {
     file
 }
 
-/// A Wireshark program: from `variable`, Wireshark's default Windows
-/// location, or `PATH`.
-fn program(variable: &str, name: &str) -> PathBuf {
-    if let Some(path) = std::env::var_os(variable) {
-        return PathBuf::from(path);
-    }
-    let windows = Path::new(r"C:\Program Files\Wireshark").join(format!("{name}.exe"));
-    if windows.is_file() {
-        return windows;
-    }
-    PathBuf::from(name)
-}
-
-fn tshark() -> PathBuf {
-    program("LIBWIRESHARK_TEST_TSHARK", "tshark")
-}
-
-/// A built example plugin, beside this test binary.
-fn plugin(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().expect("a test binary knows its path");
-    let file = format!(
-        "{}{name}{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    );
-    exe.ancestors()
-        .skip(1)
-        .take(2)
-        .map(|directory| directory.join(&file))
-        .find(|path| path.is_file())
-        .unwrap_or_else(|| panic!("{file} was not built beside {}", exe.display()))
-}
-
-/// A throwaway home and configuration directory holding the plugins and the
-/// capture, so tshark loads them and nothing of the user's.
-struct Profile(PathBuf);
-
-impl Profile {
-    fn new(test: &str) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("libwireshark-tshark-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        // The release line's directory: `4-6` on macOS, whose code signing
-        // reads dotted directory names as bundles, `4.6` elsewhere.
-        let version = format!(
-            "{}{}{}",
-            libwireshark::sys::VERSION_MAJOR,
-            if cfg!(target_os = "macos") { "-" } else { "." },
-            libwireshark::sys::VERSION_MINOR
-        );
-        for base in [
-            root.join("plugins"),
-            root.join(".local/lib/wireshark/plugins"),
-        ] {
-            for (name, kind, _) in PLUGINS {
-                let directory = base.join(&version).join(kind);
-                std::fs::create_dir_all(&directory).expect("create the plugin directory");
-                // Wireshark loads only `.dll` on Windows and `.so` everywhere
-                // else, macOS included, where Cargo builds a `.dylib`.
-                let installed = if cfg!(windows) {
-                    format!("{name}.dll")
-                } else {
-                    format!("{name}.so")
-                };
-                std::fs::copy(plugin(name), directory.join(installed)).expect("copy a plugin");
-            }
-        }
-        std::fs::write(root.join("capture.pcap"), pcap(&frames())).expect("write the capture");
-        Self(root)
-    }
-
-    /// The path of `name` in the profile.
-    fn file(&self, name: &str) -> String {
-        self.0
-            .join(name)
-            .to_str()
-            .expect("a UTF-8 temporary path")
-            .to_owned()
-    }
-
-    /// Writes `contents` to `name` in the profile; returns its path.
-    fn write(&self, name: &str, contents: &[u8]) -> String {
-        std::fs::write(self.0.join(name), contents).expect("write a file");
-        self.file(name)
-    }
-
-    fn capture(&self) -> String {
-        self.file("capture.pcap")
-    }
-
-    /// `program` run in this profile, with `input` on its standard input.
-    fn output(&self, program: &Path, args: &[&str], input: &str) -> Output {
-        let mut child = Command::new(program)
-            .args(args)
-            .env("WIRESHARK_CONFIG_DIR", &self.0)
-            .env("HOME", &self.0)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|error| panic!("run {}: {error}", program.display()));
-        child
-            .stdin
-            .take()
-            .expect("a piped standard input")
-            .write_all(input.as_bytes())
-            .expect("write the standard input");
-        child.wait_with_output().expect("wait for the program")
-    }
-
-    fn run(&self, args: &[&str]) -> String {
-        let output = self.output(&tshark(), args, "");
-        assert!(
-            output.status.success(),
-            "tshark {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n")
-    }
-
-    /// `fields` of each frame of the capture, tab-separated, one line per frame.
-    fn fields(&self, extra: &[&str], fields: &[&str]) -> Vec<String> {
-        self.fields_of(&self.capture(), extra, fields)
-    }
-
-    /// `fields` of each frame of the capture `file`.
-    fn fields_of(&self, file: &str, extra: &[&str], fields: &[&str]) -> Vec<String> {
-        let mut args = vec!["-r", file];
-        args.extend(extra);
-        args.extend(["-T", "fields"]);
-        for field in fields {
-            args.extend(["-e", field]);
-        }
-        self.run(&args).lines().map(str::to_owned).collect()
-    }
-}
-
-impl Drop for Profile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn tshark_loads_every_example_as_its_kind_of_plugin() {
-    let profile = Profile::new("load");
+    let profile = profile("load");
     let plugins = profile.run(&["-G", "plugins"]);
     for (name, _, kind) in PLUGINS {
         let line = plugins
@@ -306,7 +86,7 @@ fn tshark_loads_every_example_as_its_kind_of_plugin() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn table_bound_protocols_set_their_column_and_fields() {
-    let profile = Profile::new("tables");
+    let profile = profile("tables");
     let columns = profile.fields(&["-c", "3"], &["_ws.col.Protocol", "_ws.col.Info"]);
     assert_eq!(
         columns,
@@ -327,7 +107,7 @@ fn table_bound_protocols_set_their_column_and_fields() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn preferences_rebind_and_relabel() {
-    let profile = Profile::new("prefs");
+    let profile = profile("prefs");
     let moved = profile.fields(&["-c", "1", "-o", "foo.port:4242"], &["_ws.col.Protocol"]);
     assert_eq!(
         moved,
@@ -341,7 +121,7 @@ fn preferences_rebind_and_relabel() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn a_heuristic_claims_only_packets_it_recognises() {
-    let profile = Profile::new("heuristic");
+    let profile = profile("heuristic");
     let rows = profile.fields(
         &["-Y", "hbeat"],
         &[
@@ -366,7 +146,7 @@ fn a_heuristic_claims_only_packets_it_recognises() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn tcp_messages_are_reassembled_counted_and_named() {
-    let profile = Profile::new("stream");
+    let profile = profile("stream");
     let rows = profile.fields(
         &["-Y", "lpm"],
         &["frame.number", "lpm.kind", "_ws.col.Info"],
@@ -398,7 +178,7 @@ fn tcp_messages_are_reassembled_counted_and_named() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn an_expert_finding_is_reported_and_filterable() {
-    let profile = Profile::new("expert");
+    let profile = profile("expert");
     let rows = profile.fields(
         &["-Y", "lpm.unknown_kind"],
         &["frame.number", "_ws.expert.message"],
@@ -411,7 +191,7 @@ fn an_expert_finding_is_reported_and_filterable() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn a_postdissector_sees_every_frame_and_leaves_the_columns() {
-    let profile = Profile::new("post");
+    let profile = profile("post");
     let rows = profile.fields(&[], &["frame.len", "fsize.len", "_ws.col.Protocol"]);
     assert_eq!(rows.len(), 6);
     for row in &rows {
@@ -424,7 +204,7 @@ fn a_postdissector_sees_every_frame_and_leaves_the_columns() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn taps_report_statistics_over_a_plugins_own_and_wiresharks_taps() {
-    let profile = Profile::new("taps");
+    let profile = profile("taps");
     let capture = profile.capture();
     let lpm = profile.run(&["-r", capture.as_str(), "-q", "-z", "lpmstats"]);
     for line in ["LPM messages by kind", "data: 1", "hello: 2", "unknown: 1"] {
@@ -448,7 +228,7 @@ fn taps_report_statistics_over_a_plugins_own_and_wiresharks_taps() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn filter_functions_work_in_display_filters_from_4_4() {
-    let profile = Profile::new("filters");
+    let profile = profile("filters");
     let capture = profile.capture();
     let output = profile.output(
         &tshark(),
@@ -499,7 +279,7 @@ fn filter_functions_work_in_display_filters_from_4_4() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn a_file_type_plugin_opens_its_format_from_4_6() {
-    let profile = Profile::new("filetype");
+    let profile = profile("filetype");
     let file = profile.write("capture.rscap", &rscap(&frames()));
     let fields = [
         "frame.number",
@@ -605,7 +385,7 @@ fn base64_decode(text: &str) -> Vec<u8> {
 #[test]
 #[ignore = "needs sharkd from the release line libwireshark-sys was built for"]
 fn a_codec_plugin_decodes_rtp_for_sharkd() {
-    let profile = Profile::new("codec");
+    let profile = profile("codec");
     // SDP names payload type 96 L8 at 8 kHz for RTP to 192.0.2.2:47200.
     let sdp = "v=0\r\no=- 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.2\r\nt=0 0\r\n\
                m=audio 47200 RTP/AVP 96\r\na=rtpmap:96 L8/8000\r\n";
@@ -680,7 +460,7 @@ fn a_codec_plugin_decodes_rtp_for_sharkd() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn the_second_pass_is_not_a_first_pass() {
-    let profile = Profile::new("twopass");
+    let profile = profile("twopass");
     // LPM counts messages only on the first pass, so the second shows each
     // conversation's final count.
     let rows = profile.fields(&["-2", "-Y", "lpm"], &["frame.number", "_ws.col.Info"]);
@@ -696,7 +476,7 @@ fn the_second_pass_is_not_a_first_pass() {
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn a_protocol_described_at_run_time_dissects_like_a_static_one() {
-    let profile = Profile::new("runtime");
+    let profile = profile("runtime");
     let capture = profile.write(
         "rfoo.pcap",
         &pcap(&[frame(&Segment::Udp(112, &[7, 1, 2, 3]))]),
@@ -712,4 +492,6 @@ fn a_protocol_described_at_run_time_dissects_like_a_static_one() {
         ],
     );
     assert_eq!(rows, ["RFOO	7	515	RFOO version 7, length 515"]);
+    let moved = profile.fields_of(&capture, &["-o", "rfoo.port:113"], &["_ws.col.Protocol"]);
+    assert_eq!(moved, ["UDP"], "dissect_on follows the port preference");
 }

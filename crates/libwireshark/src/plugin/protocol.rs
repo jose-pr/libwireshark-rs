@@ -69,6 +69,7 @@ impl Protocol {
             filter_name,
             fields,
             experts,
+            preferences,
         } = spec;
         Self {
             name,
@@ -77,6 +78,7 @@ impl Protocol {
             experts: experts.leak(),
             imp: Box::leak(Box::new(Described {
                 fields: fields.leak(),
+                preferences,
                 dissector,
             })),
         }
@@ -136,12 +138,13 @@ impl<D: Dissector> Implementation for Typed<D> {
 /// A [`DynamicDissector`] and the fields it was registered with.
 struct Described<T> {
     fields: &'static [FieldInfo],
+    preferences: Vec<Declaration>,
     dissector: T,
 }
 
 impl<T: DynamicDissector> Implementation for Described<T> {
     fn declarations(&self) -> Vec<Declaration> {
-        Vec::new()
+        self.preferences.clone()
     }
 
     fn fields(&self) -> &'static [FieldInfo] {
@@ -156,16 +159,21 @@ impl<T: DynamicDissector> Implementation for Described<T> {
         self.dissector.message_len(header)
     }
 
-    fn load(&self, _values: &PreferenceMap) -> Option<Arc<Erased>> {
-        Some(Arc::new(()))
+    fn load(&self, values: &PreferenceMap) -> Option<Arc<Erased>> {
+        let preferences = self.dissector.preferences(values)?;
+        Some(Arc::new(preferences))
     }
 
-    fn dissect_on(&self, _state: &Erased) -> Vec<Binding> {
-        self.dissector.bindings()
+    fn dissect_on(&self, state: &Erased) -> Vec<Binding> {
+        state
+            .downcast_ref::<T::Preferences>()
+            .map(|preferences| self.dissector.dissect_on(preferences))
+            .unwrap_or_default()
     }
 
-    fn dissect(&self, _state: &Erased, packet: &mut PacketView<'_>) -> Option<usize> {
-        let size = self.dissector.dissect(packet)?;
+    fn dissect(&self, state: &Erased, packet: &mut PacketView<'_>) -> Option<usize> {
+        let preferences = state.downcast_ref::<T::Preferences>()?;
+        let size = self.dissector.dissect(preferences, packet)?;
         packet.accept(size);
         Some(size)
     }
