@@ -23,11 +23,14 @@ from __future__ import annotations
 
 __all__ = ["Codec", "Decoder", "StreamFormat"]
 
+import logging
 import struct
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, Optional, Sequence, Type
 
 from . import kinds
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -62,24 +65,38 @@ class Decoder:
 
 
 class _Decoding:
-    """A `Decoder` as the `wireshark_decoder` object the host owns."""
+    """A `Decoder` as the `wireshark_decoder` object the host owns. Its slots
+    cannot report a failure, so one is logged and answers nothing."""
 
     def __init__(self, decoder: Decoder) -> None:
         self.decoder = decoder
 
+    def _answer(self, slot: str, call: Any, otherwise: int) -> int:
+        try:
+            return int(call())
+        except Exception:
+            _log.exception("%s.%s", type(self.decoder).__name__, slot)
+            return otherwise
+
     def sample_rate(self) -> int:
-        return int(self.decoder.sample_rate())
+        return self._answer("sample_rate", self.decoder.sample_rate, 0)
 
     def channels(self) -> int:
-        return int(self.decoder.channels())
+        return self._answer("channels", self.decoder.channels, 1)
 
     def decoded_len(self, payload: bytes) -> int:
-        return int(self.decoder.decoded_len(payload))
+        return self._answer("decoded_len", lambda: self.decoder.decoded_len(payload), 0)
 
     def decode(self, payload: bytes, samples: bytearray) -> int:
-        decoded = list(self.decoder.decode(payload))[: len(samples) // 2]
-        struct.pack_into(f"<{len(decoded)}h", samples, 0, *decoded)
-        return len(decoded)
+        def write() -> int:
+            decoded = [
+                max(-32768, min(32767, int(sample)))
+                for sample in list(self.decoder.decode(payload))[: len(samples) // 2]
+            ]
+            struct.pack_into(f"<{len(decoded)}h", samples, 0, *decoded)
+            return len(decoded)
+
+        return self._answer("decode", write, 0)
 
 
 class Codec(kinds.Codec):

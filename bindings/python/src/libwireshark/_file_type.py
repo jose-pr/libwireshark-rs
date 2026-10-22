@@ -8,7 +8,10 @@ class PygCapReader(CaptureReader):
         if header is None:
             return None
         time, captured, original = struct.unpack("<QII", header)
-        return Record(file.read_exact(captured) or b"", time_ns=time, original_len=original)
+        data = file.read_exact(captured) if captured <= 262_144 else None
+        if data is None:
+            raise ValueError("a damaged record")
+        return Record(data, time_ns=time, original_len=original)
 
 
 class PygCap(provide.Provider, FileType):

@@ -141,8 +141,13 @@ class Decoder:
     def decode(self, payload: bytes) -> Sequence[int]      # 16-bit signed samples
 ```
 
-- An `EOFError` while `reader` reads counts as another format.
-- Decoded samples past the host's buffer are dropped.
+- An `EOFError` while `reader` reads counts as another format; any other
+  exception is reported by the host and counts as another format too.
+- `apply` answering the wrong type (a float, a negative or 33-bit int for
+  `COUNT`) raises `guatiao.BadValue`: no answer for that value.
+- Decoded samples past the host's buffer are dropped and the rest clamped
+  to 16 bits; an exception in a `Decoder` method is logged
+  (`logging`, the module's logger) and answers nothing.
 
 ## `Engine`: Wireshark run from Python
 

@@ -18,6 +18,8 @@ __all__ = ["FilterFunction", "FilterReturn"]
 from enum import Enum
 from typing import Any, ClassVar, Dict, Optional, Union
 
+from guatiao import BadValue
+
 from . import kinds
 
 
@@ -55,4 +57,12 @@ class FilterFunction(kinds.FilterFunction):
         argument = value.to_python()
         if isinstance(argument, bool) or not isinstance(argument, (int, str)):
             return None
-        return self.apply(argument)
+        answer = self.apply(argument)
+        if answer is None:
+            return None
+        if type(self).RETURNS == FilterReturn.COUNT:
+            if isinstance(answer, bool) or not isinstance(answer, int) or not 0 <= answer <= 0xFFFFFFFF:
+                raise BadValue(f"{type(self).NAME} answers an unsigned 32-bit int, not {answer!r}")
+        elif not isinstance(answer, str):
+            raise BadValue(f"{type(self).NAME} answers text, not {answer!r}")
+        return answer

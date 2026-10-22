@@ -166,3 +166,30 @@ def test_a_codec_decodes_into_the_hosts_buffer() -> None:
     assert decoder.decode(b"\x80\xff\x00\x40", samples) == 3, "as many as fit"
     assert list(struct.unpack("<3h", samples)) == [0, 127 << 8, -128 << 8]
     assert codec.open(Tree({})).sample_rate() == 8000
+
+
+class Floating(FilterFunction):
+    NAME = "floating"
+
+    def apply(self, value: Union[int, str]) -> Optional[int]:
+        return value / 2  # type: ignore[operator,return-value]
+
+
+def test_a_filter_answer_of_the_wrong_type_is_refused() -> None:
+    from guatiao import BadValue
+
+    with pytest.raises(BadValue):
+        Floating().call(Tree(7))
+
+
+class Loud(Decoder):
+    def decode(self, payload: bytes) -> List[int]:
+        return [100_000, -100_000]
+
+
+def test_a_decoder_clamps_samples_and_answers_nothing_when_it_fails() -> None:
+    decoding = type("LoudCodec", (Codec,), {"NAME": "LOUD", "DECODER": Loud})().open(Tree({}))
+    samples = bytearray(4)
+    assert decoding.decode(b"ab", samples) == 2
+    assert list(struct.unpack("<2h", samples)) == [32767, -32768]
+    assert decoding.sample_rate() == 0, "the default raises: logged, answers 0"
