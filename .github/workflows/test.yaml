@@ -85,6 +85,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: The libwireshark Python package
+        shell: bash
+        run: |
+          python -m pip install -e "bindings/python[dev]"
+          python -m black --check bindings/python/src bindings/python/tests
+          python -m pytest -q -rs bindings/python
       - name: Build guatiao's Python bridge
         shell: bash
         run: |
