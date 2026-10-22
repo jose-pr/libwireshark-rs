@@ -18,3 +18,4 @@ Thumbs.db
 
 # Generated header bundles live on the `headers` branch.
 /crates/libwireshark-sys/headers/
+__pycache__/

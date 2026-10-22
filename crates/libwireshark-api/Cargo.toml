@@ -1,0 +1,29 @@
+[package]
+name = "libwireshark-api"
+description = "The guatiao kinds of Wireshark plugins written in any language, as libwireshark-guatiao loads them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+exclude = [".*", "*.local.*"]
+# guatiao comes from a git revision until a release carries what this needs.
+publish = false
+build = "build.rs"
+
+[features]
+# Renders include/libwireshark_api.h from the kinds (committed; most builds only read it).
+c-header = ["dep:cbindgen"]
+
+[dependencies]
+guatiao = { workspace = true, features = ["provider"] }
+
+[build-dependencies]
+cbindgen = { version = "0.29", optional = true }
+
+[lints]
+workspace = true

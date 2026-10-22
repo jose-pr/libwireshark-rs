@@ -4,6 +4,7 @@ members = [
     "crates/libwireshark-sys",
     "crates/libwireshark",
     "crates/libwireshark-derive",
+    "crates/libwireshark-api",
     "crates/cargo-wireshark",
     "examples/audio-codec",
     "examples/basic-dissector",
@@ -29,6 +30,10 @@ categories = ["network-programming", "external-ffi-bindings"]
 libwireshark = { path = "crates/libwireshark", version = "=0.0.0-alpha.0" }
 libwireshark-sys = { path = "crates/libwireshark-sys", version = "=0.0.0-alpha.0" }
 libwireshark-derive = { path = "crates/libwireshark-derive", version = "=0.0.0-alpha.0" }
+# Plugins in any language: the kinds, the registry and the loader. A
+# revision of the repository until a release carries the Python bridge.
+guatiao = { git = "https://github.com/Boriken-Dev/guatiao", rev = "b78ffd442e55e3a25f152d5f4f6190e237742cfc", default-features = false }
+libwireshark-api = { path = "crates/libwireshark-api" }
 # Generates Rust FFI declarations from the header bundles.
 bindgen = { version = "0.72", default-features = false, features = ["runtime"] }
 # Reads Wireshark's pkg-config metadata when a development SDK is installed.
