@@ -89,7 +89,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install -e "bindings/python[dev]"
-          python -m black --check bindings/python/src bindings/python/tests
+          (cd bindings/python && python -m black --check src tests)
           python -m pytest -q -rs bindings/python
       - name: Build guatiao's Python bridge
         shell: bash
