@@ -35,6 +35,8 @@ First release of the crates under these names.
 - Tap listeners (`Tap`, `TapPacket`) offered as `tshark -z <name>[,<filter>]`,
   over Wireshark's taps or values a protocol publishes with
   `PacketView::tap`.
+- Display-filter functions (`FilterFunction`, `FieldValue`) for Wireshark
+  4.4 and later, returning a number or text.
 - A protocol whose names Wireshark already has is skipped instead of
   aborting Wireshark.
 - Three example plugins, and tests that load them in tshark.

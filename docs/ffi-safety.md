@@ -3,8 +3,8 @@
 `libwireshark-sys` is raw C: every function is `unsafe`. `libwireshark`
 wraps both sides of the boundary, Wireshark calling the plugin and the
 plugin calling Wireshark, so a plugin needs no `unsafe`. Its `unsafe`
-is in `src/packet.rs` and the `src/plugin/` module; a test fails if any
-other file gains some.
+is in `src/packet.rs`, `src/tap.rs`, `src/filter.rs` and the `src/plugin/`
+module; a test fails if any other file gains some.
 
 ## Wireshark calling the plugin
 
@@ -24,6 +24,14 @@ other file gains some.
   operation, the value fits its width, and the byte range is captured,
   before calling EPAN.
 - Column text is copied by Wireshark; interior NULs end it.
+- Display-filter symbols are looked up by name in the already loaded
+  libwireshark and GLib, each with the signature its 4.4 header declares; a
+  missing one disables the plugin's filter functions. A `FieldValue` is read
+  only through the getter for its field type, and borrows the call.
+- A filter function's results are new values appended to Wireshark's
+  result cell, which owns and frees them; text is copied by
+  `fvalue_set_string`, and display text from `fvalue_to_string_repr` is
+  freed with `g_free`.
 
 ## Memory Wireshark keeps
 
@@ -37,6 +45,8 @@ other file gains some.
   needed.
 - A boolean preference slot is `gboolean` before 4.0 and `bool` after; the
   runtime takes the slot's type from the binding's signature.
+- Filter function definitions and names are leaked: Wireshark keeps them
+  until the plugin's cleanup deregisters them.
 
 ## Threads
 

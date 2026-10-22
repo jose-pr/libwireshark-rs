@@ -27,8 +27,10 @@ the [API documentation](https://docs.rs/libwireshark).
   receives the current values as that struct.
 - `Tap`: statistics over Wireshark's taps or values your protocols
   publish, run by `tshark -z <name>[,<filter>]`.
+- `FilterFunction`: functions of a field for display filters,
+  `myfunc(udp.dstport) == 4` (Wireshark 4.4 on).
 - `plugin!`: exports what Wireshark's loader reads, for one or more
-  protocols and taps.
+  protocols, taps and filter functions.
 - The runtime sets the Protocol column and adds the protocol's own tree item,
   so `-Y <protocol>` filters work.
 
@@ -150,6 +152,7 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 | `Header`, `FieldInfo`, `FieldType`, `Base`, `NoHeader` | registered fields |
 | `prefs` (`Preferences`, `PreferenceValue`, `Declaration`, `Value`) | protocol preferences |
 | `Tap`, `TapPacket` | tap listeners (`tshark -z`) |
+| `FilterFunction`, `FieldValue`, `FilterOutput` | display-filter functions |
 | `plugin!` | the plugin's exported entry points |
 | `sys` | the raw `libwireshark-sys` bindings |
 

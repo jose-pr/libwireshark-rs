@@ -17,8 +17,8 @@ The root re-exports everything below except the `prefs` module's contents
 (the root has `prefs::Preferences` and `prefs::NoPreferences`). `sys` is
 `libwireshark-sys`. `__private` is for `plugin!` and the derives only.
 
-`unsafe` is confined to `src/packet.rs` and `src/plugin/`; a plugin written
-with this crate needs none.
+`unsafe` is confined to `src/packet.rs`, `src/tap.rs`, `src/filter.rs` and
+`src/plugin/`; a plugin written with this crate needs none.
 
 ## A plugin
 
@@ -26,14 +26,17 @@ with this crate needs none.
 libwireshark::plugin!(DissectorA, DissectorB);
 libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA, TapB]);
 libwireshark::plugin!(version = "1.2.0", dissectors = [DissectorA, DissectorB], taps = [TapA]);
+libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA], filters = [FunctionA]);
 ```
 
 Write it once, at the root of a `cdylib` crate. It defines `#[no_mangle]`
 `plugin_version` (the crate's `CARGO_PKG_VERSION` unless given),
 `plugin_want_major`, `plugin_want_minor`, `plugin_describe` (dissector, plus
 tap listener when there are taps) and
-`plugin_register`, and a static holding the plugin's registration state. A
-plugin crate can be `#![forbid(unsafe_code)]`.
+`plugin_register`, and a static holding the plugin's registration state.
+`plugin_describe` reports a dissector, plus a tap listener when there are
+taps and display-filter functions when there are filters. A plugin crate
+can be `#![forbid(unsafe_code)]`.
 
 Install the built library under `<plugin dir>/<major>.<minor>/epan/`; the
 personal plugin directory is `%APPDATA%\Wireshark\plugins` on Windows and
@@ -188,6 +191,33 @@ impl TapPacket<'_> {
   for values of type `T` that protocol published with `PacketView::tap` in
   the same frame.
 - `draw` output goes to stdout after C's buffered stdout is flushed.
+
+## Display-filter functions
+
+```rust
+pub trait FilterFunction: 'static {
+    const NAME: &'static str;   // used in filters as NAME(field)
+    type Output: FilterOutput;  // u32 or String (sealed)
+    fn call(value: &FieldValue<'_>) -> Option<Self::Output>;
+}
+
+impl<'a> FieldValue<'a> {
+    fn as_u64(&self) -> Option<u64>;  // unsigned integer fields
+    fn as_i64(&self) -> Option<i64>;  // signed integer fields
+    fn as_str(&self) -> Option<&'a str>; // text fields, UTF-8 only
+    fn to_text(&self) -> String;      // any field, as Wireshark displays it
+}
+```
+
+- Wireshark 4.4 on. A plugin built for an older line still loads; its
+  functions are not registered, and a filter naming one is rejected.
+- A function takes exactly one argument, which must be a field (Wireshark's
+  own check, from `count` for `u32` and `string` for `String`; a literal is
+  rejected with "Only fields can be used as parameter").
+- `call` runs once per occurrence of the field in the packet; `None` adds no
+  result. The filter matches when any result compares as written:
+  `port_class(udp.dstport) == "well-known"`.
+- A panic in `call` is caught, and the call then reports no results.
 
 ## Expert info
 

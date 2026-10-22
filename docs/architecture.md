@@ -33,15 +33,24 @@ an umbrella that includes the deps bundle first.
 
 `plugin!(A, B)` expands, in the plugin crate, to a `static` `Plugin` built
 from `Protocol::of::<A>()` and `Protocol::of::<B>()` (each a table of
-functions monomorphised for that `Dissector`) and `TapSpec::of::<T>()` for
-each tap, the `extern "C"` callbacks C cannot give a data pointer to
-(registration, preference apply, cleanup, the heuristic entry point, tap
+functions monomorphised for that `Dissector`), `TapSpec::of::<T>()` for
+each tap and `FilterSpec::of::<F, ThisPlugin>()` for each filter function,
+the `extern "C"` callbacks C cannot give a data pointer to (registration,
+preference apply, cleanup, the heuristic entry point, tap and filter
 registration) forwarding to it, and the exports Wireshark's loader reads.
+A filter function's callback has no data pointer either, so it is
+monomorphised for the function and for `ThisPlugin`, a type the macro
+expands whose `PluginStatic` impl returns the static.
 Callbacks that do carry a data pointer (dissection, TCP framing, taps) are
 shared by every plugin and find their state through it. Where a callback's
 C signature differs between release lines (heuristic and tap results, the
 tap packet callback's flags), the runtime picks its function from the
 binding's function-pointer type.
+
+Display-filter functions exist from 4.4, so their symbols are resolved from
+the running Wireshark rather than linked: a plugin for an older line loads
+and registers none. Each borrows the argument check of the built-in `count`
+or `string`, so every check, and the error it raises, stays in C.
 
 ```mermaid
 flowchart TD
