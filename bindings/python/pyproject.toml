@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.27"]  # PEP 639 license fields need 1.27
+build-backend = "hatchling.build"
+
+[project]
+name = "libwireshark"
+version = "0.0.0a0"
+authors = [{ name = "jose-pr" }]
+description = "Wireshark dissectors written in Python: typed headers, preferences and expert findings, loaded by the libwireshark-guatiao plugin"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Networking :: Monitoring",
+    "Typing :: Typed",
+]
+# guatiao's Python binding, from the revision the Rust workspace pins: the
+# kinds and providers it needs are not in a release yet.
+dependencies = [
+    "guatiao @ git+https://github.com/Boriken-Dev/guatiao@b78ffd442e55e3a25f152d5f4f6190e237742cfc#subdirectory=bindings/python",
+]
+
+[project.optional-dependencies]
+dev = ["black", "build", "pytest"]
+
+[project.urls]
+Homepage = "https://github.com/jose-pr/libwireshark-rs/"
+Issues = "https://github.com/jose-pr/libwireshark-rs/issues"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/.*", "/AGENTS.md", "*.local.*", "CLAUDE*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/libwireshark"]
+exclude = ["*.local.*", "CLAUDE*"]
+
+[tool.black]
+target-version = ["py39"]
+line-length = 110
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,8 +1,7 @@
 """A dissector as a guatiao provider, written in Python: PYFOO over UDP 115
 (a preference), a twin of FOO. libwireshark-guatiao serves it through the
-guatiao-py bridge; it needs `guatiao` (the Python binding) and
-`wireshark_kinds` and `wireshark_dissector` (from libwireshark-api)
-importable.
+guatiao-py bridge; it needs the `libwireshark` package (bindings/python)
+importable, which brings guatiao's Python binding.
 
 The header and the preferences are classes, as with `libwireshark`'s
 `Dissector`: the host decodes the header and adds its fields, and asks
@@ -14,7 +13,7 @@ from __future__ import annotations
 from typing import Annotated, List
 
 from guatiao import Map, provide
-from wireshark_dissector import (
+from libwireshark import (
     U8,
     U16,
     Base,

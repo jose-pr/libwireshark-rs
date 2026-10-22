@@ -88,10 +88,11 @@ libwireshark_api::dissector!(Foo);
 
 ## Python
 
-Subclass `ProtocolDissector` from `python/wireshark_dissector.py`; the
-header and the preferences are annotated classes, the string under an
-attribute its blurb or description (`python/wireshark_kinds.py` holds the
-kinds themselves):
+The [`libwireshark` Python package](../../bindings/python) (in
+`bindings/python`): subclass its `ProtocolDissector`; the header and the
+preferences are annotated classes, the string under an attribute its blurb
+or description, and expert findings are `Expert` subclasses
+(`libwireshark.kinds` holds the kinds themselves):
 
 ```python
 class FooHeader(Header):

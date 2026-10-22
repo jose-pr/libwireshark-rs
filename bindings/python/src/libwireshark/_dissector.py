@@ -1,4 +1,4 @@
-"""Writing a dissector in Python as one writes a `libwireshark::Dissector`:
+"""Writing a dissector in Python as one writes a Rust `libwireshark::Dissector`:
 the header and the preferences are typed classes, the protocol's names are
 class attributes, and `dissect_on` and `dissect` are the methods to write.
 
@@ -47,9 +47,20 @@ import textwrap
 import typing
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
-from wireshark_kinds import Dissector
+from .kinds import Dissector
 
 __all__ = [
     "FieldType",
@@ -201,14 +212,20 @@ class Field:
     little_endian: bool = False
 
     def to_map(self) -> Dict[str, Any]:
-        out: Dict[str, Any] = {"abbrev": self.abbrev, "name": self.name, "type": self.type.value}
+        out: Dict[str, Any] = {
+            "abbrev": self.abbrev,
+            "name": self.name,
+            "type": self.type.value,
+        }
         for key in ("bitmask", "blurb", "offset", "length"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
         if self.base is not None:
             out["base"] = self.base.value
         if self.values:
-            out["values"] = [{"value": value, "name": name} for value, name in self.values.items()]
+            out["values"] = [
+                {"value": value, "name": name} for value, name in self.values.items()
+            ]
         if self.little_endian:
             out["little_endian"] = True
         return out
@@ -237,7 +254,9 @@ def _attribute_docs(cls: type) -> Dict[str, str]:
     return docs
 
 
-def _declared(cls: type) -> List[Tuple[str, type, Optional[FieldType], Meta, Optional[str]]]:
+def _declared(
+    cls: type,
+) -> List[Tuple[str, type, Optional[FieldType], Meta, Optional[str]]]:
     """`cls`'s own annotated attributes: name, base type, field type, meta, doc."""
     hints = typing.get_type_hints(cls, include_extras=True)
     docs: Dict[str, str] = {}
@@ -274,9 +293,13 @@ class Header:
             if kind is None:
                 kind = {bytes: FieldType.BYTES, str: FieldType.STRING}.get(base)
             if kind is None:
-                raise TypeError(f"{cls.__name__}.{name}: say its width, as U8 .. I64, or Meta(type=...)")
+                raise TypeError(
+                    f"{cls.__name__}.{name}: say its width, as U8 .. I64, or Meta(type=...)"
+                )
             if kind in (FieldType.BYTES, FieldType.STRING) and meta.length is None:
-                raise TypeError(f"{cls.__name__}.{name}: a {kind.value} field needs Meta(length=...)")
+                raise TypeError(
+                    f"{cls.__name__}.{name}: a {kind.value} field needs Meta(length=...)"
+                )
             fields.append(
                 Field(
                     abbrev=name,
@@ -330,10 +353,16 @@ class Preferences:
         for name, base, _kind, meta, doc in _declared(cls):
             kind = {bool: "bool", int: "uint", str: "string"}.get(base)
             if kind is None:
-                raise TypeError(f"{cls.__name__}.{name}: a preference is a bool, an int or a str")
+                raise TypeError(
+                    f"{cls.__name__}.{name}: a preference is a bool, an int or a str"
+                )
             if not hasattr(cls, name):
                 raise TypeError(f"{cls.__name__}.{name}: a preference needs a default")
-            entry: Dict[str, Any] = {"name": name, "type": kind, "default": getattr(cls, name)}
+            entry: Dict[str, Any] = {
+                "name": name,
+                "type": kind,
+                "default": getattr(cls, name),
+            }
             if meta.title is not None:
                 entry["title"] = meta.title
             if doc is not None:
@@ -353,7 +382,9 @@ class Preferences:
         preferences = cls.__new__(cls)
         for entry in cls.__wireshark_preferences__:
             name = entry["name"]
-            setattr(preferences, name, values[name] if name in values else entry["default"])
+            setattr(
+                preferences, name, values[name] if name in values else entry["default"]
+            )
         return preferences
 
 
@@ -364,7 +395,14 @@ class NoPreferences(Preferences):
 def _snake_case(name: str) -> str:
     out = []
     for i, c in enumerate(name):
-        if c.isupper() and i and (not name[i - 1].isupper() or (i + 1 < len(name) and name[i + 1].islower())):
+        if (
+            c.isupper()
+            and i
+            and (
+                not name[i - 1].isupper()
+                or (i + 1 < len(name) and name[i + 1].islower())
+            )
+        ):
             out.append("_")
         out.append(c.lower())
     return "".join(out)
@@ -467,7 +505,9 @@ class TypedPacket:
     def __init__(self, packet: Any) -> None:
         self._packet = packet
 
-    def add_expert(self, expert: Union[Expert, Type[Expert], str], text: str = "") -> None:
+    def add_expert(
+        self, expert: Union[Expert, Type[Expert], str], text: str = ""
+    ) -> None:
         if isinstance(expert, Expert):
             self._packet.add_expert(expert.ABBREV, expert.text)
         elif isinstance(expert, type) and issubclass(expert, Expert):
@@ -510,10 +550,14 @@ class ProtocolDissector(Dissector):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         own = vars(cls)
-        if "dissect_on" in own and not hasattr(own["dissect_on"], "__wireshark_typed__"):
+        if "dissect_on" in own and not hasattr(
+            own["dissect_on"], "__wireshark_typed__"
+        ):
             typed_dissect_on = own["dissect_on"]
 
-            def dissect_on(self: ProtocolDissector, preferences: Any) -> List[Dict[str, Any]]:
+            def dissect_on(
+                self: ProtocolDissector, preferences: Any
+            ) -> List[Dict[str, Any]]:
                 typed = type(self).PREFERENCES.from_map(_mapping(preferences))
                 return [binding.to_map() for binding in typed_dissect_on(self, typed)]
 
@@ -523,14 +567,28 @@ class ProtocolDissector(Dissector):
             typed_dissect = own["dissect"]
 
             def dissect(
-                self: ProtocolDissector, data: bytes, header: Any, preferences: Any, packet: Any, conversation: Any
+                self: ProtocolDissector,
+                data: bytes,
+                header: Any,
+                preferences: Any,
+                packet: Any,
+                conversation: Any,
             ) -> int:
                 typed_header = type(self).HEADER.from_map(_mapping(header))
                 if typed_header is None:
                     return 0
-                typed_preferences = type(self).PREFERENCES.from_map(_mapping(preferences))
+                typed_preferences = type(self).PREFERENCES.from_map(
+                    _mapping(preferences)
+                )
                 return int(
-                    typed_dissect(self, data, typed_header, typed_preferences, TypedPacket(packet), conversation)
+                    typed_dissect(
+                        self,
+                        data,
+                        typed_header,
+                        typed_preferences,
+                        TypedPacket(packet),
+                        conversation,
+                    )
                 )
 
             dissect.__wireshark_typed__ = typed_dissect  # type: ignore[attr-defined]

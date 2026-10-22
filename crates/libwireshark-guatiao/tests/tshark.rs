@@ -200,7 +200,7 @@ fn a_provider_written_in_python_dissects_through_the_host() {
     }
     let python_path = std::env::join_paths([
         checkout.join("bindings/python/src"),
-        manifest.join("../libwireshark-api/python"),
+        manifest.join("../../bindings/python/src"),
     ])
     .expect("paths without the separator");
     let profile = profile.with_env("PYTHONPATH", python_path.to_str().expect("a UTF-8 path"));

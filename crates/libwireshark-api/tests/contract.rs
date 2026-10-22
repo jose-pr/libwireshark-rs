@@ -33,7 +33,7 @@ fn shipped(path: &str) -> String {
 #[test]
 fn the_c_header_and_the_python_classes_carry_the_same_hashes() {
     let header = shipped("include/libwireshark_api.h");
-    let python = shipped("python/wireshark_kinds.py");
+    let python = shipped("../../bindings/python/src/libwireshark/kinds.py");
     for (table, kind, hash) in [
         (
             "wireshark_dissector_vtable",
@@ -50,9 +50,13 @@ fn the_c_header_and_the_python_classes_carry_the_same_hashes() {
             header.contains(&format!("#define {table}_FLOOR_HASH {hash}")),
             "{table} in the header"
         );
+        let class = python
+            .split("class ")
+            .find(|class| class.contains(&format!("kind=\"{kind}\"")))
+            .unwrap_or_else(|| panic!("{kind} in the Python classes"));
         assert!(
-            python.contains(&format!("kind=\"{kind}\", floor_hash={hash}")),
-            "{kind} in the Python classes"
+            class.contains(&format!("floor_hash={hash}")),
+            "{kind}'s hash in the Python classes"
         );
     }
 }
@@ -155,7 +159,7 @@ fn encoded<T: ToValue>(values: &[T]) -> Vec<String> {
 
 #[test]
 fn the_python_helpers_spell_every_value_as_the_map_does() {
-    let python = shipped("python/wireshark_dissector.py");
+    let python = shipped("../../bindings/python/src/libwireshark/_dissector.py");
     let spellings = [
         encoded(&[
             FieldType::U8,
@@ -204,7 +208,7 @@ fn the_python_helpers_spell_every_value_as_the_map_does() {
     for spelling in spellings.iter().flatten() {
         assert!(
             python.contains(&format!("= \"{spelling}\"")),
-            "{spelling} in wireshark_dissector.py"
+            "{spelling} in the Python package"
         );
     }
 }
@@ -323,7 +327,7 @@ fn a_preferences_struct_declares_its_defaults_and_docs() {
 
 #[test]
 fn the_python_helpers_carry_the_kind_slots() {
-    let python = shipped("python/wireshark_kinds.py");
+    let python = shipped("../../bindings/python/src/libwireshark/kinds.py");
     for slot in [
         "def describe(",
         "def dissect_on(",

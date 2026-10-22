@@ -30,9 +30,9 @@ A provider is:
 - **a Python module** with its `*.guatiao-py.toml` manifest, beside the
   guatiao-py bridge library (`guatiao_py.dll`, `libguatiao_py.so`), which
   the host adds as a source serving that directory. Python needs the
-  `guatiao` package, `wireshark_kinds.py` and `wireshark_dissector.py`
-  importable (that directory, or `PYTHONPATH`), and on Windows the
-  directory holding `python3.dll` on `PATH`.
+  `libwireshark` package (`bindings/python`, which brings guatiao's)
+  importable (installed, that directory, or `PYTHONPATH`), and on Windows
+  the directory holding `python3.dll` on `PATH`.
 
 Examples of each are in [`examples/guatiao`](../../examples/guatiao).
 

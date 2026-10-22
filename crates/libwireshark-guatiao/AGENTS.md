@@ -58,8 +58,7 @@ read, a table of the wrong shape) always go to stderr as
 
 - Python: the bridge links the Python it was built against; on Windows
   `python3.dll`'s directory must be on `PATH` for Wireshark, and the
-  `guatiao` package, `wireshark_kinds.py` and `wireshark_dissector.py`
-  must be importable.
+  `libwireshark` Python package (which brings guatiao's) importable.
 - Two providers describing one protocol name: the second is left out, as
   for any duplicate (Wireshark would abort).
 - guatiao comes from a pinned git revision; providers must be built

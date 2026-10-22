@@ -1,20 +1,39 @@
-"""The kinds of `include/libwireshark_api.h`, as typed Protocol classes.
+"""The guatiao kinds of a Wireshark dissector, as typed Protocol classes:
+`libwireshark_api.h`'s tables, each method in the order its table declares
+it, its shapes in the annotations, each `floor_hash` the `#define` beside
+the table (the repository's tests compare them).
 
-Written from the header: each method in the order its table declares it,
-its shapes in the annotations, each `floor_hash` copied from the
-`#define` beside the table (a test in the crate compares them). A Python
-dissector inherits `Dissector`; the host lends a `Packet` to `dissect`.
+A dissector usually subclasses `libwireshark.ProtocolDissector`, which
+implements `Dissector` from typed classes; the host lends a `Packet` to
+`dissect`.
 """
 
 from __future__ import annotations
 
+__all__ = ["Dissector", "Packet"]
+
 from typing import Protocol
 
 from guatiao import Map
-from guatiao.kinds import I64, U64, KindProtocol, Lent, ListAnswer, MapAnswer, fallible, required
+from guatiao.kinds import (
+    I64,
+    U64,
+    KindProtocol,
+    Lent,
+    ListAnswer,
+    MapAnswer,
+    fallible,
+    required,
+)
 
 
-class Packet(KindProtocol, Protocol, kind="wireshark_packet", floor_hash=2387250941, is_object=True):
+class Packet(
+    KindProtocol,
+    Protocol,
+    kind="wireshark_packet",
+    floor_hash=2387250941,
+    is_object=True,
+):
     """`wireshark_packet_vtable`: one packet, lent by the host for a `dissect` call.
 
     Field names are the abbreviations the description declared, with or
@@ -24,7 +43,9 @@ class Packet(KindProtocol, Protocol, kind="wireshark_packet", floor_hash=2387250
 
     @required
     @fallible
-    def add_item(self, field: str, offset: I64, length: I64, little_endian: bool) -> None: ...
+    def add_item(
+        self, field: str, offset: I64, length: I64, little_endian: bool
+    ) -> None: ...
 
     @required
     @fallible
@@ -60,7 +81,9 @@ class Packet(KindProtocol, Protocol, kind="wireshark_packet", floor_hash=2387250
     def dst_port(self) -> I64: ...
 
 
-class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1003939949):
+class Dissector(
+    KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1003939949
+):
     """`wireshark_dissector_vtable`: a protocol and its dissection.
 
     `describe` answers the protocol as a map (the crate's `Description`);
@@ -69,7 +92,7 @@ class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1
     header the host decoded and the preference values; `message_len`, for
     a protocol framed over TCP, a message's whole length from its header, or
     -1 when the header is not this protocol's. `ProtocolDissector` in
-    `wireshark_dissector` writes all of it from typed classes.
+    `libwireshark.ProtocolDissector` writes all of it from typed classes.
     """
 
     @required
@@ -83,7 +106,12 @@ class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1
     @required
     @fallible
     def dissect(
-        self, data: bytes, header: Map, preferences: Map, packet: Lent[Packet], conversation: Lent[Map]
+        self,
+        data: bytes,
+        header: Map,
+        preferences: Map,
+        packet: Lent[Packet],
+        conversation: Lent[Map],
     ) -> I64: ...
 
     def message_len(self, header: bytes) -> I64: ...

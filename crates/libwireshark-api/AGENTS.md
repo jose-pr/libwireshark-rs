@@ -2,8 +2,8 @@
 
 The guatiao kinds a Wireshark plugin written in any language implements,
 and `libwireshark-guatiao` loads. Self-contained: a provider author reads
-this, `include/libwireshark_api.h` (C) or `python/wireshark_kinds.py` and
-`python/wireshark_dissector.py` (Python), not the source. Source:
+this, `include/libwireshark_api.h` (C) or the `libwireshark` Python
+package (the repository's `bindings/python`), not the source. Source:
 <https://github.com/jose-pr/libwireshark-rs>.
 
 No default features; `c-header` regenerates the committed C header. MSRV
@@ -162,7 +162,7 @@ pub fn preference_list<T: Schema + ToValue + Default>() -> Result<Vec<Preference
 - A header that does not read from the decoded map (a packet too short)
   declines the packet before `dissect` runs.
 
-## Python (`python/wireshark_dissector.py`)
+## Python (the `libwireshark` package, `bindings/python`)
 
 ```python
 class Header:                        # annotated attributes, laid out in order
