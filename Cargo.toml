@@ -7,6 +7,7 @@ members = [
     "crates/cargo-wireshark",
     "examples/basic-dissector",
     "examples/multi-protocol",
+    "examples/stream-protocol",
 ]
 
 [workspace.package]

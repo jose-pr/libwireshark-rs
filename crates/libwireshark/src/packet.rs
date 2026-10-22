@@ -2,20 +2,56 @@
 
 use crate::header::{FieldType, Header};
 use crate::sys;
+use alloc::boxed::Box;
 use alloc::ffi::CString;
+use alloc::string::String;
+use core::any::{Any, TypeId};
 use core::ffi::c_int;
 use core::fmt;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
+use std::collections::HashMap;
+use std::sync::{Mutex, PoisonError};
 
-/// A protocol's registered state the packet view reads: its ids and fields.
-#[derive(Debug)]
+/// Per-conversation values, keyed by Wireshark's conversation index and the
+/// value's type.
+pub(crate) type Conversations = Mutex<HashMap<(u32, TypeId), Box<dyn Any + Send>>>;
+
+/// A protocol's registered state the packet view reads: its ids, fields,
+/// expert entries and conversation values.
 pub(crate) struct Registered {
     pub(crate) proto: c_int,
     pub(crate) ett: c_int,
     pub(crate) filter: &'static str,
     pub(crate) short_name: CString,
-    pub(crate) fields: alloc::boxed::Box<[RegisteredField]>,
+    pub(crate) fields: Box<[RegisteredField]>,
+    pub(crate) experts: Box<[RegisteredExpert]>,
+    pub(crate) conversations: Conversations,
+}
+
+impl fmt::Debug for Registered {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Registered")
+            .field("filter", &self.filter)
+            .field("fields", &self.fields)
+            .finish_non_exhaustive()
+    }
+}
+
+/// An expert entry Wireshark assigned ids to, in storage it keeps a pointer to.
+#[derive(Debug)]
+pub(crate) struct RegisteredExpert {
+    pub(crate) abbrev: String,
+    pub(crate) field: NonNull<sys::expert_field>,
+}
+
+/// Whether `full` is `name`, or `<filter>.<name>`.
+fn names(full: &str, filter: &str, name: &str) -> bool {
+    full == name
+        || full
+            .strip_prefix(filter)
+            .and_then(|rest| rest.strip_prefix('.'))
+            == Some(name)
 }
 
 /// A field Wireshark assigned an id to.
@@ -32,15 +68,16 @@ impl Registered {
     fn field(&self, name: &str) -> Result<&RegisteredField, PacketFieldError> {
         self.fields
             .iter()
-            .find(|field| {
-                field.abbrev == name
-                    || field
-                        .abbrev
-                        .strip_prefix(self.filter)
-                        .and_then(|rest| rest.strip_prefix('.'))
-                        == Some(name)
-            })
+            .find(|field| names(&field.abbrev, self.filter, name))
             .filter(|field| field.id >= 0)
+            .ok_or(PacketFieldError::UnknownField)
+    }
+
+    /// The expert entry named `name`, like [`field`](Self::field).
+    fn expert(&self, name: &str) -> Result<&RegisteredExpert, PacketFieldError> {
+        self.experts
+            .iter()
+            .find(|expert| names(&expert.abbrev, self.filter, name))
             .ok_or(PacketFieldError::UnknownField)
     }
 }
@@ -58,6 +95,7 @@ pub struct PacketView<'packet> {
     item: Option<NonNull<sys::proto_item>>,
     tree: Option<NonNull<sys::proto_tree>>,
     protocol: &'packet Registered,
+    post: bool,
     _callback: PhantomData<&'packet mut sys::tvbuff_t>,
 }
 
@@ -81,6 +119,7 @@ impl<'packet> PacketView<'packet> {
         pinfo: *mut sys::packet_info,
         tree: *mut sys::proto_tree,
         protocol: &'packet Registered,
+        post: bool,
     ) -> Option<Self> {
         Some(Self {
             tvb: NonNull::new(tvb)?,
@@ -89,6 +128,7 @@ impl<'packet> PacketView<'packet> {
             item: None,
             tree: None,
             protocol,
+            post,
             _callback: PhantomData,
         })
     }
@@ -270,6 +310,117 @@ impl<'packet> PacketView<'packet> {
         }
     }
 
+    /// Whether the protocol runs as a post-dissector for this packet: after
+    /// all other dissection, over the whole frame. The runtime then leaves
+    /// the Protocol column alone and appends the Info text.
+    pub fn is_postdissector(&self) -> bool {
+        self.post
+    }
+
+    /// Whether this is the first time Wireshark dissects this packet.
+    ///
+    /// Wireshark dissects packets again (when one is selected, filtered or
+    /// a capture is reloaded); state that follows the conversation, such as
+    /// a request awaiting its response, is updated on the first pass only.
+    pub fn is_first_pass(&self) -> bool {
+        self.pinfo.is_none_or(|pinfo| {
+            // SAFETY: `pinfo` and its frame data belong to the running callback.
+            unsafe {
+                let frame = pinfo.as_ref().fd;
+                frame.is_null() || (*frame).visited() == 0
+            }
+        })
+    }
+
+    /// Runs `f` on this conversation's `T`, created with `T::default()` the
+    /// first time; `None` when the packet belongs to no conversation.
+    ///
+    /// A conversation is Wireshark's: the packets between one pair of
+    /// addresses and ports. Values are kept per protocol and per type, and
+    /// dropped when Wireshark opens another capture.
+    pub fn with_conversation<T: Default + Send + 'static, R>(
+        &mut self,
+        f: impl FnOnce(&mut T) -> R,
+    ) -> Option<R> {
+        let pinfo = self.pinfo?;
+        // SAFETY: `pinfo` belongs to the running callback.
+        let conversation =
+            NonNull::new(unsafe { sys::find_or_create_conversation(pinfo.as_ptr()) })?;
+        // SAFETY: Wireshark returned a live conversation.
+        let key = (
+            unsafe { conversation.as_ref().conv_index },
+            TypeId::of::<T>(),
+        );
+        let lock = || {
+            self.protocol
+                .conversations
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        };
+        // Taken out while `f` runs, so `f` may use the packet freely.
+        let mut value = lock()
+            .remove(&key)
+            .and_then(|value| value.downcast::<T>().ok())
+            .unwrap_or_default();
+        let result = f(&mut value);
+        lock().insert(key, value);
+        Some(result)
+    }
+
+    /// Reports the expert finding `name` (registered in
+    /// [`Dissector::EXPERTS`](crate::Dissector::EXPERTS)) with its summary.
+    ///
+    /// # Errors
+    ///
+    /// [`PacketFieldError::UnknownField`] when the protocol registers no
+    /// such finding.
+    pub fn add_expert(&mut self, name: &str) -> Result<(), PacketFieldError> {
+        self.expert_with(name, None)
+    }
+
+    /// Reports the expert finding `name` with `text` instead of its summary.
+    /// Text after an interior NUL is dropped.
+    ///
+    /// # Errors
+    ///
+    /// As [`add_expert`](Self::add_expert).
+    pub fn add_expert_text(&mut self, name: &str, text: &str) -> Result<(), PacketFieldError> {
+        self.expert_with(name, Some(text))
+    }
+
+    fn expert_with(&mut self, name: &str, text: Option<&str>) -> Result<(), PacketFieldError> {
+        let field = self.protocol.expert(name)?.field;
+        let Some(pinfo) = self.pinfo else {
+            return Ok(());
+        };
+        let item = self
+            .tree()
+            .ok()
+            .and(self.item)
+            .map_or(core::ptr::null_mut(), NonNull::as_ptr);
+        // SAFETY: `pinfo` and `item` belong to the running callback, and
+        // `field` is the registered entry's storage, live for the process.
+        unsafe {
+            match text {
+                None => {
+                    sys::expert_add_info(pinfo.as_ptr(), item, field.as_ptr());
+                }
+                Some(text) => {
+                    let text = CString::new(text.split('\0').next().unwrap_or_default())
+                        .unwrap_or_default();
+                    sys::expert_add_info_format(
+                        pinfo.as_ptr(),
+                        item,
+                        field.as_ptr(),
+                        c"%s".as_ptr(),
+                        text.as_ptr(),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Whether Wireshark asked for a protocol tree for this packet. Tree
     /// insertions return [`PacketFieldError::NoTree`] when it did not.
     pub fn has_tree(&self) -> bool {
@@ -304,11 +455,13 @@ impl<'packet> PacketView<'packet> {
     /// Marks the packet as this protocol's: its Protocol column, and its
     /// tree item covering `size` bytes.
     pub(crate) fn accept(&mut self, size: usize) {
-        self.column(
-            sys::COL_PROTOCOL as c_int,
-            self.protocol.short_name.to_str().unwrap_or_default(),
-            false,
-        );
+        if !self.post {
+            self.column(
+                sys::COL_PROTOCOL as c_int,
+                self.protocol.short_name.to_str().unwrap_or_default(),
+                false,
+            );
+        }
         if self.tree().is_ok()
             && let Some(item) = self.item
             && let Ok(size) = c_int::try_from(size)

@@ -46,6 +46,7 @@ pub struct FieldInfo {
     base: Base,
     bitmask: u64,
     blurb: &'static str,
+    values: Option<&'static [(u32, &'static str)]>,
 }
 
 impl FieldInfo {
@@ -59,6 +60,7 @@ impl FieldInfo {
             base: Base::Dec,
             bitmask: 0,
             blurb: "",
+            values: None,
         }
     }
 
@@ -80,6 +82,16 @@ impl FieldInfo {
     #[must_use]
     pub const fn with_blurb(mut self, blurb: &'static str) -> Self {
         self.blurb = blurb;
+        self
+    }
+
+    /// The same field shown by name: a value found in `values` is displayed
+    /// as its text, with the number after it. For integer fields up to 32
+    /// bits; a signed value is matched by its two's-complement bits
+    /// (`-1i32 as u32`).
+    #[must_use]
+    pub const fn with_values(mut self, values: &'static [(u32, &'static str)]) -> Self {
+        self.values = Some(values);
         self
     }
 
@@ -111,6 +123,11 @@ impl FieldInfo {
     /// The field's description.
     pub const fn blurb(&self) -> &'static str {
         self.blurb
+    }
+
+    /// The names its values are shown by, if any.
+    pub const fn values(&self) -> Option<&'static [(u32, &'static str)]> {
+        self.values
     }
 }
 

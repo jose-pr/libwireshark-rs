@@ -33,3 +33,4 @@ workspace = true
 [dev-dependencies]
 basic-dissector = { path = "../../examples/basic-dissector" }
 multi-protocol = { path = "../../examples/multi-protocol" }
+stream-protocol = { path = "../../examples/stream-protocol" }

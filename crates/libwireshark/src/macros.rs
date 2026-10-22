@@ -30,7 +30,11 @@ macro_rules! plugin {
             ]);
 
             extern "C" fn register_protoinfo() {
-                PLUGIN.register_protoinfo(apply_preferences);
+                PLUGIN.register_protoinfo($crate::__private::Callbacks {
+                    apply: apply_preferences,
+                    heuristic,
+                    cleanup,
+                });
             }
 
             extern "C" fn register_handoff() {
@@ -39,6 +43,22 @@ macro_rules! plugin {
 
             extern "C" fn apply_preferences() {
                 PLUGIN.apply_preferences();
+            }
+
+            extern "C" fn cleanup() {
+                PLUGIN.cleanup();
+            }
+
+            extern "C" fn heuristic(
+                tvb: *mut $crate::sys::tvbuff_t,
+                pinfo: *mut $crate::sys::packet_info,
+                tree: *mut $crate::sys::proto_tree,
+                _data: *mut ::core::ffi::c_void,
+            ) -> $crate::__private::HeuristicResult {
+                // SAFETY: Wireshark calls this as a heuristic dissector, with
+                // the packet's buffer, info and tree.
+                let accepted = unsafe { PLUGIN.heuristic(tvb, pinfo, tree) };
+                $crate::__private::heuristic_result(accepted)
             }
 
             static PROTO_PLUGIN: $crate::sys::proto_plugin =

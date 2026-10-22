@@ -10,7 +10,7 @@ use proc_macro2::{Span, TokenStream as Tokens};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, LitInt, LitStr, parse_macro_input};
 
-/// Registered fields from a struct of integers, and `Self::decode` reading
+/// Registered fields from a struct, and `Self::decode` reading
 /// them from packet bytes. Documented on `libwireshark::Header`.
 #[proc_macro_derive(Header, attributes(header))]
 pub fn derive_header(input: TokenStream) -> TokenStream {
@@ -82,6 +82,88 @@ fn parse_endian(value: &LitStr) -> syn::Result<Endian> {
     }
 }
 
+/// What a header field's Rust type becomes in Wireshark.
+enum Shape {
+    /// An integer: its `FieldType` variant, width, signedness.
+    Integer(&'static str, usize, bool),
+    /// A value Wireshark decodes from the bytes itself: its `FieldType`
+    /// variant, width, the `Encoding` constant, and how `decode` builds it.
+    Bytes(&'static str, usize, &'static str, Tokens),
+}
+
+/// The shape of a field of type `ty`; `ether` asks for a `[u8; 6]` MAC address.
+fn shape(ty: &syn::Type, ether: bool) -> Option<Shape> {
+    if let Some((kind, width, signed)) = integer_type(ty) {
+        return (!ether).then_some(Shape::Integer(kind, width, signed));
+    }
+    if let syn::Type::Array(array) = ty {
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(len),
+            ..
+        }) = &array.len
+        else {
+            return None;
+        };
+        let len = len.base10_parse::<usize>().ok()?;
+        let syn::Type::Path(element) = &*array.elem else {
+            return None;
+        };
+        if !element.path.is_ident("u8") || len == 0 {
+            return None;
+        }
+        let kind = if ether {
+            if len != 6 {
+                return None;
+            }
+            "Ether"
+        } else {
+            "Bytes"
+        };
+        return Some(Shape::Bytes(
+            kind,
+            len,
+            "NA",
+            quote!(|bytes: &[u8]| ::core::convert::TryInto::try_into(bytes).ok()),
+        ));
+    }
+    if ether {
+        return None;
+    }
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
+    let last = path.path.segments.last()?.ident.to_string();
+    Some(match last.as_str() {
+        "bool" => Shape::Bytes(
+            "Bool",
+            1,
+            "BIG_ENDIAN",
+            quote!(|bytes: &[u8]| ::core::option::Option::Some(bytes[0] != 0)),
+        ),
+        "Ipv4Addr" => Shape::Bytes(
+            "Ipv4",
+            4,
+            "BIG_ENDIAN",
+            quote!(
+                |bytes: &[u8]| <[u8; 4] as ::core::convert::TryFrom<&[u8]>>::try_from(bytes)
+                    .ok()
+                    .map(::core::convert::From::from)
+            ),
+        ),
+        "Ipv6Addr" => Shape::Bytes(
+            "Ipv6",
+            16,
+            "NA",
+            quote!(
+                |bytes: &[u8]| <[u8; 16] as ::core::convert::TryFrom<&[u8]>>::try_from(bytes)
+                    .ok()
+                    .map(::core::convert::From::from)
+            ),
+        ),
+        _ => return None,
+    })
+}
+
 /// An integer field's Rust type: its `FieldType` variant, width, signedness.
 fn integer_type(ty: &syn::Type) -> Option<(&'static str, usize, bool)> {
     let syn::Type::Path(path) = ty else {
@@ -129,6 +211,8 @@ fn expand_header(input: DeriveInput, runtime: Tokens) -> syn::Result<Tokens> {
         let mut bitmask = 0u64;
         let mut offset = None;
         let mut endian = struct_endian;
+        let mut values = None::<syn::Path>;
+        let mut ether = false;
         for attribute in field.attrs.iter().filter(|a| a.path().is_ident("header")) {
             attribute.parse_nested_meta(|meta| {
                 let key = meta.path.get_ident().map(ToString::to_string).unwrap_or_default();
@@ -155,52 +239,86 @@ fn expand_header(input: DeriveInput, runtime: Tokens) -> syn::Result<Tokens> {
                     "bitmask" => bitmask = meta.value()?.parse::<LitInt>()?.base10_parse()?,
                     "offset" => offset = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?),
                     "endian" => endian = parse_endian(&meta.value()?.parse()?)?,
+                    "values" => values = Some(meta.value()?.parse()?),
+                    "kind" => {
+                        let value = meta.value()?.parse::<LitStr>()?;
+                        if value.value() != "ether" {
+                            return Err(syn::Error::new_spanned(value, "kind is \"ether\""));
+                        }
+                        ether = true;
+                    }
                     _ => {
                         return Err(meta.error(
-                            "header takes abbrev, name, blurb, display, bitmask, offset or endian",
+                            "header takes abbrev, name, blurb, display, bitmask, offset, endian, values or kind",
                         ));
                     }
                 }
                 Ok(())
             })?;
         }
-        let (kind, width, signed) = integer_type(&field.ty).ok_or_else(|| {
+        let shape = shape(&field.ty, ether).ok_or_else(|| {
             syn::Error::new_spanned(
                 &field.ty,
-                "Header fields are u8, u16, u32, u64, i8, i16, i32 or i64",
+                if ether {
+                    "kind = \"ether\" needs a [u8; 6] field"
+                } else {
+                    "Header fields are u8, u16, u32, u64, i8, i16, i32, i64, bool, [u8; N], Ipv4Addr or Ipv6Addr"
+                },
             )
         })?;
+        let (kind, width) = match &shape {
+            Shape::Integer(kind, width, _) | Shape::Bytes(kind, width, _, _) => (*kind, *width),
+        };
+        if values.is_some() && !matches!(shape, Shape::Integer(_, 1..=4, _)) {
+            return Err(syn::Error::new_spanned(
+                &field.ty,
+                "values name integer fields of up to 32 bits",
+            ));
+        }
         let offset: usize = offset.unwrap_or(next_offset);
         next_offset = offset + width;
         size = size.max(next_offset);
+        let end = offset + width;
 
         let kind = format_ident!("{kind}");
         let blurb = LitStr::new(&blurb, Span::call_site());
         let abbrev = LitStr::new(&abbrev, ident.span());
         let name = LitStr::new(&name, ident.span());
+        let values = values.map(|values| quote!(.with_values(#values)));
         infos.push(quote! {
             #runtime::FieldInfo::new(#name, #abbrev, #runtime::FieldType::#kind)
                 .with_base(#runtime::Base::#base)
                 .with_bitmask(#bitmask)
                 .with_blurb(#blurb)
-        });
-        inserts.push(match (width, signed) {
-            (8, false) => quote!(packet.add_uint64(#abbrev, #offset, self.#ident)?;),
-            (8, true) => quote!(packet.add_int64(#abbrev, #offset, self.#ident)?;),
-            (_, false) => quote!(packet.add_uint(#abbrev, #offset, ::core::convert::From::from(self.#ident))?;),
-            (_, true) => quote!(packet.add_int(#abbrev, #offset, ::core::convert::From::from(self.#ident))?;),
+                #values
         });
         let ty = &field.ty;
-        let from_bytes = match endian {
-            Endian::Big => quote!(from_be_bytes),
-            Endian::Little => quote!(from_le_bytes),
-        };
-        let end = offset + width;
-        decoders.push(quote! {
-            #ident: <#ty>::#from_bytes(
-                ::core::convert::TryInto::try_into(bytes.get(#offset..#end)?).ok()?
-            ),
-        });
+        match shape {
+            Shape::Integer(_, width, signed) => {
+                inserts.push(match (width, signed) {
+                    (8, false) => quote!(packet.add_uint64(#abbrev, #offset, self.#ident)?;),
+                    (8, true) => quote!(packet.add_int64(#abbrev, #offset, self.#ident)?;),
+                    (_, false) => quote!(packet.add_uint(#abbrev, #offset, ::core::convert::From::from(self.#ident))?;),
+                    (_, true) => quote!(packet.add_int(#abbrev, #offset, ::core::convert::From::from(self.#ident))?;),
+                });
+                let from_bytes = match endian {
+                    Endian::Big => quote!(from_be_bytes),
+                    Endian::Little => quote!(from_le_bytes),
+                };
+                decoders.push(quote! {
+                    #ident: <#ty>::#from_bytes(
+                        ::core::convert::TryInto::try_into(bytes.get(#offset..#end)?).ok()?
+                    ),
+                });
+            }
+            Shape::Bytes(_, width, encoding, read) => {
+                let encoding = format_ident!("{encoding}");
+                inserts.push(quote!(packet.add_item(#abbrev, #offset, #width, #runtime::Encoding::#encoding)?;));
+                decoders.push(quote! {
+                    #ident: (#read)(bytes.get(#offset..#end)?)?,
+                });
+            }
+        }
     }
 
     let name = &input.ident;
@@ -356,10 +474,43 @@ mod tests {
     }
 
     #[test]
-    fn a_header_refuses_a_non_integer_field() {
+    fn a_header_refuses_an_unsupported_field() {
         let input = parse_quote! { struct Foo { name: String } };
         let error = expand_header(input, quote!(::libwireshark)).unwrap_err();
         assert!(error.to_string().contains("u8, u16"));
+    }
+
+    #[test]
+    fn a_header_reads_addresses_flags_and_bytes_through_wireshark() {
+        let input = parse_quote! {
+            struct Foo {
+                up: bool,
+                source: core::net::Ipv4Addr,
+                #[header(kind = "ether")]
+                mac: [u8; 6],
+                id: [u8; 3],
+                target: Ipv6Addr,
+            }
+        };
+        let source = compiles_as_items(expand_header(input, quote!(::libwireshark)).unwrap());
+        assert!(source.contains("FieldType :: Bool"));
+        assert!(source.contains("FieldType :: Ipv4"));
+        assert!(source.contains("FieldType :: Ether"));
+        assert!(source.contains("FieldType :: Bytes"));
+        assert!(source.contains("FieldType :: Ipv6"));
+        assert!(source.contains("const SIZE : usize = 30usize"));
+        assert!(source.contains("packet . add_item (\"source\" , 1usize , 4usize , :: libwireshark :: Encoding :: BIG_ENDIAN)"));
+    }
+
+    #[test]
+    fn values_name_small_integer_fields_only() {
+        let input = parse_quote! { struct Foo { #[header(values = TYPES)] kind: u8 } };
+        let source = compiles_as_items(expand_header(input, quote!(::libwireshark)).unwrap());
+        assert!(source.contains(". with_values (TYPES)"));
+        let input = parse_quote! { struct Foo { #[header(values = TYPES)] big: u64 } };
+        assert!(expand_header(input, quote!(::libwireshark)).is_err());
+        let input = parse_quote! { struct Foo { #[header(kind = "ether")] mac: [u8; 4] } };
+        assert!(expand_header(input, quote!(::libwireshark)).is_err());
     }
 
     #[test]

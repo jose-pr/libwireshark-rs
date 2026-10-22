@@ -15,9 +15,10 @@ extern crate self as libwireshark;
 
 #[allow(unsafe_code)]
 #[doc(hidden)]
-#[path = "plugin.rs"]
+#[path = "plugin/mod.rs"]
 pub mod __private;
 mod dissector;
+mod expert;
 mod header;
 mod macros;
 #[allow(unsafe_code)]
@@ -27,20 +28,24 @@ pub mod prefs;
 /// The raw `libwireshark-sys` bindings, for what this crate does not wrap.
 pub use libwireshark_sys as sys;
 
-pub use dissector::{Binding, DissectResult, Dissector};
+pub use dissector::{Binding, DissectResult, Dissector, TcpFraming};
+pub use expert::{Expert, ExpertGroup, Severity};
 pub use header::{Base, FieldInfo, FieldType, Header, NoHeader};
 pub use packet::{Encoding, PacketFieldError, PacketView};
 pub use prefs::{NoPreferences, Preferences};
 
-/// `#[derive(Header)]`: registered fields from a struct of integers, and
-/// `Self::decode` reading them from packet bytes.
+/// `#[derive(Header)]`: registered fields from a struct, and `Self::decode`
+/// reading them from packet bytes.
 ///
-/// Each field is registered as `<filter>.<field name>` unless
+/// Fields are `u8`..`u64` and `i8`..`i64` (added with the struct's value),
+/// or `bool`, `[u8; N]`, `Ipv4Addr` and `Ipv6Addr` (added by Wireshark from
+/// the packet bytes). Each is registered as `<filter>.<field name>` unless
 /// `#[header(abbrev = "...")]` names it. Other keys: `name` (the label,
 /// default the field name), `blurb`, `display` (`"dec"`, `"hex"`, `"oct"`,
 /// `"dec_hex"`, `"hex_dec"`), `bitmask`, `offset` (bytes; default right after
-/// the previous field) and `endian` (`"big"`, the default, or `"little"`,
-/// also accepted on the struct).
+/// the previous field), `endian` (`"big"`, the default, or `"little"`, also
+/// accepted on the struct), `values = PATH` (a `&[(u32, &str)]` naming an
+/// integer field's values) and `kind = "ether"` (a `[u8; 6]` MAC address).
 ///
 /// ```compile_fail
 /// #[derive(libwireshark::Header)]
