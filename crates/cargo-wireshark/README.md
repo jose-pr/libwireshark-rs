@@ -13,7 +13,8 @@ source tags, without configuring or building Wireshark.
 
 ## Features
 
-- `cargo wireshark doctor` / `version`: what Wireshark is installed.
+- `cargo wireshark doctor` / `version`: the Wireshark runtime, SDK or
+  source tree installed, and its version.
 - `cargo wireshark headers generate`: bundles for every stable release line
   from 3.0, or for one source tree; GLib/Gcrypt headers come from the system,
   given directories, or Wireshark's own SHA-256-verified dependency archives.
@@ -59,7 +60,9 @@ Exit status: 0 success, 1 failure, 2 invalid arguments.
 
 The binary is a thin front over the library (`cargo_wireshark`):
 `generate_public_header`, `generate_release_lines`, `fetch_bundles`,
-`publish_bundles`, `Sdk::discover`, `Runtime::discover`, `SourceTree`.
+`publish_bundles`, `export_report`, `Sdk::discover`, `Runtime::discover`,
+`SourceTree`. The library reads no settings from the environment; the
+binary maps each `WIRESHARK_*` variable to a flag.
 
 ## Development
 

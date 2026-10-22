@@ -1,7 +1,8 @@
 //! Header bundles for every stable Wireshark release line, and the
 //! repository branch that stores them.
 
-use crate::{GenerateError, PublicHeaderConfig, generate_public_header};
+use crate::error::GenerateError;
+use crate::public::{PublicHeaderConfig, generate_public_header};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -40,15 +41,19 @@ pub struct ReleaseBundlesConfig {
     pub versions: Vec<String>,
     /// GLib/Gcrypt include roots for the target.
     pub dependency_include_dirs: Vec<PathBuf>,
+    /// Where downloaded dependency archives are kept, extracted.
+    pub cache_dir: PathBuf,
 }
 
 impl ReleaseBundlesConfig {
-    /// Generates every release line for one target from `repository` into `output_dir`.
+    /// Generates every release line for one target from `repository` into
+    /// `output_dir`, caching dependency archives under `cache_dir`.
     pub fn new(
         repository: PathBuf,
         output_dir: PathBuf,
         target_os: String,
         architecture: String,
+        cache_dir: PathBuf,
     ) -> Self {
         Self {
             repository,
@@ -57,6 +62,7 @@ impl ReleaseBundlesConfig {
             architecture,
             versions: Vec::new(),
             dependency_include_dirs: Vec::new(),
+            cache_dir,
         }
     }
 }
@@ -155,16 +161,15 @@ fn generate_worktrees(
                 OsStr::new(&line.tag),
             ],
         )?;
-        let generated = generate_public_header(&PublicHeaderConfig {
-            source_dir: worktree.clone(),
-            architecture: config.architecture.clone(),
-            target_os: config.target_os.clone(),
-            dependency_include_dirs: config.dependency_include_dirs.clone(),
-            output_dir: config.output_dir.clone(),
-            dll: None,
-            filtered_output: None,
-            llvm_readobj: "llvm-readobj".into(),
-        });
+        let mut header = PublicHeaderConfig::new(
+            worktree.clone(),
+            config.output_dir.clone(),
+            config.target_os.clone(),
+            config.architecture.clone(),
+            config.cache_dir.clone(),
+        );
+        header.dependency_include_dirs = config.dependency_include_dirs.clone();
+        let generated = generate_public_header(&header);
         git(
             Some(repository),
             [

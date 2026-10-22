@@ -2,7 +2,8 @@
 //! Wireshark release line, the same for every target, and one per target
 //! holding the GLib and Gcrypt declarations every release line shares.
 
-use crate::{GenerateError, c_include_target, resolve_source_include, version_components};
+use crate::error::GenerateError;
+use crate::public::{c_include_target, resolve_source_include, version_components};
 
 use alloc::collections::BTreeSet;
 use std::path::{Path, PathBuf};

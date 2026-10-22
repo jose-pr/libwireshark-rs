@@ -24,3 +24,8 @@ tar.workspace = true
 
 [lints]
 workspace = true
+
+# Writers for the extraction tests' hostile archives.
+[dev-dependencies]
+sevenz-rust2 = { workspace = true, features = ["compress"] }
+lzma-rust2 = { workspace = true, features = ["encoder"] }
