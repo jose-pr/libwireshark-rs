@@ -4,14 +4,19 @@
 //! Everything here is `#[doc(hidden)]`; a plugin names only the macro.
 
 mod callbacks;
+mod codecs;
+mod file_types;
 mod filters;
 mod preferences;
 mod protocol;
 mod runtime;
+mod symbols;
 mod taps;
 
 pub use callbacks::{HeuristicFn, HeuristicResult, heuristic_result};
-pub use filters::{DfilterPlugin, FilterSpec, PluginStatic, dfilter_plugin};
+pub use codecs::CodecSpec;
+pub use file_types::FileTypeSpec;
+pub use filters::{FilterSpec, PluginStatic};
 pub use protocol::Protocol;
 pub use taps::TapSpec;
 
@@ -24,23 +29,6 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// For derive expansions, which cannot assume `extern crate alloc`.
 pub use alloc::vec::Vec;
-
-/// `plugin_describe`'s answer for a plugin with `taps` taps and `filters`
-/// filter functions: dissectors, plus tap listeners and display-filter
-/// functions when it has any (`WS_PLUGIN_DESC_*`).
-pub const fn describe(taps: usize, filters: usize) -> u32 {
-    const DISSECTOR: u32 = 1 << 0;
-    const TAP_LISTENER: u32 = 1 << 4;
-    const DFILTER: u32 = 1 << 5;
-    let mut flags = DISSECTOR;
-    if taps > 0 {
-        flags |= TAP_LISTENER;
-    }
-    if filters > 0 {
-        flags |= DFILTER;
-    }
-    flags
-}
 
 /// The release line the plugin is built for, checked by Wireshark's loader.
 pub const WANT_MAJOR: c_int = sys::VERSION_MAJOR as c_int;
@@ -64,41 +52,50 @@ pub const fn nul_terminated<const N: usize>(version: &str) -> [u8; N] {
     bytes
 }
 
-/// The registration table `plugin_register` hands to Wireshark.
-pub const fn proto_plugin(
-    register_protoinfo: extern "C" fn(),
-    register_handoff: extern "C" fn(),
-) -> sys::proto_plugin {
-    sys::proto_plugin {
-        register_protoinfo: Some(register_protoinfo),
-        register_handoff: Some(register_handoff),
-    }
+/// The plugin's callbacks that start each kind of registration.
+#[derive(Clone, Copy, Debug)]
+pub struct Entries {
+    /// Protocols, fields and preferences.
+    pub register_protoinfo: extern "C" fn(),
+    /// Dissector handles and table entries.
+    pub register_handoff: extern "C" fn(),
+    /// Tap listeners.
+    pub register_taps: extern "C" fn(),
+    /// Display-filter functions.
+    pub register_filters: extern "C" fn(),
+    /// Their removal.
+    pub deregister_filters: extern "C" fn(),
+    /// File formats.
+    pub register_file_types: extern "C" fn(),
+    /// Codecs.
+    pub register_codecs: extern "C" fn(),
 }
 
-/// The tap registration table `plugin_register` hands to Wireshark.
-pub const fn tap_plugin(register_tap_listener: extern "C" fn()) -> sys::tap_plugin {
-    sys::tap_plugin {
-        register_tap_listener: Some(register_tap_listener),
-    }
+/// The tables `plugin_register` hands to Wireshark, one per interface.
+#[derive(Debug)]
+pub struct Tables {
+    protocols: sys::proto_plugin,
+    taps: sys::tap_plugin,
+    filters: filters::DfilterPlugin,
+    file_types: file_types::WtapPlugin,
+    codecs: codecs::CodecsPlugin,
 }
 
-/// Registers the plugin's tables with Wireshark: the tap and display-filter
-/// tables only when the plugin has taps or filter functions.
-pub fn register(
-    plugin: &'static sys::proto_plugin,
-    taps: &'static sys::tap_plugin,
-    filters: &'static DfilterPlugin,
-    [has_taps, has_filters]: [bool; 2],
-) {
-    // SAFETY: the tables and their callbacks are statics of the plugin library.
-    unsafe {
-        sys::proto_register_plugin(plugin);
-        if has_taps {
-            sys::tap_register_plugin(taps);
+impl Tables {
+    /// The tables that start registration with `entries`.
+    pub const fn new(entries: Entries) -> Self {
+        Self {
+            protocols: sys::proto_plugin {
+                register_protoinfo: Some(entries.register_protoinfo),
+                register_handoff: Some(entries.register_handoff),
+            },
+            taps: sys::tap_plugin {
+                register_tap_listener: Some(entries.register_taps),
+            },
+            filters: filters::dfilter_plugin(entries.register_filters, entries.deregister_filters),
+            file_types: file_types::wtap_plugin(entries.register_file_types),
+            codecs: codecs::codecs_plugin(entries.register_codecs),
         }
-    }
-    if has_filters {
-        filters::register_plugin(filters);
     }
 }
 
@@ -119,8 +116,11 @@ pub struct Plugin {
     protocols: &'static [Protocol],
     taps: &'static [TapSpec],
     filters: &'static [FilterSpec],
+    file_types: &'static [FileTypeSpec],
+    codecs: &'static [CodecSpec],
     state: Mutex<Vec<Runtime>>,
     filter_state: Mutex<Option<filters::Registered>>,
+    file_type_state: Mutex<Option<file_types::Registered>>,
 }
 
 impl core::fmt::Debug for Plugin {
@@ -129,25 +129,99 @@ impl core::fmt::Debug for Plugin {
             .field("protocols", &self.protocols)
             .field("taps", &self.taps)
             .field("filters", &self.filters)
+            .field("file_types", &self.file_types)
+            .field("codecs", &self.codecs)
             .finish_non_exhaustive()
     }
 }
 
 impl Plugin {
-    /// A plugin of `protocols`, `taps` and `filters`, registered when
-    /// Wireshark loads it.
+    /// A plugin of `protocols`, `taps`, `filters`, `file_types` and
+    /// `codecs`, registered when Wireshark loads it.
     pub const fn new(
         protocols: &'static [Protocol],
         taps: &'static [TapSpec],
         filters: &'static [FilterSpec],
+        file_types: &'static [FileTypeSpec],
+        codecs: &'static [CodecSpec],
     ) -> Self {
         Self {
             protocols,
             taps,
             filters,
+            file_types,
+            codecs,
             state: Mutex::new(Vec::new()),
             filter_state: Mutex::new(None),
+            file_type_state: Mutex::new(None),
         }
+    }
+
+    /// `plugin_describe`'s answer: what the plugin provides
+    /// (`WS_PLUGIN_DESC_*`).
+    pub fn describe(&self) -> u32 {
+        const DISSECTOR: u32 = 1 << 0;
+        const FILE_TYPE: u32 = 1 << 1;
+        const CODEC: u32 = 1 << 2;
+        const TAP_LISTENER: u32 = 1 << 4;
+        const DFILTER: u32 = 1 << 5;
+        [
+            (self.protocols.len(), DISSECTOR),
+            (self.file_types.len(), FILE_TYPE),
+            (self.codecs.len(), CODEC),
+            (self.taps.len(), TAP_LISTENER),
+            (self.filters.len(), DFILTER),
+        ]
+        .into_iter()
+        .filter(|&(count, _)| count > 0)
+        .fold(0, |flags, (_, flag)| flags | flag)
+    }
+
+    /// `plugin_register`: hands Wireshark the table of each interface the
+    /// plugin uses.
+    pub fn register(&'static self, tables: &'static Tables) {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            // SAFETY: the tables and their callbacks are statics of the
+            // plugin library.
+            unsafe {
+                if !self.protocols.is_empty() {
+                    sys::proto_register_plugin(&tables.protocols);
+                }
+                if !self.taps.is_empty() {
+                    sys::tap_register_plugin(&tables.taps);
+                }
+            }
+            if !self.filters.is_empty() {
+                filters::register_plugin(&tables.filters);
+            }
+            if !self.file_types.is_empty() {
+                file_types::register_plugin(&tables.file_types);
+            }
+            if !self.codecs.is_empty() {
+                codecs::register_plugin(&tables.codecs);
+            }
+        }));
+    }
+
+    /// The `wtap_plugin` callback: registers the file formats.
+    pub fn register_file_types(&'static self) {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let mut state = self.file_type_state();
+            if state.is_none() {
+                *state = file_types::register(self.file_types);
+            }
+        }));
+    }
+
+    fn file_type_state(&self) -> MutexGuard<'_, Option<file_types::Registered>> {
+        self.file_type_state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The `codecs_plugin` callback: registers the codecs.
+    pub fn register_codecs(&'static self) {
+        let _ = catch_unwind(AssertUnwindSafe(|| codecs::register(self.codecs)));
     }
 
     /// The display-filter plugin `init`: registers the filter functions.

@@ -5,6 +5,7 @@
 //! still loads, and simply registers none.
 
 use super::Plugin;
+use super::symbols::loaded;
 use crate::filter::sealed::Sealed;
 use crate::filter::{FieldValue, FilterFunction, FilterOutput, ValueApi};
 use alloc::boxed::Box;
@@ -73,13 +74,16 @@ struct DfFuncDef {
 /// `dfilter_plugin`.
 #[repr(C)]
 #[derive(Debug)]
-pub struct DfilterPlugin {
+pub(crate) struct DfilterPlugin {
     init: Option<extern "C" fn()>,
     cleanup: Option<extern "C" fn()>,
 }
 
 /// The table `plugin_register` hands to `dfilter_plugins_register`.
-pub const fn dfilter_plugin(init: extern "C" fn(), cleanup: extern "C" fn()) -> DfilterPlugin {
+pub(crate) const fn dfilter_plugin(
+    init: extern "C" fn(),
+    cleanup: extern "C" fn(),
+) -> DfilterPlugin {
     DfilterPlugin {
         init: Some(init),
         cleanup: Some(cleanup),
@@ -99,26 +103,11 @@ pub(crate) struct Api {
     pub(crate) value: ValueApi,
 }
 
-/// A process-wide library handle: libwireshark's and GLib's symbols.
-fn symbols(windows_dll: &str) -> Option<libloading::Library> {
-    #[cfg(windows)]
-    {
-        libloading::os::windows::Library::open_already_loaded(windows_dll)
-            .ok()
-            .map(Into::into)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = windows_dll;
-        Some(libloading::os::unix::Library::this().into())
-    }
-}
-
 impl Api {
     /// Resolves the functions, or `None` before Wireshark 4.4.
     fn load() -> Option<Self> {
-        let wireshark = symbols("libwireshark.dll")?;
-        let glib = symbols("glib-2.0-0.dll")?;
+        let wireshark = loaded("libwireshark.dll")?;
+        let glib = loaded("glib-2.0-0.dll")?;
         // SAFETY: each symbol is resolved with the signature its 4.4+ header
         // declares; the libraries stay loaded for the process.
         unsafe {
@@ -151,7 +140,7 @@ impl Api {
 /// Hands the plugin's `dfilter_plugin` table to Wireshark, when it takes
 /// display-filter plugins (4.4 on).
 pub(crate) fn register_plugin(plugin: &'static DfilterPlugin) {
-    let Some(wireshark) = symbols("libwireshark.dll") else {
+    let Some(wireshark) = loaded("libwireshark.dll") else {
         return;
     };
     // SAFETY: `dfilter_plugins_register(const dfilter_plugin *)` in 4.4+.

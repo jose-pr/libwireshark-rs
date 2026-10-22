@@ -148,6 +148,12 @@ impl Binding {
         Self::uint("udp.port", port as u32)
     }
 
+    /// Every packet of a capture whose link-layer type is `encapsulation`:
+    /// the protocol reads the frame from its first byte.
+    pub const fn encapsulation(encapsulation: crate::Encapsulation) -> Self {
+        Self::uint("wtap_encap", encapsulation.to_raw() as u32)
+    }
+
     /// Every packet of the heuristic list `list` (such as `"udp"` or `"tcp"`)
     /// that no table claimed: [`Dissector::dissect`] decides by returning
     /// `Some` or `None`. Users can turn it off under Analyze › Enabled

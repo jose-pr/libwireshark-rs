@@ -1,30 +1,82 @@
-/// Makes this library a Wireshark plugin holding the listed dissectors and taps.
+/// Makes this library a Wireshark plugin holding the listed protocols, taps,
+/// display-filter functions, file formats or codecs.
 ///
 /// Write it once, in the root of a `cdylib` crate. It exports the symbols
 /// Wireshark's loader reads (`plugin_version`, `plugin_want_major`,
 /// `plugin_want_minor`, `plugin_describe`, `plugin_register`) and keeps the
 /// plugin's registration state.
 ///
-/// The plugin version is the crate's `CARGO_PKG_VERSION` unless given:
+/// Each key takes a list of types and may be left out; the plugin version is
+/// the crate's `CARGO_PKG_VERSION` unless given:
 ///
-/// ```ignore (needs a cdylib crate whose dissectors are defined)
+/// ```ignore (needs a cdylib crate whose types are defined)
 /// libwireshark::plugin!(FooDissector);
 /// libwireshark::plugin!(FooDissector, BarDissector);
 /// libwireshark::plugin!(dissectors = [FooDissector], taps = [FooStats]);
 /// libwireshark::plugin!(dissectors = [FooDissector], filters = [FooFunction]);
-/// libwireshark::plugin!(dissectors = [FooDissector], taps = [FooStats], filters = [FooFunction]);
+/// libwireshark::plugin!(file_types = [FooCapture], dissectors = [FooDissector]);
+/// libwireshark::plugin!(codecs = [FooCodec]);
 /// libwireshark::plugin!(version = "1.2.0", dissectors = [FooDissector, BarDissector]);
 /// ```
+///
+/// | Key | Types implement | Installed under `<plugins>/<major>.<minor>/` |
+/// | --- | --- | --- |
+/// | `dissectors` | [`Dissector`](crate::Dissector) | `epan/` |
+/// | `taps` | [`Tap`](crate::Tap) | `epan/` |
+/// | `filters` | [`FilterFunction`](crate::FilterFunction) | `epan/` |
+/// | `file_types` | [`FileType`](crate::FileType) | `wiretap/`, for the whole library |
+/// | `codecs` | [`Codec`](crate::Codec) | `codecs/`, alone in their library |
+///
+/// Wireshark loads the `wiretap/` libraries before it registers protocols,
+/// so a library with file formats can hold anything but codecs; it loads
+/// `codecs/` libraries after, so a library with codecs holds only codecs,
+/// which a compile-time check enforces.
 ///
 /// A plugin is built for one Wireshark release line (major.minor), the one
 /// `libwireshark-sys` was built against; Wireshark refuses it under another.
 #[macro_export]
 macro_rules! plugin {
-    (
+    (@parse { $version:tt $dissectors:tt $taps:tt $filters:tt $file_types:tt $codecs:tt }) => {
+        $crate::plugin!(@expand
+            version = $version,
+            dissectors = $dissectors,
+            taps = $taps,
+            filters = $filters,
+            file_types = $file_types,
+            codecs = $codecs
+        );
+    };
+    (@parse { $_v:tt $d:tt $t:tt $f:tt $ft:tt $c:tt } version = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { ($value) $d $t $f $ft $c } $($($rest)*)?);
+    };
+    (@parse { $v:tt $_d:tt $t:tt $f:tt $ft:tt $c:tt } dissectors = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $value $t $f $ft $c } $($($rest)*)?);
+    };
+    (@parse { $v:tt $d:tt $_t:tt $f:tt $ft:tt $c:tt } taps = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $value $f $ft $c } $($($rest)*)?);
+    };
+    (@parse { $v:tt $d:tt $t:tt $_f:tt $ft:tt $c:tt } filters = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $value $ft $c } $($($rest)*)?);
+    };
+    (@parse { $v:tt $d:tt $t:tt $f:tt $_ft:tt $c:tt } file_types = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $f $value $c } $($($rest)*)?);
+    };
+    (@parse { $v:tt $d:tt $t:tt $f:tt $ft:tt $_c:tt } codecs = $value:tt $(, $($rest:tt)*)?) => {
+        $crate::plugin!(@parse { $v $d $t $f $ft $value } $($($rest)*)?);
+    };
+    (@parse { $($state:tt)* } $key:ident = $($rest:tt)*) => {
+        ::core::compile_error!(::core::concat!(
+            "plugin!: unknown key `", ::core::stringify!($key),
+            "`; expected version, dissectors, taps, filters, file_types or codecs"
+        ));
+    };
+    (@expand
         version = $version:expr,
-        dissectors = [$($dissector:ty),* $(,)?]
-        $(, taps = [$($tap:ty),* $(,)?])?
-        $(, filters = [$($filter:ty),* $(,)?])? $(,)?
+        dissectors = [$($dissector:ty),* $(,)?],
+        taps = [$($tap:ty),* $(,)?],
+        filters = [$($filter:ty),* $(,)?],
+        file_types = [$($file_type:ty),* $(,)?],
+        codecs = [$($codec:ty),* $(,)?]
     ) => {
         const _: () = {
             struct ThisPlugin;
@@ -37,16 +89,24 @@ macro_rules! plugin {
 
             static PLUGIN: $crate::__private::Plugin = $crate::__private::Plugin::new(
                 &[$($crate::__private::Protocol::of::<$dissector>()),*],
-                &[$($($crate::__private::TapSpec::of::<$tap>()),*)?],
-                &[$($($crate::__private::FilterSpec::of::<$filter, ThisPlugin>()),*)?],
+                &[$($crate::__private::TapSpec::of::<$tap>()),*],
+                &[$($crate::__private::FilterSpec::of::<$filter, ThisPlugin>()),*],
+                &[$($crate::__private::FileTypeSpec::of::<$file_type, ThisPlugin>()),*],
+                &[$($crate::__private::CodecSpec::of::<$codec>()),*],
             );
-            const TAPS: usize = {
-                let taps: &[&str] = &[$($(::core::stringify!($tap)),*)?];
-                taps.len()
-            };
-            const FILTERS: usize = {
-                let filters: &[&str] = &[$($(::core::stringify!($filter)),*)?];
-                filters.len()
+
+            const _: () = {
+                let codecs: &[&str] = &[$(::core::stringify!($codec)),*];
+                let others: &[&str] = &[
+                    $(::core::stringify!($dissector),)*
+                    $(::core::stringify!($tap),)*
+                    $(::core::stringify!($filter),)*
+                    $(::core::stringify!($file_type),)*
+                ];
+                ::core::assert!(
+                    codecs.is_empty() || others.is_empty(),
+                    "a plugin with codecs holds nothing else: Wireshark loads it after registering protocols"
+                );
             };
 
             extern "C" fn register_protoinfo() {
@@ -85,11 +145,6 @@ macro_rules! plugin {
                 PLUGIN.register_taps();
             }
 
-            static PROTO_PLUGIN: $crate::sys::proto_plugin =
-                $crate::__private::proto_plugin(register_protoinfo, register_handoff);
-
-            static TAP_PLUGIN: $crate::sys::tap_plugin = $crate::__private::tap_plugin(register_taps);
-
             extern "C" fn register_filters() {
                 PLUGIN.register_filters();
             }
@@ -98,8 +153,24 @@ macro_rules! plugin {
                 PLUGIN.deregister_filters();
             }
 
-            static DFILTER_PLUGIN: $crate::__private::DfilterPlugin =
-                $crate::__private::dfilter_plugin(register_filters, deregister_filters);
+            extern "C" fn register_file_types() {
+                PLUGIN.register_file_types();
+            }
+
+            extern "C" fn register_codecs() {
+                PLUGIN.register_codecs();
+            }
+
+            static TABLES: $crate::__private::Tables =
+                $crate::__private::Tables::new($crate::__private::Entries {
+                    register_protoinfo,
+                    register_handoff,
+                    register_taps,
+                    register_filters,
+                    deregister_filters,
+                    register_file_types,
+                    register_codecs,
+                });
 
             const VERSION: &str = $version;
 
@@ -121,36 +192,21 @@ macro_rules! plugin {
 
             #[unsafe(no_mangle)]
             extern "C" fn plugin_describe() -> u32 {
-                $crate::__private::describe(TAPS, FILTERS)
+                PLUGIN.describe()
             }
 
             #[unsafe(no_mangle)]
             extern "C" fn plugin_register() {
-                $crate::__private::register(
-                    &PROTO_PLUGIN,
-                    &TAP_PLUGIN,
-                    &DFILTER_PLUGIN,
-                    [TAPS > 0, FILTERS > 0],
-                );
+                PLUGIN.register(&TABLES);
             }
         };
     };
-    (
-        dissectors = [$($dissector:ty),* $(,)?]
-        $(, taps = [$($tap:ty),* $(,)?])?
-        $(, filters = [$($filter:ty),* $(,)?])? $(,)?
-    ) => {
-        $crate::plugin!(
-            version = ::core::env!("CARGO_PKG_VERSION"),
-            dissectors = [$($dissector),*]
-            $(, taps = [$($tap),*])?
-            $(, filters = [$($filter),*])?
-        );
+    ($($key:ident = $value:tt),+ $(,)?) => {
+        $crate::plugin!(@parse {
+            (::core::env!("CARGO_PKG_VERSION")) [] [] [] [] []
+        } $($key = $value),+);
     };
     ($($dissector:ty),+ $(,)?) => {
-        $crate::plugin!(
-            version = ::core::env!("CARGO_PKG_VERSION"),
-            dissectors = [$($dissector),+]
-        );
+        $crate::plugin!(dissectors = [$($dissector),+]);
     };
 }

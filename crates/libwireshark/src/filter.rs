@@ -115,38 +115,44 @@ impl core::fmt::Debug for FieldValue<'_> {
     }
 }
 
-// The field types read as each Rust type, from the release line's bindings.
-const UNSIGNED_32: [u32; 5] = [
-    crate::sys::ftenum_FT_CHAR as u32,
-    crate::sys::ftenum_FT_UINT8 as u32,
-    crate::sys::ftenum_FT_UINT16 as u32,
-    crate::sys::ftenum_FT_UINT24 as u32,
-    crate::sys::ftenum_FT_UINT32 as u32,
-];
-const UNSIGNED_64: [u32; 4] = [
-    crate::sys::ftenum_FT_UINT40 as u32,
-    crate::sys::ftenum_FT_UINT48 as u32,
-    crate::sys::ftenum_FT_UINT56 as u32,
-    crate::sys::ftenum_FT_UINT64 as u32,
-];
-const SIGNED_32: [u32; 4] = [
-    crate::sys::ftenum_FT_INT8 as u32,
-    crate::sys::ftenum_FT_INT16 as u32,
-    crate::sys::ftenum_FT_INT24 as u32,
-    crate::sys::ftenum_FT_INT32 as u32,
-];
-const SIGNED_64: [u32; 4] = [
-    crate::sys::ftenum_FT_INT40 as u32,
-    crate::sys::ftenum_FT_INT48 as u32,
-    crate::sys::ftenum_FT_INT56 as u32,
-    crate::sys::ftenum_FT_INT64 as u32,
-];
-const STRINGS: [u32; 4] = [
-    crate::sys::ftenum_FT_STRING as u32,
-    crate::sys::ftenum_FT_STRINGZ as u32,
-    crate::sys::ftenum_FT_UINT_STRING as u32,
-    crate::sys::ftenum_FT_STRINGZPAD as u32,
-];
+/// The field types read as each Rust type, from the release line's bindings.
+// bindgen types C enums as i32 on Windows and u32 elsewhere.
+#[allow(clippy::unnecessary_cast)]
+mod kinds {
+    pub(super) const UNSIGNED_32: [u32; 5] = [
+        crate::sys::ftenum_FT_CHAR as u32,
+        crate::sys::ftenum_FT_UINT8 as u32,
+        crate::sys::ftenum_FT_UINT16 as u32,
+        crate::sys::ftenum_FT_UINT24 as u32,
+        crate::sys::ftenum_FT_UINT32 as u32,
+    ];
+    pub(super) const UNSIGNED_64: [u32; 4] = [
+        crate::sys::ftenum_FT_UINT40 as u32,
+        crate::sys::ftenum_FT_UINT48 as u32,
+        crate::sys::ftenum_FT_UINT56 as u32,
+        crate::sys::ftenum_FT_UINT64 as u32,
+    ];
+    pub(super) const SIGNED_32: [u32; 4] = [
+        crate::sys::ftenum_FT_INT8 as u32,
+        crate::sys::ftenum_FT_INT16 as u32,
+        crate::sys::ftenum_FT_INT24 as u32,
+        crate::sys::ftenum_FT_INT32 as u32,
+    ];
+    pub(super) const SIGNED_64: [u32; 4] = [
+        crate::sys::ftenum_FT_INT40 as u32,
+        crate::sys::ftenum_FT_INT48 as u32,
+        crate::sys::ftenum_FT_INT56 as u32,
+        crate::sys::ftenum_FT_INT64 as u32,
+    ];
+    pub(super) const STRINGS: [u32; 4] = [
+        crate::sys::ftenum_FT_STRING as u32,
+        crate::sys::ftenum_FT_STRINGZ as u32,
+        crate::sys::ftenum_FT_UINT_STRING as u32,
+        crate::sys::ftenum_FT_STRINGZPAD as u32,
+    ];
+}
+
+use kinds::{SIGNED_32, SIGNED_64, STRINGS, UNSIGNED_32, UNSIGNED_64};
 
 impl<'a> FieldValue<'a> {
     /// # Safety

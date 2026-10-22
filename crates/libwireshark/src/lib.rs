@@ -17,8 +17,11 @@ extern crate self as libwireshark;
 #[doc(hidden)]
 #[path = "plugin/mod.rs"]
 pub mod __private;
+mod codec;
 mod dissector;
 mod expert;
+#[allow(unsafe_code)]
+mod file_type;
 #[allow(unsafe_code)]
 mod filter;
 mod header;
@@ -32,8 +35,10 @@ mod tap;
 /// The raw `libwireshark-sys` bindings, for what this crate does not wrap.
 pub use libwireshark_sys as sys;
 
+pub use codec::{Codec, StreamFormat};
 pub use dissector::{Binding, DissectResult, Dissector, TcpFraming};
 pub use expert::{Expert, ExpertGroup, Severity};
+pub use file_type::{CaptureFile, Encapsulation, FileType, Record};
 pub use filter::{FieldValue, FilterFunction, FilterOutput};
 pub use header::{Base, FieldInfo, FieldType, Header, NoHeader};
 pub use packet::{Encoding, PacketFieldError, PacketView};

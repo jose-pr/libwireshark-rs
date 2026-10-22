@@ -31,6 +31,8 @@ workspace = true
 
 # Built beside the test binaries so `tests/tshark.rs` can load them.
 [dev-dependencies]
+audio-codec = { path = "../../examples/audio-codec" }
 basic-dissector = { path = "../../examples/basic-dissector" }
+capture-file = { path = "../../examples/capture-file" }
 multi-protocol = { path = "../../examples/multi-protocol" }
 stream-protocol = { path = "../../examples/stream-protocol" }

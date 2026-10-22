@@ -5,7 +5,9 @@ members = [
     "crates/libwireshark",
     "crates/libwireshark-derive",
     "crates/cargo-wireshark",
+    "examples/audio-codec",
     "examples/basic-dissector",
+    "examples/capture-file",
     "examples/multi-protocol",
     "examples/stream-protocol",
 ]

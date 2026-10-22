@@ -1,14 +1,33 @@
-//! The example plugins, loaded by the real tshark against a generated capture.
+//! The example plugins, loaded by the real tshark (and sharkd, for the
+//! codec) against generated captures.
 //!
 //! Ignored by default: they need tshark from the Wireshark release line
 //! `libwireshark-sys` was built for. Run them with `cargo test -- --ignored`;
-//! `LIBWIRESHARK_TEST_TSHARK` names the executable when it is not on `PATH`
-//! or in Wireshark's default Windows location.
+//! `LIBWIRESHARK_TEST_TSHARK` and `LIBWIRESHARK_TEST_SHARKD` name the
+//! executables when they are not on `PATH` or in Wireshark's default
+//! Windows location.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
-const PLUGINS: [&str; 3] = ["basic_dissector", "multi_protocol", "stream_protocol"];
+/// Each example plugin, the directory Wireshark loads it from, and what
+/// `-G plugins` reports it as.
+const PLUGINS: [(&str, &str, &str); 5] = [
+    ("basic_dissector", "epan", "dissector"),
+    ("multi_protocol", "epan", "dissector"),
+    ("stream_protocol", "epan", "dissector"),
+    ("capture_file", "wiretap", "file type"),
+    ("audio_codec", "codecs", "codec"),
+];
+
+/// Whether the release line the tests were built for is at least `line`.
+fn since(line: (u32, u32)) -> bool {
+    (
+        libwireshark::sys::VERSION_MAJOR,
+        libwireshark::sys::VERSION_MINOR,
+    ) >= line
+}
 
 /// The client's port: above every server port here and claimed by no
 /// dissector, since TCP and UDP offer a packet to the lower port first.
@@ -61,7 +80,7 @@ fn frame(segment: &Segment<'_>) -> Vec<u8> {
     frame
 }
 
-/// The capture every test reads:
+/// The frames of the capture most tests read:
 ///
 /// 1. UDP/111: FOO version 7, flags 1, length 515 (basic-dissector)
 /// 2. UDP/4242: BAZ (multi-protocol)
@@ -69,17 +88,26 @@ fn frame(segment: &Segment<'_>) -> Vec<u8> {
 /// 4. UDP/47100: an HBEAT heartbeat, found by heuristics (stream-protocol)
 /// 5. TCP/47100: LPM hello, data, and the first two bytes of a third message
 /// 6. TCP/47100: the rest of that hello, then a message of unknown kind 9
-fn write_capture(path: &Path) {
+fn frames() -> Vec<Vec<u8>> {
     let first = [0, 5, 1, b'a', b'b', 0, 4, 2, b'c', 0, 6];
     let second = [1, b'x', b'y', b'z', 0, 4, 9, b'q'];
-    let frames = [
+    vec![
         frame(&Segment::Udp(111, &[7, 1, 2, 3])),
         frame(&Segment::Udp(4242, &[3, 9])),
         frame(&Segment::Tcp(4242, 1, &[5, 0, 0])),
         frame(&Segment::Udp(47100, b"HB\x00\x07\x01")),
         frame(&Segment::Tcp(47100, 1, &first)),
         frame(&Segment::Tcp(47100, 1 + first.len() as u32, &second)),
-    ];
+    ]
+}
+
+/// The capture time of frame `index` (from 0): one per second.
+fn capture_time(index: usize) -> u32 {
+    1_700_000_000 + index as u32
+}
+
+/// `frames` as a pcap file.
+fn pcap(frames: &[Vec<u8>]) -> Vec<u8> {
     let mut pcap = Vec::new();
     pcap.extend(0xa1b2_c3d4u32.to_le_bytes());
     pcap.extend(2u16.to_le_bytes());
@@ -87,25 +115,51 @@ fn write_capture(path: &Path) {
     pcap.extend([0u8; 8]);
     pcap.extend(65535u32.to_le_bytes());
     pcap.extend(1u32.to_le_bytes());
-    for (second, frame) in frames.iter().enumerate() {
-        pcap.extend((1_700_000_000 + second as u32).to_le_bytes());
+    for (index, frame) in frames.iter().enumerate() {
+        pcap.extend(capture_time(index).to_le_bytes());
         pcap.extend(0u32.to_le_bytes());
         pcap.extend((frame.len() as u32).to_le_bytes());
         pcap.extend((frame.len() as u32).to_le_bytes());
         pcap.extend(frame);
     }
-    std::fs::write(path, pcap).expect("write the capture");
+    pcap
+}
+
+/// One record of the capture-file example's RSCAP format.
+fn rscap_record(nanos: u64, frame: &[u8], original: u32) -> Vec<u8> {
+    let mut record = Vec::new();
+    record.extend(nanos.to_le_bytes());
+    record.extend((frame.len() as u32).to_le_bytes());
+    record.extend(original.to_le_bytes());
+    record.extend(frame);
+    record
+}
+
+/// `frames` as an RSCAP file, with the times `pcap` gives them.
+fn rscap(frames: &[Vec<u8>]) -> Vec<u8> {
+    let mut file = b"RSCAP\0\0\x01".to_vec();
+    for (index, frame) in frames.iter().enumerate() {
+        let nanos = u64::from(capture_time(index)) * 1_000_000_000;
+        file.extend(rscap_record(nanos, frame, frame.len() as u32));
+    }
+    file
+}
+
+/// A Wireshark program: from `variable`, Wireshark's default Windows
+/// location, or `PATH`.
+fn program(variable: &str, name: &str) -> PathBuf {
+    if let Some(path) = std::env::var_os(variable) {
+        return PathBuf::from(path);
+    }
+    let windows = Path::new(r"C:\Program Files\Wireshark").join(format!("{name}.exe"));
+    if windows.is_file() {
+        return windows;
+    }
+    PathBuf::from(name)
 }
 
 fn tshark() -> PathBuf {
-    if let Some(path) = std::env::var_os("LIBWIRESHARK_TEST_TSHARK") {
-        return PathBuf::from(path);
-    }
-    let windows = Path::new(r"C:\Program Files\Wireshark\tshark.exe");
-    if windows.is_file() {
-        return windows.to_owned();
-    }
-    PathBuf::from("tshark")
+    program("LIBWIRESHARK_TEST_TSHARK", "tshark")
 }
 
 /// A built example plugin, beside this test binary.
@@ -145,9 +199,9 @@ impl Profile {
             root.join("plugins"),
             root.join(".local/lib/wireshark/plugins"),
         ] {
-            let directory = base.join(&version).join("epan");
-            std::fs::create_dir_all(&directory).expect("create the plugin directory");
-            for name in PLUGINS {
+            for (name, kind, _) in PLUGINS {
+                let directory = base.join(&version).join(kind);
+                std::fs::create_dir_all(&directory).expect("create the plugin directory");
                 // Wireshark loads only `.dll` on Windows and `.so` everywhere
                 // else, macOS included, where Cargo builds a `.dylib`.
                 let installed = if cfg!(windows) {
@@ -158,25 +212,51 @@ impl Profile {
                 std::fs::copy(plugin(name), directory.join(installed)).expect("copy a plugin");
             }
         }
-        write_capture(&root.join("capture.pcap"));
+        std::fs::write(root.join("capture.pcap"), pcap(&frames())).expect("write the capture");
         Self(root)
     }
 
-    fn capture(&self) -> String {
+    /// The path of `name` in the profile.
+    fn file(&self, name: &str) -> String {
         self.0
-            .join("capture.pcap")
+            .join(name)
             .to_str()
             .expect("a UTF-8 temporary path")
             .to_owned()
     }
 
-    fn run(&self, args: &[&str]) -> String {
-        let output = Command::new(tshark())
+    /// Writes `contents` to `name` in the profile; returns its path.
+    fn write(&self, name: &str, contents: &[u8]) -> String {
+        std::fs::write(self.0.join(name), contents).expect("write a file");
+        self.file(name)
+    }
+
+    fn capture(&self) -> String {
+        self.file("capture.pcap")
+    }
+
+    /// `program` run in this profile, with `input` on its standard input.
+    fn output(&self, program: &Path, args: &[&str], input: &str) -> Output {
+        let mut child = Command::new(program)
             .args(args)
             .env("WIRESHARK_CONFIG_DIR", &self.0)
             .env("HOME", &self.0)
-            .output()
-            .expect("run tshark");
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|error| panic!("run {}: {error}", program.display()));
+        child
+            .stdin
+            .take()
+            .expect("a piped standard input")
+            .write_all(input.as_bytes())
+            .expect("write the standard input");
+        child.wait_with_output().expect("wait for the program")
+    }
+
+    fn run(&self, args: &[&str]) -> String {
+        let output = self.output(&tshark(), args, "");
         assert!(
             output.status.success(),
             "tshark {args:?} failed: {}",
@@ -187,8 +267,12 @@ impl Profile {
 
     /// `fields` of each frame of the capture, tab-separated, one line per frame.
     fn fields(&self, extra: &[&str], fields: &[&str]) -> Vec<String> {
-        let capture = self.capture();
-        let mut args = vec!["-r", capture.as_str()];
+        self.fields_of(&self.capture(), extra, fields)
+    }
+
+    /// `fields` of each frame of the capture `file`.
+    fn fields_of(&self, file: &str, extra: &[&str], fields: &[&str]) -> Vec<String> {
+        let mut args = vec!["-r", file];
         args.extend(extra);
         args.extend(["-T", "fields"]);
         for field in fields {
@@ -206,18 +290,15 @@ impl Drop for Profile {
 
 #[test]
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
-fn tshark_loads_every_example_as_a_dissector_plugin() {
+fn tshark_loads_every_example_as_its_kind_of_plugin() {
     let profile = Profile::new("load");
     let plugins = profile.run(&["-G", "plugins"]);
-    for name in PLUGINS {
+    for (name, _, kind) in PLUGINS {
         let line = plugins
             .lines()
             .find(|line| line.contains(name))
             .unwrap_or_else(|| panic!("{name} is not loaded:\n{plugins}"));
-        assert!(
-            line.contains("dissector"),
-            "{name} reports its type: {line}"
-        );
+        assert!(line.contains(kind), "{name} reports its type: {line}");
     }
 }
 
@@ -367,24 +448,22 @@ fn taps_report_statistics_over_a_plugins_own_and_wiresharks_taps() {
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn filter_functions_work_in_display_filters_from_4_4() {
     let profile = Profile::new("filters");
-    let since_4_4 = (
-        libwireshark::sys::VERSION_MAJOR,
-        libwireshark::sys::VERSION_MINOR,
-    ) >= (4, 4);
     let capture = profile.capture();
-    let output = Command::new(tshark())
-        .args([
+    let output = profile.output(
+        &tshark(),
+        &[
             "-r",
             capture.as_str(),
             "-Y",
             r#"port_class(udp.dstport) == "well-known""#,
-        ])
-        .args(["-T", "fields", "-e", "frame.number"])
-        .env("WIRESHARK_CONFIG_DIR", &profile.0)
-        .env("HOME", &profile.0)
-        .output()
-        .expect("run tshark");
-    if !since_4_4 {
+            "-T",
+            "fields",
+            "-e",
+            "frame.number",
+        ],
+        "",
+    );
+    if !since((4, 4)) {
         assert!(
             String::from_utf8_lossy(&output.stderr).contains("does not exist"),
             "before 4.4 the function is not registered"
@@ -403,16 +482,196 @@ fn filter_functions_work_in_display_filters_from_4_4() {
     );
     let digits = profile.fields(&["-Y", "digits(udp.dstport) == 4"], &["frame.number"]);
     assert_eq!(digits, ["2"], "4242 has four digits");
-    let literal = Command::new(tshark())
-        .args(["-r", capture.as_str(), "-Y", r#"port_class("x") == "y""#])
-        .env("WIRESHARK_CONFIG_DIR", &profile.0)
-        .env("HOME", &profile.0)
-        .output()
-        .expect("run tshark");
+    let literal = profile.output(
+        &tshark(),
+        &["-r", capture.as_str(), "-Y", r#"port_class("x") == "y""#],
+        "",
+    );
     assert!(!literal.status.success(), "a literal argument is refused");
     assert!(
         String::from_utf8_lossy(&literal.stderr).contains("Only fields"),
         "{}",
         String::from_utf8_lossy(&literal.stderr)
+    );
+}
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn a_file_type_plugin_opens_its_format_from_4_6() {
+    let profile = Profile::new("filetype");
+    let file = profile.write("capture.rscap", &rscap(&frames()));
+    let fields = [
+        "frame.number",
+        "frame.time_epoch",
+        "frame.len",
+        "_ws.col.Protocol",
+        "foo.version",
+        "hbeat.seq",
+        "lpm.kind",
+    ];
+    if !since((4, 6)) {
+        let output = profile.output(&tshark(), &["-r", &file], "");
+        assert!(!output.status.success(), "before 4.6 the format is unknown");
+        return;
+    }
+    let expected = profile.fields(&[], &fields);
+    assert_eq!(
+        profile.fields_of(&file, &[], &fields),
+        expected,
+        "the same packets as the pcap, dissected by the other plugins"
+    );
+    assert_eq!(
+        profile.fields_of(&file, &["-2"], &fields),
+        expected,
+        "the second pass reads each record again from its offset"
+    );
+
+    let first = &frames()[0];
+    let mut detailed = b"RSCAP\0\0\x01".to_vec();
+    detailed.extend(rscap_record(
+        1_700_000_000_123_456_789,
+        first,
+        first.len() as u32 + 100,
+    ));
+    let detailed = profile.write("detailed.rscap", &detailed);
+    assert_eq!(
+        profile.fields_of(
+            &detailed,
+            &[],
+            &["frame.time_epoch", "frame.len", "frame.cap_len"]
+        ),
+        [format!(
+            "1700000000.123456789\t{}\t{}",
+            first.len() + 100,
+            first.len()
+        )],
+        "nanosecond times and the length on the wire"
+    );
+
+    let mut truncated = rscap(&frames());
+    truncated.truncate(truncated.len() - 3);
+    let truncated = profile.write("truncated.rscap", &truncated);
+    let output = profile.output(&tshark(), &["-r", &truncated], "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cut short"),
+        "a record past the end is a short read: {stderr}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).lines().count(),
+        5,
+        "the whole records before it are read"
+    );
+
+    let mut corrupt = b"RSCAP\0\0\x01".to_vec();
+    corrupt.extend(rscap_record(0, first, 0));
+    let corrupt = profile.write("corrupt.rscap", &corrupt);
+    let output = profile.output(&tshark(), &["-r", &corrupt], "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rscap: record of"),
+        "an InvalidData error carries its message: {stderr}"
+    );
+}
+
+/// The base64 standard alphabet's value of `byte`.
+fn base64_value(byte: u8) -> Option<u32> {
+    let value = match byte {
+        b'A'..=b'Z' => byte - b'A',
+        b'a'..=b'z' => byte - b'a' + 26,
+        b'0'..=b'9' => byte - b'0' + 52,
+        b'+' => 62,
+        b'/' => 63,
+        _ => return None,
+    };
+    Some(u32::from(value))
+}
+
+fn base64_decode(text: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let values = text.bytes().filter_map(base64_value).collect::<Vec<_>>();
+    for chunk in values.chunks(4) {
+        let word = chunk
+            .iter()
+            .enumerate()
+            .fold(0, |word, (index, value)| word | value << (18 - 6 * index));
+        let word = word.to_be_bytes();
+        bytes.extend(&word[1..chunk.len()]);
+    }
+    bytes
+}
+
+#[test]
+#[ignore = "needs sharkd from the release line libwireshark-sys was built for"]
+fn a_codec_plugin_decodes_rtp_for_sharkd() {
+    let profile = Profile::new("codec");
+    // SDP names payload type 96 L8 at 8 kHz for RTP to 192.0.2.2:47200.
+    let sdp = "v=0\r\no=- 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.2\r\nt=0 0\r\n\
+               m=audio 47200 RTP/AVP 96\r\na=rtpmap:96 L8/8000\r\n";
+    let invite = format!(
+        "INVITE sip:bob@192.0.2.2 SIP/2.0\r\n\
+         Via: SIP/2.0/UDP 192.0.2.1:61000;branch=z9hG4bK1\r\n\
+         From: <sip:alice@192.0.2.1>;tag=1\r\n\
+         To: <sip:bob@192.0.2.2>\r\n\
+         Call-ID: 1@192.0.2.1\r\n\
+         CSeq: 1 INVITE\r\n\
+         Content-Type: application/sdp\r\n\
+         Content-Length: {}\r\n\r\n{sdp}",
+        sdp.len()
+    );
+    let rtp = |sequence: u16, payload: &[u8]| {
+        let mut packet = vec![0x80, 96];
+        packet.extend(sequence.to_be_bytes());
+        packet.extend((u32::from(sequence) * 160).to_be_bytes());
+        packet.extend(0x1122_3344u32.to_be_bytes());
+        packet.extend(payload);
+        packet
+    };
+    let frames = [
+        frame(&Segment::Udp(5060, invite.as_bytes())),
+        frame(&Segment::Udp(47200, &rtp(1, &[128, 255, 0, 192]))),
+        frame(&Segment::Udp(47200, &rtp(2, &[64, 129]))),
+    ];
+    let capture = profile.write("rtp.pcap", &pcap(&frames));
+    let requests = format!(
+        "{}\n{}\n",
+        format_args!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"load","params":{{"file":{capture:?}}}}}"#
+        ),
+        r#"{"jsonrpc":"2.0","id":2,"method":"download","params":{"token":"rtp:192.0.2.1_61000_192.0.2.2_47200_11223344"}}"#,
+    );
+    let output = profile.output(
+        &program("LIBWIRESHARK_TEST_SHARKD", "sharkd"),
+        &["-"],
+        &requests,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = stdout
+        .lines()
+        .find(|line| line.contains(r#""id":2"#))
+        .and_then(|line| line.split_once(r#""data":""#))
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(data, _)| data)
+        .unwrap_or_else(|| {
+            panic!(
+                "no decoded audio:\n{stdout}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+    let wav = base64_decode(data);
+    assert_eq!(&wav[..4], b"RIFF", "a WAV file");
+    assert_eq!(
+        u32::from_le_bytes(wav[24..28].try_into().unwrap()),
+        8000,
+        "the rate the codec reported"
+    );
+    let samples = wav[44..]
+        .chunks(2)
+        .map(|sample| i16::from_le_bytes([sample[0], sample[1]]))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        samples,
+        [0, 127 << 8, -128 << 8, 64 << 8, -64 << 8, 1 << 8],
+        "each byte less 128, scaled to 16 bits"
     );
 }
