@@ -172,10 +172,9 @@ unsafe extern "C" fn init<R: InitReturn>(argument: *const c_char, userdata: *mut
             .strip_prefix(entry.spec.name)
             .and_then(|rest| rest.strip_prefix(','))
             .filter(|filter| !filter.is_empty());
-        let ours = entry
-            .plugin
-            .protocols()
-            .any(|protocol| protocol.filter_name == entry.spec.tap);
+        // Only a protocol that registered: one whose name was taken is
+        // another's, and so is its tap data.
+        let ours = entry.plugin.registered(entry.spec.tap);
         let listener = Box::leak(Box::new(Listener {
             ours,
             state: Mutex::new((entry.spec.new)()),

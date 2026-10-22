@@ -45,7 +45,8 @@ First release of the crates under these names.
 - Protocols described at run time (`dynamic::{Protocol, ProtocolSpec,
   DynamicDissector}`), and taps, display-filter functions, capture formats
   and codecs registered at run time (`dynamic::Registrations`); a plugin
-  in any directory provides run-time formats and codecs.
+  in `epan/` provides run-time formats and codecs to the programs that
+  dissect (tshark, sharkd, Wireshark).
 - `libwireshark-api` and `libwireshark-guatiao`: Wireshark dissectors
   written in any language guatiao reaches (Rust, C, Python), each declaring
   its header and preferences as typed structs and binding in `dissect_on`;

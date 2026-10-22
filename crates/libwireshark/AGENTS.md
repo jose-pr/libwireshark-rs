@@ -207,10 +207,12 @@ impl Codec { pub fn new(name: &'static str,
 - Display-filter functions, file formats and codecs reach Wireshark through
   callbacks with no data pointer, so each plugin holds 32 of each kind
   registered at run time; more are skipped and reported on stderr.
-- From any plugin directory: file formats wiretap did not register when it
-  started are registered with the plugin's protocols, and codecs register
-  when the program starts its codecs (sharkd and Wireshark do, after
-  `epan_init`; tshark only for `-G`).
+- From any plugin directory of a program that dissects: file formats
+  wiretap did not register when it started are registered with the plugin's
+  protocols, and codecs register when the program starts its codecs
+  (sharkd and Wireshark do, after `epan_init`; tshark only for `-G`). The
+  tools that only read files (editcap, mergecap, capinfos) load
+  `wiretap/` alone: a format they should read belongs there.
 
 - For a plugin that learns its protocols when it loads. `plugin!(dynamic =
   f)` calls `f` once, in `plugin_register`; its protocols are registered

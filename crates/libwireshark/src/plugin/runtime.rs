@@ -236,6 +236,11 @@ impl Runtime {
 
     /// This protocol's `Shared` when `name` is its short name: how a
     /// heuristic callback, which carries no data, finds its protocol.
+    /// The registered protocol's display-filter name.
+    pub(crate) fn filter_name(&self) -> &'static str {
+        self.spec.filter_name
+    }
+
     pub(crate) fn named(&self, name: *const c_char) -> Option<NonNull<Shared>> {
         if name.is_null() {
             return None;

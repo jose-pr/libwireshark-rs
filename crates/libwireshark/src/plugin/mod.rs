@@ -209,7 +209,9 @@ impl Plugin {
                 DISSECTOR,
             ),
             (
-                self.file_types.len() + dynamic(|built| built.file_types.len()),
+                // Formats register from 4.6.
+                usize::from(cfg!(file_type_plugins))
+                    * (self.file_types.len() + dynamic(|built| built.file_types.len())),
                 FILE_TYPE,
             ),
             (
@@ -251,8 +253,7 @@ impl Plugin {
                 }
             }
             let built = self.built();
-            let file_types = !self.file_types.is_empty()
-                || built.is_some_and(|built| !built.file_types.is_empty());
+            let file_types = self.has_file_types();
             // SAFETY: the tables and their callbacks are statics of the
             // plugin library.
             unsafe {
@@ -371,6 +372,22 @@ impl Plugin {
         }));
     }
 
+    /// Whether the plugin has file types, static or built.
+    fn has_file_types(&self) -> bool {
+        !self.file_types.is_empty()
+            || self
+                .built()
+                .is_some_and(|built| !built.file_types.is_empty())
+    }
+
+    /// Whether the protocol with display-filter name `filter_name` is this
+    /// plugin's and registered.
+    fn registered(&self, filter_name: &str) -> bool {
+        self.state()
+            .iter()
+            .any(|runtime| runtime.filter_name() == filter_name)
+    }
+
     /// What the `dynamic` builder registered, once it ran.
     fn built(&self) -> Option<&'static Built> {
         *self.built.lock().unwrap_or_else(PoisonError::into_inner)
@@ -415,7 +432,9 @@ impl Plugin {
             // Wiretap registers its plugins' file types when it starts, which
             // is before a plugin outside `wiretap/` loads: register them now,
             // once, if it did not.
-            self.register_file_types();
+            if self.has_file_types() {
+                self.register_file_types();
+            }
             // Wireshark frees `g_strdup`'d preference defaults through GLib,
             // so the library stays loaded for the process.
             core::mem::forget(glib);
