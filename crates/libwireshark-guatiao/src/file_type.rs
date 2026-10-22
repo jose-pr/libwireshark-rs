@@ -89,7 +89,12 @@ impl DynamicFileType for Format {
                 reader,
             }))),
             Err(error) if error.status == Status::GUATIAO_ERR_NOT_FOUND => Ok(None),
-            Err(error) => Err(failed(self.key, "open", &error)),
+            // An error here would stop Wireshark trying the formats after
+            // this one, for every file: a provider's failure is its own.
+            Err(error) => {
+                report(true, &format!("{}: open: {}", self.key, error.message()));
+                Ok(None)
+            }
         }
     }
 }

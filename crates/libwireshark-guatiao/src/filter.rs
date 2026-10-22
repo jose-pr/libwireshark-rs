@@ -3,6 +3,7 @@
 use crate::describe;
 use crate::host::{report, served};
 use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, Ordering};
 use guatiao::{FromValue, Value};
 use libwireshark::FieldValue;
 use libwireshark::dynamic::{DynamicFilterFunction, FilterFunction, FilterReturn, FilterValue};
@@ -53,6 +54,7 @@ pub(crate) fn functions(registry: &guatiao::library::Registry) -> Vec<FilterFunc
                 key: describe::leak(&key),
                 function,
                 returns,
+                reported: AtomicBool::new(false),
             },
         ));
     }
@@ -64,6 +66,9 @@ struct Provided {
     key: &'static str,
     function: Arc<dyn api::FilterFunction>,
     returns: FilterReturn,
+    /// Whether a refused call was reported: once, since a filter calls the
+    /// function for every value of every packet.
+    reported: AtomicBool,
 }
 
 impl DynamicFilterFunction for Provided {
@@ -76,7 +81,9 @@ impl DynamicFilterFunction for Provided {
         let answer = match self.function.call(&argument) {
             Ok(answer) => answer,
             Err(error) => {
-                report(true, &format!("{}: call: {}", self.key, error.message()));
+                if !self.reported.swap(true, Ordering::Relaxed) {
+                    report(true, &format!("{}: call: {}", self.key, error.message()));
+                }
                 return None;
             }
         };
