@@ -127,9 +127,14 @@ impl Profile {
             let directory = base.join(&version).join("epan");
             std::fs::create_dir_all(&directory).expect("create the plugin directory");
             for name in ["basic_dissector", "multi_protocol"] {
-                let source = plugin(name);
-                std::fs::copy(&source, directory.join(source.file_name().unwrap()))
-                    .expect("copy a plugin");
+                // Wireshark loads only `.dll` on Windows and `.so` everywhere
+                // else, macOS included, where Cargo builds a `.dylib`.
+                let installed = if cfg!(windows) {
+                    format!("{name}.dll")
+                } else {
+                    format!("{name}.so")
+                };
+                std::fs::copy(plugin(name), directory.join(installed)).expect("copy a plugin");
             }
         }
         Self(root)

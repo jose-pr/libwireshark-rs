@@ -131,6 +131,8 @@ Build it with `cargo build --release` and copy the library into Wireshark's
 personal plugin directory for its release line, `<dir>/<major>.<minor>/epan/`.
 **Help › About Wireshark › Folders** shows the directory: on Windows it is
 `%APPDATA%\Wireshark\plugins`, elsewhere `~/.local/lib/wireshark/plugins`.
+On macOS, name the copy `<name>.so`: Wireshark loads only `.so` files
+there, and Cargo builds a `.dylib`.
 
 ## API overview
 

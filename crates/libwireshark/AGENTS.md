@@ -35,7 +35,8 @@ plugin crate can be `#![forbid(unsafe_code)]`.
 
 Install the built library under `<plugin dir>/<major>.<minor>/epan/`; the
 personal plugin directory is `%APPDATA%\Wireshark\plugins` on Windows and
-`~/.local/lib/wireshark/plugins` elsewhere.
+`~/.local/lib/wireshark/plugins` elsewhere. Wireshark loads only `*.dll` on
+Windows and `*.so` elsewhere: on macOS rename Cargo's `.dylib` to `.so`.
 
 ## Protocols (`Dissector`)
 

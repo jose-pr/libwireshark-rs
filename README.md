@@ -73,7 +73,8 @@ libwireshark::plugin!(Foo);
 
 `cargo build --release`, then copy the library into
 `<plugins>/<major>.<minor>/epan/` (Help › About Wireshark › Folders shows
-the personal plugin directory). `tshark -Y foo` then filters on it.
+the personal plugin directory; on macOS name it `*.so`, the only suffix
+Wireshark loads there). `tshark -Y foo` then filters on it.
 
 ## API overview
 
