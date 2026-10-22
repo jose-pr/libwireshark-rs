@@ -20,6 +20,8 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 | [`libwireshark-derive`](crates/libwireshark-derive) | `#[derive(Header)]` and `#[derive(Preferences)]`, used through `libwireshark` |
 | [`libwireshark-sys`](crates/libwireshark-sys) | raw bindings, generated from bundled headers for Wireshark 3.0 to 4.6 |
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
+| [`libwireshark-guatiao`](crates/libwireshark-guatiao) | one plugin that loads dissectors written in Rust, C or Python as [guatiao](https://github.com/Boriken-Dev/guatiao) providers |
+| [`libwireshark-api`](crates/libwireshark-api) | what those providers implement: the kinds, a C header, Python classes, and typed headers and preferences per language |
 
 The [examples](examples) are plugins: `basic-dissector` (one protocol with
 fields and a port preference), `multi-protocol` (two protocols in one

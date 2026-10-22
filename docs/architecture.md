@@ -29,6 +29,22 @@ without configuring or building Wireshark; `publish` commits them to the
 carries them), then the checkout's `headers` branch, and runs bindgen over
 an umbrella that includes the deps bundle first.
 
+## Plugins in other languages
+
+`libwireshark-guatiao` is a plugin built with `plugin!(dynamic = ..)`. When
+Wireshark loads it, it scans for guatiao libraries declaring
+`kind=wireshark_dissector` (and adds guatiao sources found beside them, such
+as the Python bridge), asks each provider to `describe` its protocol, and
+registers that as a run-time protocol. The description carries the header
+layout and the preferences: the host decodes the header for each packet,
+adds its fields once the provider accepts, turns Wireshark's preference
+values into a map for `dissect_on` and `dissect`, and lends the
+`PacketView` as the `wireshark_packet` object kind. Each language's helper
+(`ProtocolDissector` in Rust and Python, literal trees in C) writes the
+description from typed structs, so a provider reads like a
+`libwireshark::Dissector`. The kinds name no Wireshark type: providers are
+built once for every release line.
+
 ## A plugin at run time
 
 `plugin!(A, B)` expands, in the plugin crate, to a `static` `Plugin` built
