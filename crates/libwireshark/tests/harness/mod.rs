@@ -137,6 +137,7 @@ impl Profile {
         let root =
             std::env::temp_dir().join(format!("libwireshark-tshark-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create the profile directory");
         // The release line's directory: `4-6` on macOS, whose code signing
         // reads dotted directory names as bundles, `4.6` elsewhere.
         let version = format!(
