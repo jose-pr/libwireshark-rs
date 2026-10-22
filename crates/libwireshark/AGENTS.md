@@ -30,12 +30,14 @@ libwireshark::plugin!(version = "1.2.0", dissectors = [DissectorA, DissectorB], 
 libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA], filters = [FunctionA]);
 libwireshark::plugin!(file_types = [FormatA], dissectors = [DissectorA]);
 libwireshark::plugin!(codecs = [CodecA]);
+libwireshark::plugin!(dynamic = protocols, dissectors = [DissectorA]); // fn protocols() -> Vec<Protocol>
 ```
 
 Keys: `version` (a `&str` expression), `dissectors`, `taps`, `filters`,
-`file_types`, `codecs`; any order, each optional. `plugin!(A, B)` is
+`file_types`, `codecs`, `dynamic` (a function name in scope, or a
+parenthesised path); any order, each optional. `plugin!(A, B)` is
 `plugin!(dissectors = [A, B])`. An unknown key is a compile error, and so is
-`codecs` beside any other list.
+`codecs` beside any other list or `dynamic`.
 
 Write it once, at the root of a `cdylib` crate. It defines `#[no_mangle]`
 `plugin_version` (the crate's `CARGO_PKG_VERSION` unless given),
@@ -136,6 +138,38 @@ impl TcpFraming {
 - `TcpFraming::new(header_len, message_len)`: `message_len` gets the first
   `header_len` bytes of a message and returns its total length, header
   included; `None` stops dissection of the rest of the segment.
+
+## Protocols described at run time (`libwireshark::dynamic`)
+
+```rust
+#[non_exhaustive] pub struct ProtocolSpec {
+    pub name: &'static str, pub short_name: &'static str, pub filter_name: &'static str,
+    pub fields: Vec<FieldInfo>, pub experts: Vec<Expert>,
+}
+impl ProtocolSpec {
+    pub fn new(name: &'static str, short_name: &'static str, filter_name: &'static str) -> Self;
+    pub fn with_fields(self, Vec<FieldInfo>) -> Self;
+    pub fn with_experts(self, Vec<Expert>) -> Self;
+}
+pub trait DynamicDissector: Send + Sync + 'static {
+    fn bindings(&self) -> Vec<Binding>;
+    fn tcp_header_len(&self) -> Option<usize> { None }       // Some: framed over TCP
+    fn message_len(&self, header: &[u8]) -> Option<usize> { None } // whole length, header included
+    fn dissect(&self, packet: &mut PacketView<'_>) -> Option<usize>;
+}
+impl Protocol { pub fn dynamic(spec: ProtocolSpec, dissector: impl DynamicDissector) -> Self; }
+```
+
+- For a plugin that learns its protocols when it loads. `plugin!(dynamic =
+  f)` calls `f` once, in `plugin_register`; its protocols are registered
+  beside the static ones, with the same name checks.
+- `dissect` adds its own fields and Info text through `packet`; on
+  accepting, the runtime sizes the tree item and sets the Protocol column,
+  except for a post-dissector, which appends to the Info column itself
+  (`is_postdissector`). A declining dissector (`None`) adds nothing first.
+- Framing is `tcp_header_len` and `message_len` together, as `TcpFraming`.
+- Wireshark keeps what is registered for the process: owned text becomes
+  `&'static str` with `String::leak`. No preferences yet.
 
 ## Packets (`PacketView<'packet>`)
 

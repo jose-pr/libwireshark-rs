@@ -32,6 +32,8 @@ the [API documentation](https://docs.rs/libwireshark).
 - `FileType`: a capture file format Wireshark opens, read through
   `std::io::Read` (Wireshark 4.6 on).
 - `Codec`: an audio decoder for RTP payloads, for Wireshark's RTP player.
+- `dynamic`: protocols described at run time, for a plugin that learns
+  what it dissects when it loads.
 - `plugin!`: exports what Wireshark's loader reads, for any mix of the
   above.
 - The runtime sets the Protocol column and adds the protocol's own tree item,
@@ -158,6 +160,7 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 | `FilterFunction`, `FieldValue`, `FilterOutput` | display-filter functions |
 | `FileType`, `CaptureFile`, `Record`, `Encapsulation` | capture file formats |
 | `Codec`, `StreamFormat` | audio codecs |
+| `dynamic::{Protocol, ProtocolSpec, DynamicDissector}` | protocols described at run time |
 | `plugin!` | the plugin's exported entry points |
 | `sys` | the raw `libwireshark-sys` bindings |
 

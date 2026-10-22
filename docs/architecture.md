@@ -77,6 +77,13 @@ flowchart TD
     D --> C[accepted: Protocol column, tree item, header fields, Info]
 ```
 
+A protocol is a `Protocol`: its names and a `&'static dyn` table. For a
+`Dissector` the table is a zero-sized type monomorphised for it; for a
+protocol described at run time (`Protocol::dynamic`) it is a leaked box
+holding the `DynamicDissector` and the leaked description. `plugin!(dynamic
+= f)` calls `f` in `plugin_register`, which Wireshark runs before it asks
+for `register_protoinfo`, so both kinds register the same way.
+
 Each protocol's field ids, subtree id and short name are fixed once
 registered and live in a boxed `Shared` whose address is the dissector
 handle's callback data. Its typed preferences are an `Arc` rebuilt only

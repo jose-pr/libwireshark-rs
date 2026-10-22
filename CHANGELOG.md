@@ -41,7 +41,9 @@ First release of the crates under these names.
   `Encapsulation`) for Wireshark 4.6 and later, and audio codecs (`Codec`)
   for the RTP player; `Binding::encapsulation`.
 - `plugin!` takes its lists in any order, each optional, and adds
-  `file_types` and `codecs`.
+  `file_types`, `codecs` and `dynamic`.
+- Protocols described at run time (`dynamic::{Protocol, ProtocolSpec,
+  DynamicDissector}`).
 - `libwireshark-sys` reports its release line to dependents' build scripts
   as `DEP_WIRESHARK_VERSION`.
 - A protocol whose names Wireshark already has is skipped instead of

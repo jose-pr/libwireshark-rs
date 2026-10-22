@@ -26,8 +26,9 @@ fields and a port preference), `multi-protocol` (two protocols in one
 library) and `stream-protocol` (TCP reassembly, conversation state, named
 values and expert findings; a heuristic dissector; a post-dissector; two
 `tshark -z` statistics; two display-filter functions), `capture-file` (a
-capture file format Wireshark opens) and `audio-codec` (an RTP audio
-decoder).
+capture file format Wireshark opens), `audio-codec` (an RTP audio
+decoder) and `runtime-protocol` (a protocol described when the plugin
+loads).
 
 ## Installation
 
