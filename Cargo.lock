@@ -479,6 +479,8 @@ version = "0.0.0-alpha.1"
 source = "git+https://github.com/Boriken-Dev/guatiao?rev=b78ffd442e55e3a25f152d5f4f6190e237742cfc#b78ffd442e55e3a25f152d5f4f6190e237742cfc"
 dependencies = [
  "guatiao-derive",
+ "libloading",
+ "object",
 ]
 
 [[package]]
@@ -489,6 +491,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "guatiao-rust-provider"
+version = "0.1.0"
+dependencies = [
+ "libwireshark-api",
 ]
 
 [[package]]
@@ -620,6 +629,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libwireshark-guatiao"
+version = "0.0.0-alpha.0"
+dependencies = [
+ "guatiao",
+ "guatiao-rust-provider",
+ "libloading",
+ "libwireshark",
+ "libwireshark-api",
+]
+
+[[package]]
 name = "libwireshark-sys"
 version = "0.0.0-alpha.0"
 dependencies = [
@@ -685,6 +705,15 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "object"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

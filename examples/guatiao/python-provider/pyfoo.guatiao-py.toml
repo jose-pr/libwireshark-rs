@@ -1,0 +1,6 @@
+# What the guatiao-py bridge reads before importing anything: the module
+# (the library; its id is the module's name), the kinds it serves, and
+# where it is (relative to this file, put on sys.path while it is open).
+module = "pyfoo"
+kinds = ["wireshark_dissector"]
+paths = ["."]

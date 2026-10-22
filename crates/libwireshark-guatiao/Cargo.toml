@@ -1,0 +1,33 @@
+[package]
+name = "libwireshark-guatiao"
+description = "A Wireshark plugin that loads dissectors written in any language guatiao reaches: Rust, C, Python and more"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+exclude = [".*", "*.local.*"]
+# guatiao comes from a git revision until a release carries what this needs.
+publish = false
+
+[lib]
+# The plugin Wireshark loads. The rlib is only so that `cargo test` builds
+# the plugin for its own tshark tests; nothing else links it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libwireshark.workspace = true
+libwireshark-api.workspace = true
+guatiao = { workspace = true, features = ["provider", "load"] }
+libloading.workspace = true
+
+# Built beside the test binaries so `tests/tshark.rs` can install it.
+[dev-dependencies]
+guatiao-rust-provider = { path = "../../examples/guatiao/rust-provider" }
+
+[lints]
+workspace = true
