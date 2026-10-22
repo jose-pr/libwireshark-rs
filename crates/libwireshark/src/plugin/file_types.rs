@@ -45,14 +45,17 @@ impl FileTypeSpec {
 }
 
 #[cfg(file_type_plugins)]
-pub(crate) use imp::{Registered, register, register_plugin};
+pub(crate) use imp::{Open, Registered, open_slot, register, register_plugin};
 
 /// Before 4.6 there is nothing to register.
 #[cfg(not(file_type_plugins))]
 pub(crate) struct Registered;
 
 #[cfg(not(file_type_plugins))]
-pub(crate) fn register(_specs: &[FileTypeSpec]) -> Option<Registered> {
+pub(crate) fn register(
+    _specs: &[FileTypeSpec],
+    _dynamic: &[crate::dynamic::FileType],
+) -> Option<Registered> {
     None
 }
 
@@ -62,8 +65,11 @@ pub(crate) fn register_plugin(_plugin: &'static WtapPlugin) {}
 #[cfg(file_type_plugins)]
 mod imp {
     use super::{FileTypeSpec, PluginStatic, WtapPlugin};
+    use crate::__private::Plugin;
+    use crate::__private::slots;
     use crate::__private::symbols::{function, loaded};
-    use crate::file_type::{CaptureFile, FileApi, FileType, Record, WiretapError};
+    use crate::dynamic::{self, DynamicReader};
+    use crate::file_type::{CaptureFile, Encapsulation, FileApi, FileType, Record, WiretapError};
     use crate::sys;
     use alloc::boxed::Box;
     use alloc::ffi::CString;
@@ -72,9 +78,11 @@ mod imp {
     use core::ffi::{c_char, c_int, c_uint, c_void};
     use core::panic::AssertUnwindSafe;
     use std::io;
+    use std::io::Write as _;
     use std::panic::catch_unwind;
 
-    type Open = unsafe extern "C" fn(
+    /// `wtap_open_routine_t`: it carries no data pointer.
+    pub(crate) type Open = unsafe extern "C" fn(
         *mut sys::wtap,
         *mut c_int,
         *mut *mut c_char,
@@ -217,9 +225,22 @@ mod imp {
             .into_raw()
     }
 
-    /// Registers `specs` as file types and readers, skipping a name
-    /// Wireshark already has: it aborts on a duplicate reader.
-    pub(crate) fn register(specs: &[FileTypeSpec]) -> Option<Registered> {
+    /// What registration reads of a format of either kind.
+    struct Listed<'a> {
+        name: &'static str,
+        description: &'a str,
+        extensions: &'a [&'a str],
+        open: Open,
+    }
+
+    /// Registers `specs`, then `dynamic` through `slots`, as file types and
+    /// readers, skipping a name Wireshark already has: it aborts on a
+    /// duplicate reader.
+    pub(crate) fn register(
+        specs: &[FileTypeSpec],
+        dynamic: &[dynamic::FileType],
+        slots: &[Open; slots::COUNT],
+    ) -> Option<Registered> {
         let api = Api::load()?;
         let blocks: &'static [sys::supported_block_type] =
             Box::leak(Box::new([sys::supported_block_type {
@@ -228,19 +249,40 @@ mod imp {
                 num_supported_options: 0,
                 supported_options: core::ptr::null(),
             }]));
+        if dynamic.len() > slots.len() {
+            // A plugin's loader has nowhere else to say what it left out.
+            let _ = writeln!(
+                std::io::stderr(),
+                "libwireshark: {} file types registered at run time; the first {} are kept",
+                dynamic.len(),
+                slots.len()
+            );
+        }
+        let statics = specs.iter().map(|spec| Listed {
+            name: spec.name,
+            description: spec.imp.description,
+            extensions: spec.imp.extensions,
+            open: spec.imp.open,
+        });
+        let dynamics = dynamic.iter().zip(slots).map(|(format, &open)| Listed {
+            name: format.name,
+            description: format.description,
+            extensions: format.extensions,
+            open,
+        });
         let mut subtypes = Vec::new();
-        for spec in specs {
+        for spec in statics.chain(dynamics) {
             let name = leak(spec.name);
             // SAFETY: lookups by a NUL-terminated name.
             let taken = unsafe { (api.has_open_info)(name) || (api.name_to_subtype)(name) != -1 };
             if taken {
                 continue;
             }
-            let extensions = spec.imp.extensions;
+            let extensions = spec.extensions;
             // SAFETY: an all-zero `file_type_subtype_info` is valid (null
             // pointers, no callbacks); the fields a reader needs are set.
             let mut info: sys::file_type_subtype_info = unsafe { core::mem::zeroed() };
-            info.description = leak(spec.imp.description);
+            info.description = leak(spec.description);
             info.name = name;
             if let Some((first, rest)) = extensions.split_first() {
                 info.default_file_extension = leak(first);
@@ -258,7 +300,7 @@ mod imp {
             let open_info = Box::leak(Box::new(sys::open_info {
                 name,
                 type_: sys::wtap_open_type_OPEN_INFO_MAGIC as _,
-                open_routine: Some(spec.imp.open),
+                open_routine: Some(spec.open),
                 extensions: if extensions.is_empty() {
                     core::ptr::null()
                 } else {
@@ -276,9 +318,26 @@ mod imp {
     }
 
     /// What an open file keeps in `wth->priv`.
-    struct Opened<F> {
-        format: F,
+    struct Opened {
+        reader: Box<dyn DynamicReader>,
         api: Api,
+    }
+
+    /// A static [`FileType`] as an open file's reader.
+    struct Static<F>(F);
+
+    impl<F: FileType> DynamicReader for Static<F> {
+        fn encapsulation(&self) -> Encapsulation {
+            self.0.encapsulation()
+        }
+
+        fn read(
+            &mut self,
+            file: &mut CaptureFile<'_>,
+            record: &mut Record<'_>,
+        ) -> io::Result<bool> {
+            self.0.read(file, record)
+        }
     }
 
     /// The reader's open routine: [`FileType::open`] on the file's start.
@@ -287,18 +346,58 @@ mod imp {
         err: *mut c_int,
         err_info: *mut *mut c_char,
     ) -> sys::wtap_open_return_val {
+        // SAFETY: Wireshark's arguments for this open.
+        unsafe {
+            open_with(P::plugin(), F::NAME, wth, err, err_info, |file| {
+                Ok(F::open(file)?.map(|format| Box::new(Static(format)) as Box<dyn DynamicReader>))
+            })
+        }
+    }
+
+    /// The open routine of run-time format slot `N`.
+    pub(crate) unsafe extern "C" fn open_slot<P: PluginStatic, const N: usize>(
+        wth: *mut sys::wtap,
+        err: *mut c_int,
+        err_info: *mut *mut c_char,
+    ) -> sys::wtap_open_return_val {
+        let plugin = P::plugin();
+        let Some(format) = plugin.dynamic_file_type(N) else {
+            return sys::wtap_open_return_val_WTAP_OPEN_NOT_MINE;
+        };
+        // SAFETY: Wireshark's arguments for this open.
+        unsafe {
+            open_with(plugin, format.name, wth, err, err_info, |file| {
+                format.format.open(file)
+            })
+        }
+    }
+
+    /// Opens the file for the format registered as `name` with `open`, and
+    /// sets the file up to read through the reader it answers.
+    ///
+    /// # Safety
+    ///
+    /// The arguments are those of the running open routine.
+    unsafe fn open_with(
+        plugin: &'static Plugin,
+        name: &str,
+        wth: *mut sys::wtap,
+        err: *mut c_int,
+        err_info: *mut *mut c_char,
+        open: impl FnOnce(&mut CaptureFile<'_>) -> io::Result<Option<Box<dyn DynamicReader>>>,
+    ) -> sys::wtap_open_return_val {
         let result = catch_unwind(AssertUnwindSafe(|| {
             let (api, subtype) = {
-                let state = P::plugin().file_type_state();
+                let state = plugin.file_type_state();
                 let registered = state.as_ref()?;
-                (registered.api, registered.subtype(F::NAME)?)
+                (registered.api, registered.subtype(name)?)
             };
             // SAFETY: Wireshark passes the file being opened.
             let wtap = unsafe { &mut *wth.cast::<Wtap>() };
             // SAFETY: `fh` is open and positioned at the file's start.
             let mut file = unsafe { CaptureFile::from_raw(wtap.fh, &api.file) };
-            let format = match F::open(&mut file) {
-                Ok(Some(format)) => format,
+            let reader = match open(&mut file) {
+                Ok(Some(reader)) => reader,
                 Ok(None) => return Some(sys::wtap_open_return_val_WTAP_OPEN_NOT_MINE),
                 Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
                     return Some(sys::wtap_open_return_val_WTAP_OPEN_NOT_MINE);
@@ -310,13 +409,13 @@ mod imp {
                 }
             };
             wtap.file_type_subtype = subtype;
-            wtap.file_encap = format.encapsulation().to_raw();
+            wtap.file_encap = reader.encapsulation().to_raw();
             wtap.file_tsprec = sys::WTAP_TSPREC_NSEC as c_int;
             wtap.snapshot_length = 0;
-            wtap.subtype_read = Some(read::<F>);
-            wtap.subtype_seek_read = Some(seek_read::<F>);
-            wtap.subtype_close = Some(close::<F>);
-            wtap.private = Box::into_raw(Box::new(Opened { format, api })).cast();
+            wtap.subtype_read = Some(read);
+            wtap.subtype_seek_read = Some(seek_read);
+            wtap.subtype_close = Some(close);
+            wtap.private = Box::into_raw(Box::new(Opened { reader, api })).cast();
             if let Some(add_generated_idb) = api.add_generated_idb {
                 // SAFETY: the file is set up as an open capture of one interface.
                 unsafe { add_generated_idb(wth) };
@@ -330,7 +429,7 @@ mod imp {
     }
 
     /// Sequential reads: the record at the file's position.
-    unsafe extern "C" fn read<F: FileType>(
+    unsafe extern "C" fn read(
         wth: *mut sys::wtap,
         rec: *mut sys::wtap_rec,
         err: *mut c_int,
@@ -339,9 +438,10 @@ mod imp {
     ) -> bool {
         catch_unwind(AssertUnwindSafe(|| {
             // SAFETY: a file this reader opened, so `priv` holds its state.
-            let (wtap, opened) = unsafe { opened::<F>(wth) }?;
+            let (wtap, opened) = unsafe { opened(wth) }?;
+            let api = opened.api;
             // SAFETY: `fh` is the open file's sequential handle.
-            let mut file = unsafe { CaptureFile::from_raw(wtap.fh, &opened.api.file) };
+            let mut file = unsafe { CaptureFile::from_raw(wtap.fh, &api.file) };
             // SAFETY: an output of the callback.
             unsafe { *data_offset = i64::try_from(file.position()).unwrap_or(0) };
             // SAFETY: the callback's record and error outputs.
@@ -353,7 +453,7 @@ mod imp {
     }
 
     /// Random access: the record that starts at `seek_off`.
-    unsafe extern "C" fn seek_read<F: FileType>(
+    unsafe extern "C" fn seek_read(
         wth: *mut sys::wtap,
         seek_off: i64,
         rec: *mut sys::wtap_rec,
@@ -362,12 +462,13 @@ mod imp {
     ) -> bool {
         catch_unwind(AssertUnwindSafe(|| {
             // SAFETY: as in `read`.
-            let (wtap, opened) = unsafe { opened::<F>(wth) }?;
+            let (wtap, opened) = unsafe { opened(wth) }?;
+            let api = opened.api;
             // SAFETY: `random_fh` is the open file's random-access handle.
-            let mut file = unsafe { CaptureFile::from_raw(wtap.random_fh, &opened.api.file) };
+            let mut file = unsafe { CaptureFile::from_raw(wtap.random_fh, &api.file) };
             if let Err(error) = file.seek(seek_off) {
                 // SAFETY: the callback's error outputs.
-                unsafe { report(&opened.api.file, &error, err, err_info) };
+                unsafe { report(&api.file, &error, err, err_info) };
                 return Some(false);
             }
             // SAFETY: as in `read`.
@@ -379,7 +480,7 @@ mod imp {
     }
 
     /// Drops the reader's state when Wireshark closes the file.
-    unsafe extern "C" fn close<F: FileType>(wth: *mut sys::wtap) {
+    unsafe extern "C" fn close(wth: *mut sys::wtap) {
         let _ = catch_unwind(AssertUnwindSafe(|| {
             // SAFETY: a file this reader opened.
             let Some(wtap) = (unsafe { wth.cast::<Wtap>().as_mut() }) else {
@@ -388,19 +489,22 @@ mod imp {
             let private = core::mem::replace(&mut wtap.private, core::ptr::null_mut());
             if !private.is_null() {
                 // SAFETY: `open` boxed it, and it is taken out once.
-                drop(unsafe { Box::from_raw(private.cast::<Opened<F>>()) });
+                drop(unsafe { Box::from_raw(private.cast::<Opened>()) });
             }
         }));
     }
 
+    /// The file and its reader. Wireshark reads a file from one thread, one
+    /// call at a time, so the reader is borrowed mutably for the call.
+    ///
     /// # Safety
     ///
-    /// `wth` is a file `open::<F, _>` accepted.
-    unsafe fn opened<'a, F: FileType>(wth: *mut sys::wtap) -> Option<(&'a Wtap, &'a Opened<F>)> {
+    /// `wth` is a file `open_with` accepted.
+    unsafe fn opened<'a>(wth: *mut sys::wtap) -> Option<(&'a Wtap, &'a mut Opened)> {
         // SAFETY: the caller's contract.
         let wtap = unsafe { wth.cast::<Wtap>().as_ref() }?;
-        // SAFETY: `open` stored an `Opened<F>` there.
-        let opened = unsafe { wtap.private.cast::<Opened<F>>().as_ref() }?;
+        // SAFETY: `open_with` stored an `Opened` there.
+        let opened = unsafe { wtap.private.cast::<Opened>().as_mut() }?;
         Some((wtap, opened))
     }
 
@@ -411,8 +515,8 @@ mod imp {
     /// # Safety
     ///
     /// `rec`, `err` and `err_info` are the running read callback's.
-    unsafe fn read_record<F: FileType>(
-        opened: &Opened<F>,
+    unsafe fn read_record(
+        opened: &mut Opened,
         file: &mut CaptureFile<'_>,
         rec: *mut sys::wtap_rec,
         err: *mut c_int,
@@ -426,7 +530,7 @@ mod imp {
         let rec_ptr: *mut sys::wtap_rec = rec;
         // SAFETY: the record of the running callback, for this call only.
         let mut record = unsafe { Record::from_raw(&mut *rec_ptr, &opened.api.file) };
-        match opened.format.read(file, &mut record) {
+        match opened.reader.read(file, &mut record) {
             Ok(true) => {}
             Ok(false) => {
                 // SAFETY: the callback's error output.
@@ -462,7 +566,7 @@ mod imp {
         }
         // SAFETY: the packet member of the header union, for a packet record.
         let header = unsafe { &mut rec.rec_header.packet_header };
-        header.pkt_encap = opened.format.encapsulation().to_raw();
+        header.pkt_encap = opened.reader.encapsulation().to_raw();
         header.caplen = captured;
         header.len = original.unwrap_or(captured).max(captured);
         header.interface_id = 0;

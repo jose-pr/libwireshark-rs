@@ -121,6 +121,8 @@ struct Built {
     protocols: Vec<Protocol>,
     taps: Vec<dynamic::Tap>,
     filters: Vec<dynamic::FilterFunction>,
+    file_types: Vec<dynamic::FileType>,
+    codecs: Vec<dynamic::Codec>,
 }
 
 impl From<Registrations> for Built {
@@ -129,6 +131,8 @@ impl From<Registrations> for Built {
             protocols: registrations.protocols,
             taps: registrations.taps,
             filters: registrations.filters,
+            file_types: registrations.file_types,
+            codecs: registrations.codecs,
         }
     }
 }
@@ -206,8 +210,14 @@ impl Plugin {
         });
         [
             (self.protocols.len() + protocols, DISSECTOR),
-            (self.file_types.len(), FILE_TYPE),
-            (self.codecs.len(), CODEC),
+            (
+                self.file_types.len() + dynamic(|built| built.file_types.len()),
+                FILE_TYPE,
+            ),
+            (
+                self.codecs.len() + dynamic(|built| built.codecs.len()),
+                CODEC,
+            ),
             (
                 self.taps.len() + dynamic(|built| built.taps.len()),
                 TAP_LISTENER,
@@ -236,10 +246,14 @@ impl Plugin {
                 }
             }
             let built = self.built();
+            let file_types = !self.file_types.is_empty()
+                || built.is_some_and(|built| !built.file_types.is_empty());
             // SAFETY: the tables and their callbacks are statics of the
             // plugin library.
             unsafe {
-                if self.protocols().next().is_some() {
+                // Protocol registration also registers file types that came
+                // too late for wiretap's start (see `register_protoinfo`).
+                if self.protocols().next().is_some() || file_types {
                     sys::proto_register_plugin(&tables.protocols);
                 }
                 if self.all_taps().next().is_some() {
@@ -249,10 +263,10 @@ impl Plugin {
             if !self.filters.is_empty() || built.is_some_and(|built| !built.filters.is_empty()) {
                 filters::register_plugin(&tables.filters);
             }
-            if !self.file_types.is_empty() {
+            if file_types {
                 file_types::register_plugin(&tables.file_types);
             }
-            if !self.codecs.is_empty() {
+            if !self.codecs.is_empty() || built.is_some_and(|built| !built.codecs.is_empty()) {
                 codecs::register_plugin(&tables.codecs);
             }
         }));
@@ -263,7 +277,13 @@ impl Plugin {
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let mut state = self.file_type_state();
             if state.is_none() {
-                *state = file_types::register(self.file_types);
+                let dynamic = self.built().map_or(&[][..], |built| &built.file_types[..]);
+                *state = file_types::register(
+                    self.file_types,
+                    dynamic,
+                    #[cfg(file_type_plugins)]
+                    &self.slots.file_types,
+                );
             }
         }));
     }
@@ -274,9 +294,26 @@ impl Plugin {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// The run-time format in slot `index`.
+    #[cfg_attr(
+        not(file_type_plugins),
+        expect(dead_code, reason = "file types register from 4.6")
+    )]
+    fn dynamic_file_type(&'static self, index: usize) -> Option<&'static dynamic::FileType> {
+        self.built()?.file_types.get(index)
+    }
+
     /// The `codecs_plugin` callback: registers the codecs.
     pub fn register_codecs(&'static self) {
-        let _ = catch_unwind(AssertUnwindSafe(|| codecs::register(self.codecs)));
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let dynamic = self.built().map_or(&[][..], |built| &built.codecs[..]);
+            codecs::register(self.codecs, dynamic, &self.slots.codecs);
+        }));
+    }
+
+    /// The run-time codec in slot `index`.
+    fn dynamic_codec(&'static self, index: usize) -> Option<&'static dynamic::Codec> {
+        self.built()?.codecs.get(index)
     }
 
     /// The display-filter plugin `init`: registers the filter functions.
@@ -370,6 +407,10 @@ impl Plugin {
             unsafe {
                 sys::register_cleanup_routine(Some(callbacks::trampoline(callbacks.cleanup)))
             };
+            // Wiretap registers its plugins' file types when it starts, which
+            // is before a plugin outside `wiretap/` loads: register them now,
+            // once, if it did not.
+            self.register_file_types();
             // Wireshark frees `g_strdup`'d preference defaults through GLib,
             // so the library stays loaded for the process.
             core::mem::forget(glib);

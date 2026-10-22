@@ -385,10 +385,24 @@ fn base64_decode(text: &str) -> Vec<u8> {
 #[test]
 #[ignore = "needs sharkd from the release line libwireshark-sys was built for"]
 fn a_codec_plugin_decodes_rtp_for_sharkd() {
-    let profile = profile("codec");
-    // SDP names payload type 96 L8 at 8 kHz for RTP to 192.0.2.2:47200.
-    let sdp = "v=0\r\no=- 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.2\r\nt=0 0\r\n\
-               m=audio 47200 RTP/AVP 96\r\na=rtpmap:96 L8/8000\r\n";
+    decodes_rtp_for_sharkd("codec", "L8");
+}
+
+#[test]
+#[ignore = "needs sharkd from the release line libwireshark-sys was built for"]
+fn a_codec_registered_at_run_time_from_epan_decodes_for_sharkd() {
+    decodes_rtp_for_sharkd("runtime-codec", "RL8");
+}
+
+/// sharkd's audio for an RTP stream whose SDP names `codec`: the bytes of
+/// the L8 encoding, which both example codecs decode.
+fn decodes_rtp_for_sharkd(test: &str, codec: &str) {
+    let profile = profile(test);
+    // SDP names payload type 96 `codec` at 8 kHz for RTP to 192.0.2.2:47200.
+    let sdp = format!(
+        "v=0\r\no=- 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.2\r\nt=0 0\r\n\
+         m=audio 47200 RTP/AVP 96\r\na=rtpmap:96 {codec}/8000\r\n"
+    );
     let invite = format!(
         "INVITE sip:bob@192.0.2.2 SIP/2.0\r\n\
          Via: SIP/2.0/UDP 192.0.2.1:61000;branch=z9hG4bK1\r\n\
@@ -494,6 +508,39 @@ fn a_protocol_described_at_run_time_dissects_like_a_static_one() {
     assert_eq!(rows, ["RFOO	7	515	RFOO version 7, length 515"]);
     let moved = profile.fields_of(&capture, &["-o", "rfoo.port:113"], &["_ws.col.Protocol"]);
     assert_eq!(moved, ["UDP"], "dissect_on follows the port preference");
+}
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn a_file_type_registered_at_run_time_from_epan_opens_its_format() {
+    let profile = profile("runtime-filetype");
+    let mut file = b"RRCAP\0\0\x01".to_vec();
+    for (index, frame) in frames().iter().enumerate() {
+        let nanos = u64::from(capture_time(index)) * 1_000_000_000;
+        file.extend(rscap_record(nanos, frame, frame.len() as u32));
+    }
+    let file = profile.write("capture.rrcap", &file);
+    let fields = [
+        "frame.number",
+        "frame.time_epoch",
+        "_ws.col.Protocol",
+        "foo.version",
+    ];
+    if !since((4, 6)) {
+        let output = profile.output(&tshark(), &["-r", &file], "");
+        assert!(!output.status.success(), "before 4.6 the format is unknown");
+        return;
+    }
+    assert_eq!(
+        profile.fields_of(&file, &[], &fields),
+        profile.fields(&[], &fields),
+        "the same packets as the pcap"
+    );
+    assert_eq!(
+        profile.fields_of(&file, &["-2"], &fields),
+        profile.fields(&[], &fields),
+        "the second pass reads each record again"
+    );
 }
 
 #[test]

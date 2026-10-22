@@ -1,11 +1,13 @@
 //! What a plugin registers at run time: for a plugin that learns what it
 //! provides when it loads, such as a host of plugins written in other
-//! languages. Protocols, taps and display-filter functions known at compile
-//! time are a [`Dissector`](crate::Dissector), a [`Tap`](crate::Tap) and a
-//! [`FilterFunction`](crate::FilterFunction).
+//! languages. Known at compile time, each is a [`Dissector`](crate::Dissector),
+//! a [`Tap`](crate::Tap), a [`FilterFunction`](crate::FilterFunction), a
+//! [`FileType`](crate::FileType) or a [`Codec`](crate::Codec).
 
+use crate::codec::StreamFormat;
 use crate::dissector::Binding;
 use crate::expert::Expert;
+use crate::file_type::{CaptureFile, Encapsulation, Record};
 use crate::filter::FieldValue;
 use crate::header::FieldInfo;
 use crate::packet::PacketView;
@@ -135,6 +137,10 @@ pub struct Registrations {
     pub taps: Vec<Tap>,
     /// Display-filter functions (Wireshark 4.4 and later).
     pub filters: Vec<FilterFunction>,
+    /// Capture file formats (Wireshark 4.6 and later).
+    pub file_types: Vec<FileType>,
+    /// Audio codecs, for the RTP player.
+    pub codecs: Vec<Codec>,
 }
 
 impl From<Vec<Protocol>> for Registrations {
@@ -250,6 +256,128 @@ impl FilterFunction {
             name,
             returns,
             function: Box::new(function),
+        }
+    }
+}
+
+/// A run-time capture file format: recognises a file and opens a reader,
+/// as [`FileType::open`](crate::FileType::open) does for a static one.
+pub trait DynamicFileType: Send + Sync + 'static {
+    /// The reader of `file` (positioned at its start), `None` when it is
+    /// not in this format.
+    ///
+    /// # Errors
+    ///
+    /// A read error; running out of bytes counts as "not this format".
+    fn open(&self, file: &mut CaptureFile<'_>) -> std::io::Result<Option<Box<dyn DynamicReader>>>;
+}
+
+/// An open file's reader. Wireshark reads a file from one thread, one
+/// record at a time.
+pub trait DynamicReader: 'static {
+    /// The link-layer type of every record.
+    fn encapsulation(&self) -> Encapsulation;
+
+    /// The record at the file's position into `record`: `false` at the end
+    /// of the file.
+    ///
+    /// # Errors
+    ///
+    /// A read error, or [`std::io::ErrorKind::InvalidData`] for a damaged
+    /// record.
+    fn read(
+        &mut self,
+        file: &mut CaptureFile<'_>,
+        record: &mut Record<'_>,
+    ) -> std::io::Result<bool>;
+}
+
+/// A capture file format registered at run time (Wireshark 4.6 and later),
+/// from any plugin directory.
+pub struct FileType {
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) extensions: &'static [&'static str],
+    #[cfg_attr(
+        not(file_type_plugins),
+        expect(dead_code, reason = "file types register from 4.6")
+    )]
+    pub(crate) format: Box<dyn DynamicFileType>,
+}
+
+impl core::fmt::Debug for FileType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FileType")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("extensions", &self.extensions)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FileType {
+    /// The format `name` (short, as `tshark -F` lists it), described for
+    /// people by `description`, whose files end in `extensions`.
+    pub fn new(
+        name: &'static str,
+        description: &'static str,
+        extensions: &'static [&'static str],
+        format: impl DynamicFileType,
+    ) -> Self {
+        Self {
+            name,
+            description,
+            extensions,
+            format: Box::new(format),
+        }
+    }
+}
+
+/// A run-time codec's decoder for one stream, as [`Codec`](crate::Codec)
+/// is for a static one.
+pub trait DynamicCodec: Send + 'static {
+    /// The decoded samples per second.
+    fn sample_rate(&self) -> u32;
+
+    /// Interleaved channels in the decoded samples.
+    fn channels(&self) -> u32 {
+        1
+    }
+
+    /// How many samples `payload` decodes to, at most.
+    fn decoded_len(&self, payload: &[u8]) -> usize;
+
+    /// Decodes `payload` into `samples`; the samples written.
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize;
+}
+
+/// The factory of a run-time codec's decoders.
+pub(crate) type CodecFactory = dyn Fn(&StreamFormat) -> Box<dyn DynamicCodec> + Send + Sync;
+
+/// An audio codec registered at run time, for RTP payloads named `name`
+/// (the `a=rtpmap` encoding, such as `"L16"`).
+pub struct Codec {
+    pub(crate) name: &'static str,
+    pub(crate) new: Box<CodecFactory>,
+}
+
+impl core::fmt::Debug for Codec {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Codec")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Codec {
+    /// The codec `name`; `new` makes each stream's decoder.
+    pub fn new(
+        name: &'static str,
+        new: impl Fn(&StreamFormat) -> Box<dyn DynamicCodec> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name,
+            new: Box::new(new),
         }
     }
 }

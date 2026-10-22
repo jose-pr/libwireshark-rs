@@ -4,13 +4,17 @@
 //! resolved from the running Wireshark. From 4.2 each callback receives a
 //! `codec_context_t` holding the decoder; before, the decoder itself.
 
+use super::PluginStatic;
+use super::slots;
 use crate::__private::symbols::{function, loaded};
 use crate::codec::{Codec, StreamFormat};
+use crate::dynamic::{self, DynamicCodec};
 use crate::sys;
 use alloc::boxed::Box;
 use alloc::ffi::CString;
 use core::ffi::{c_char, c_uint, c_void};
 use core::panic::AssertUnwindSafe;
+use std::io::Write as _;
 use std::panic::catch_unwind;
 
 /// The table `plugin_register` hands to `codecs_register_plugin`.
@@ -35,7 +39,7 @@ const CONTEXT: bool = matches!(
 
 /// `codec_context_t`, 4.2 on.
 #[repr(C)]
-struct Context {
+pub(crate) struct Context {
     sample_rate: c_uint,
     channels: c_uint,
     fmtp_map: *mut c_void,
@@ -53,48 +57,116 @@ pub struct CodecSpec {
 /// A codec callback, cast to one type to be passed to `register_codec`.
 type Callback = unsafe extern "C" fn();
 
+/// `codec_init_fn` from 4.2: it carries no data pointer.
+pub(crate) type ContextInit = unsafe extern "C" fn(*mut Context) -> *mut c_void;
+
+/// `codec_init_fn` before 4.2.
+pub(crate) type LegacyInit = unsafe extern "C" fn() -> *mut c_void;
+
+/// The init callbacks of a plugin's run-time codec slots, in both
+/// signatures.
+#[derive(Debug)]
+pub(crate) struct InitSlots {
+    pub(crate) context: [ContextInit; slots::COUNT],
+    pub(crate) legacy: [LegacyInit; slots::COUNT],
+}
+
+/// What a codec's callbacks decode with: a static codec, or a run-time
+/// codec's decoder.
+trait Decoder: 'static {
+    fn sample_rate(&self) -> u32;
+    fn channels(&self) -> u32;
+    fn decoded_len(&self, payload: &[u8]) -> usize;
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize;
+}
+
+impl<C: Codec> Decoder for C {
+    fn sample_rate(&self) -> u32 {
+        Codec::sample_rate(self)
+    }
+
+    fn channels(&self) -> u32 {
+        Codec::channels(self)
+    }
+
+    fn decoded_len(&self, payload: &[u8]) -> usize {
+        Codec::decoded_len(self, payload)
+    }
+
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize {
+        Codec::decode(self, payload, samples)
+    }
+}
+
+/// A run-time codec's decoder, boxed once more for a thin pointer.
+type Dynamic = Box<dyn DynamicCodec>;
+
+impl Decoder for Dynamic {
+    fn sample_rate(&self) -> u32 {
+        (**self).sample_rate()
+    }
+
+    fn channels(&self) -> u32 {
+        (**self).channels()
+    }
+
+    fn decoded_len(&self, payload: &[u8]) -> usize {
+        (**self).decoded_len(payload)
+    }
+
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize {
+        (**self).decode(payload, samples)
+    }
+}
+
 impl CodecSpec {
     /// The codec `C` describes.
     pub const fn of<C: Codec>() -> Self {
-        // SAFETY (for each cast): function pointers share one
-        // representation; `register` passes each back as an untyped
-        // pointer, and Wireshark calls it with its own signature.
-        unsafe {
-            Self {
-                name: C::NAME,
-                context: [
-                    core::mem::transmute::<
-                        unsafe extern "C" fn(*mut Context) -> *mut c_void,
-                        Callback,
-                    >(init::<C>),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut Context), Callback>(
-                        release::<C>,
-                    ),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut Context) -> c_uint, Callback>(
-                        channels::<C>,
-                    ),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut Context) -> c_uint, Callback>(
-                        frequency::<C>,
-                    ),
-                    core::mem::transmute::<Decode<Context>, Callback>(decode::<C>),
-                ],
-                legacy: [
-                    core::mem::transmute::<unsafe extern "C" fn() -> *mut c_void, Callback>(
-                        legacy_init::<C>,
-                    ),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut c_void), Callback>(
-                        legacy_release::<C>,
-                    ),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut c_void) -> c_uint, Callback>(
-                        legacy_channels::<C>,
-                    ),
-                    core::mem::transmute::<unsafe extern "C" fn(*mut c_void) -> c_uint, Callback>(
-                        legacy_frequency::<C>,
-                    ),
-                    core::mem::transmute::<Decode<c_void>, Callback>(legacy_decode::<C>),
-                ],
-            }
+        Self {
+            name: C::NAME,
+            context: callbacks::<C>(init::<C>),
+            legacy: legacy_callbacks::<C>(legacy_init::<C>),
         }
+    }
+}
+
+/// `init` and the callbacks over a `D`, cast for `register_codec`.
+const fn callbacks<D: Decoder>(init: ContextInit) -> [Callback; 5] {
+    // SAFETY (for each cast): function pointers share one representation;
+    // `register` passes each back as an untyped pointer, and Wireshark calls
+    // it with its own signature.
+    unsafe {
+        [
+            core::mem::transmute::<ContextInit, Callback>(init),
+            core::mem::transmute::<unsafe extern "C" fn(*mut Context), Callback>(release::<D>),
+            core::mem::transmute::<unsafe extern "C" fn(*mut Context) -> c_uint, Callback>(
+                channels::<D>,
+            ),
+            core::mem::transmute::<unsafe extern "C" fn(*mut Context) -> c_uint, Callback>(
+                frequency::<D>,
+            ),
+            core::mem::transmute::<Decode<Context>, Callback>(decode::<D>),
+        ]
+    }
+}
+
+/// [`callbacks`] in the signatures before 4.2.
+const fn legacy_callbacks<D: Decoder>(init: LegacyInit) -> [Callback; 5] {
+    // SAFETY: as in `callbacks`.
+    unsafe {
+        [
+            core::mem::transmute::<LegacyInit, Callback>(init),
+            core::mem::transmute::<unsafe extern "C" fn(*mut c_void), Callback>(
+                legacy_release::<D>,
+            ),
+            core::mem::transmute::<unsafe extern "C" fn(*mut c_void) -> c_uint, Callback>(
+                legacy_channels::<D>,
+            ),
+            core::mem::transmute::<unsafe extern "C" fn(*mut c_void) -> c_uint, Callback>(
+                legacy_frequency::<D>,
+            ),
+            core::mem::transmute::<Decode<c_void>, Callback>(legacy_decode::<D>),
+        ]
     }
 }
 
@@ -125,8 +197,9 @@ pub(crate) fn register_plugin(plugin: &'static CodecsPlugin) {
     }
 }
 
-/// Registers `specs`; a name Wireshark already has is refused by it.
-pub(crate) fn register(specs: &[CodecSpec]) {
+/// Registers `specs`, then `dynamic` through `slots`; a name Wireshark
+/// already has is refused by it.
+pub(crate) fn register(specs: &[CodecSpec], dynamic: &[dynamic::Codec], slots: &InitSlots) {
     let Some(library) = wsutil() else {
         return;
     };
@@ -135,13 +208,34 @@ pub(crate) fn register(specs: &[CodecSpec]) {
     let Some(register) = (unsafe { function::<Register>(&library, b"register_codec\0") }) else {
         return;
     };
-    for spec in specs {
+    if dynamic.len() > slots.context.len() {
+        // A plugin's loader has nowhere else to say what it left out.
+        let _ = writeln!(
+            std::io::stderr(),
+            "libwireshark: {} codecs registered at run time; the first {} are kept",
+            dynamic.len(),
+            slots.context.len()
+        );
+    }
+    let statics = specs
+        .iter()
+        .map(|spec| (spec.name, if CONTEXT { spec.context } else { spec.legacy }));
+    let dynamics = dynamic
+        .iter()
+        .zip(slots.context.iter().zip(&slots.legacy))
+        .map(|(codec, (&init, &legacy))| {
+            let callbacks = if CONTEXT {
+                callbacks::<Dynamic>(init)
+            } else {
+                legacy_callbacks::<Dynamic>(legacy)
+            };
+            (codec.name, callbacks)
+        });
+    for (name, [init, release, channels, frequency, decode]) in statics.chain(dynamics) {
         // Wireshark keeps the name without copying it.
-        let name = CString::new(spec.name.replace('\0', ""))
+        let name = CString::new(name.replace('\0', ""))
             .unwrap_or_default()
             .into_raw();
-        let [init, release, channels, frequency, decode] =
-            if CONTEXT { spec.context } else { spec.legacy };
         // SAFETY: the callbacks have the signatures of this release line.
         unsafe { register(name, init, release, channels, frequency, decode) };
     }
@@ -152,19 +246,34 @@ fn known(value: c_uint) -> Option<u32> {
     (value != 0).then_some(value)
 }
 
-/// A boxed decoder, or null if `C::new` panicked.
-fn boxed<C: Codec>(format: &StreamFormat) -> *mut c_void {
-    catch_unwind(|| Box::into_raw(Box::new(C::new(format))).cast()).unwrap_or(core::ptr::null_mut())
+/// A boxed decoder, or null if `new` panicked.
+fn boxed<D: Decoder>(new: impl FnOnce() -> D) -> *mut c_void {
+    catch_unwind(AssertUnwindSafe(|| Box::into_raw(Box::new(new())).cast()))
+        .unwrap_or(core::ptr::null_mut())
+}
+
+/// The format a stream's context reports.
+///
+/// # Safety
+///
+/// `context` is null or the stream's context.
+unsafe fn format(context: *mut Context) -> Option<StreamFormat> {
+    // SAFETY: the caller's contract.
+    let context = unsafe { context.as_ref() }?;
+    Some(StreamFormat {
+        sample_rate: known(context.sample_rate),
+        channels: known(context.channels),
+    })
 }
 
 /// # Safety
 ///
-/// `decoder` is null or a decoder `boxed::<C>` returned and not yet freed.
-unsafe fn free<C: Codec>(decoder: *mut c_void) {
+/// `decoder` is null or a decoder `boxed::<D>` returned and not yet freed.
+unsafe fn free<D: Decoder>(decoder: *mut c_void) {
     if !decoder.is_null() {
         // SAFETY: the caller's contract.
         let _ = catch_unwind(AssertUnwindSafe(|| {
-            drop(unsafe { Box::from_raw(decoder.cast::<C>()) })
+            drop(unsafe { Box::from_raw(decoder.cast::<D>()) })
         }));
     }
 }
@@ -174,9 +283,9 @@ unsafe fn free<C: Codec>(decoder: *mut c_void) {
 /// # Safety
 ///
 /// As for [`free`], and no other reference to the decoder is live.
-unsafe fn with<C: Codec, T>(decoder: *mut c_void, fallback: T, f: impl FnOnce(&mut C) -> T) -> T {
+unsafe fn with<D: Decoder, T>(decoder: *mut c_void, fallback: T, f: impl FnOnce(&mut D) -> T) -> T {
     // SAFETY: the caller's contract.
-    let Some(decoder) = (unsafe { decoder.cast::<C>().as_mut() }) else {
+    let Some(decoder) = (unsafe { decoder.cast::<D>().as_mut() }) else {
         return fallback;
     };
     catch_unwind(AssertUnwindSafe(|| f(decoder))).unwrap_or(fallback)
@@ -189,8 +298,8 @@ unsafe fn with<C: Codec, T>(decoder: *mut c_void, fallback: T, f: impl FnOnce(&m
 ///
 /// `input` holds `input_len` bytes; `output`, when not null, holds
 /// `*output_len` writable bytes.
-unsafe fn decode_into<C: Codec>(
-    decoder: &mut C,
+unsafe fn decode_into<D: Decoder>(
+    decoder: &mut D,
     input: *const c_void,
     input_len: usize,
     output: *mut c_void,
@@ -220,13 +329,32 @@ unsafe fn decode_into<C: Codec>(
 
 unsafe extern "C" fn init<C: Codec>(context: *mut Context) -> *mut c_void {
     // SAFETY: Wireshark passes the stream's context.
-    let Some(context) = (unsafe { context.as_ref() }) else {
+    match unsafe { format(context) } {
+        Some(format) => boxed(|| C::new(&format)),
+        None => core::ptr::null_mut(),
+    }
+}
+
+/// The init callback of run-time codec slot `N`.
+pub(crate) unsafe extern "C" fn init_slot<P: PluginStatic, const N: usize>(
+    context: *mut Context,
+) -> *mut c_void {
+    let Some(codec) = P::plugin().dynamic_codec(N) else {
         return core::ptr::null_mut();
     };
-    boxed::<C>(&StreamFormat {
-        sample_rate: known(context.sample_rate),
-        channels: known(context.channels),
-    })
+    // SAFETY: Wireshark passes the stream's context.
+    match unsafe { format(context) } {
+        Some(format) => boxed::<Dynamic>(|| (codec.new)(&format)),
+        None => core::ptr::null_mut(),
+    }
+}
+
+/// [`init_slot`] before 4.2.
+pub(crate) unsafe extern "C" fn legacy_init_slot<P: PluginStatic, const N: usize>() -> *mut c_void {
+    match P::plugin().dynamic_codec(N) {
+        Some(codec) => boxed::<Dynamic>(|| (codec.new)(&StreamFormat::default())),
+        None => core::ptr::null_mut(),
+    }
 }
 
 /// The decoder `init` returned, which Wireshark stored in the context.
@@ -239,27 +367,27 @@ unsafe fn decoder(context: *mut Context) -> *mut c_void {
     unsafe { context.as_ref() }.map_or(core::ptr::null_mut(), |context| context.decoder)
 }
 
-unsafe extern "C" fn release<C: Codec>(context: *mut Context) {
+unsafe extern "C" fn release<D: Decoder>(context: *mut Context) {
     // SAFETY: Wireshark releases a context once; the decoder is cleared.
     unsafe {
-        free::<C>(decoder(context));
+        free::<D>(decoder(context));
         if let Some(context) = context.as_mut() {
             context.decoder = core::ptr::null_mut();
         }
     }
 }
 
-unsafe extern "C" fn channels<C: Codec>(context: *mut Context) -> c_uint {
+unsafe extern "C" fn channels<D: Decoder>(context: *mut Context) -> c_uint {
     // SAFETY: the stream's context, holding `init`'s decoder.
-    unsafe { with::<C, _>(decoder(context), 0, |decoder| decoder.channels()) }
+    unsafe { with::<D, _>(decoder(context), 0, |decoder| decoder.channels()) }
 }
 
-unsafe extern "C" fn frequency<C: Codec>(context: *mut Context) -> c_uint {
+unsafe extern "C" fn frequency<D: Decoder>(context: *mut Context) -> c_uint {
     // SAFETY: as in `channels`.
-    unsafe { with::<C, _>(decoder(context), 0, |decoder| decoder.sample_rate()) }
+    unsafe { with::<D, _>(decoder(context), 0, |decoder| decoder.sample_rate()) }
 }
 
-unsafe extern "C" fn decode<C: Codec>(
+unsafe extern "C" fn decode<D: Decoder>(
     context: *mut Context,
     input: *const c_void,
     input_len: usize,
@@ -268,32 +396,32 @@ unsafe extern "C" fn decode<C: Codec>(
 ) -> usize {
     // SAFETY: as in `channels`; the buffers are Wireshark's (`decode_into`).
     unsafe {
-        with::<C, _>(decoder(context), 0, |decoder| {
+        with::<D, _>(decoder(context), 0, |decoder| {
             decode_into(decoder, input, input_len, output, output_len)
         })
     }
 }
 
 unsafe extern "C" fn legacy_init<C: Codec>() -> *mut c_void {
-    boxed::<C>(&StreamFormat::default())
+    boxed(|| C::new(&StreamFormat::default()))
 }
 
-unsafe extern "C" fn legacy_release<C: Codec>(decoder: *mut c_void) {
+unsafe extern "C" fn legacy_release<D: Decoder>(decoder: *mut c_void) {
     // SAFETY: Wireshark releases the decoder `legacy_init` returned, once.
-    unsafe { free::<C>(decoder) }
+    unsafe { free::<D>(decoder) }
 }
 
-unsafe extern "C" fn legacy_channels<C: Codec>(decoder: *mut c_void) -> c_uint {
+unsafe extern "C" fn legacy_channels<D: Decoder>(decoder: *mut c_void) -> c_uint {
     // SAFETY: the decoder `legacy_init` returned.
-    unsafe { with::<C, _>(decoder, 0, |decoder| decoder.channels()) }
+    unsafe { with::<D, _>(decoder, 0, |decoder| decoder.channels()) }
 }
 
-unsafe extern "C" fn legacy_frequency<C: Codec>(decoder: *mut c_void) -> c_uint {
+unsafe extern "C" fn legacy_frequency<D: Decoder>(decoder: *mut c_void) -> c_uint {
     // SAFETY: as in `legacy_channels`.
-    unsafe { with::<C, _>(decoder, 0, |decoder| decoder.sample_rate()) }
+    unsafe { with::<D, _>(decoder, 0, |decoder| decoder.sample_rate()) }
 }
 
-unsafe extern "C" fn legacy_decode<C: Codec>(
+unsafe extern "C" fn legacy_decode<D: Decoder>(
     decoder: *mut c_void,
     input: *const c_void,
     input_len: usize,
@@ -302,7 +430,7 @@ unsafe extern "C" fn legacy_decode<C: Codec>(
 ) -> usize {
     // SAFETY: as in `legacy_channels`; the buffers are Wireshark's.
     unsafe {
-        with::<C, _>(decoder, 0, |decoder| {
+        with::<D, _>(decoder, 0, |decoder| {
             decode_into(decoder, input, input_len, output, output_len)
         })
     }

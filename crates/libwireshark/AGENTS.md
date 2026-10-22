@@ -31,6 +31,7 @@ libwireshark::plugin!(dissectors = [DissectorA], taps = [TapA], filters = [Funct
 libwireshark::plugin!(file_types = [FormatA], dissectors = [DissectorA]);
 libwireshark::plugin!(codecs = [CodecA]);
 libwireshark::plugin!(dynamic = protocols, dissectors = [DissectorA]); // fn protocols() -> Vec<Protocol>
+libwireshark::plugin!(dynamic = registrations);                // fn registrations() -> Registrations
 ```
 
 Keys: `version` (a `&str` expression), `dissectors`, `taps`, `filters`,
@@ -144,7 +145,7 @@ impl TcpFraming {
   the second. A protocol whose names Wireshark already has is left out,
   also reported on stderr.
 
-## Protocols described at run time (`libwireshark::dynamic`)
+## Registered at run time (`libwireshark::dynamic`)
 
 ```rust
 #[non_exhaustive] pub struct ProtocolSpec {
@@ -166,7 +167,50 @@ pub trait DynamicDissector: Send + Sync + 'static {
     fn dissect(&self, preferences: &Self::Preferences, packet: &mut PacketView<'_>) -> Option<usize>;
 }
 impl Protocol { pub fn dynamic(spec: ProtocolSpec, dissector: impl DynamicDissector) -> Self; }
+
+#[derive(Default)] #[non_exhaustive] pub struct Registrations {   // From<Vec<Protocol>>
+    pub protocols: Vec<Protocol>, pub taps: Vec<Tap>, pub filters: Vec<FilterFunction>,
+    pub file_types: Vec<FileType>, pub codecs: Vec<Codec>,
+}
+pub trait DynamicTap: Send + 'static {
+    fn packet(&mut self, packet: &TapPacket<'_>); fn draw(&self) -> String; fn reset(&mut self);
+}
+impl Tap { pub fn new(name: &'static str, tap: &'static str,
+                      new: impl Fn() -> Box<dyn DynamicTap> + Send + Sync + 'static) -> Self; }
+pub enum FilterReturn { Count, Text }
+pub enum FilterValue { Count(u32), Text(String) }      // of another kind than declared: no answer
+pub trait DynamicFilterFunction: Send + Sync + 'static {
+    fn call(&self, value: &FieldValue<'_>) -> Option<FilterValue>;
+}
+impl FilterFunction { pub fn new(name: &'static str, returns: FilterReturn,
+                                 function: impl DynamicFilterFunction) -> Self; }
+pub trait DynamicFileType: Send + Sync + 'static {
+    fn open(&self, file: &mut CaptureFile<'_>) -> io::Result<Option<Box<dyn DynamicReader>>>;
+}
+pub trait DynamicReader: 'static {
+    fn encapsulation(&self) -> Encapsulation;
+    fn read(&mut self, file: &mut CaptureFile<'_>, record: &mut Record<'_>) -> io::Result<bool>;
+}
+impl FileType { pub fn new(name: &'static str, description: &'static str,
+                           extensions: &'static [&'static str], format: impl DynamicFileType) -> Self; }
+pub trait DynamicCodec: Send + 'static {
+    fn sample_rate(&self) -> u32; fn channels(&self) -> u32 { 1 }
+    fn decoded_len(&self, payload: &[u8]) -> usize;
+    fn decode(&mut self, payload: &[u8], samples: &mut [i16]) -> usize;
+}
+impl Codec { pub fn new(name: &'static str,
+                        new: impl Fn(&StreamFormat) -> Box<dyn DynamicCodec> + Send + Sync + 'static) -> Self; }
 ```
+
+- Each behaves as its static counterpart (`Tap`, `FilterFunction` 4.4 on,
+  `FileType` 4.6 on, `Codec`), with the same name checks.
+- Display-filter functions, file formats and codecs reach Wireshark through
+  callbacks with no data pointer, so each plugin holds 32 of each kind
+  registered at run time; more are skipped and reported on stderr.
+- From any plugin directory: file formats wiretap did not register when it
+  started are registered with the plugin's protocols, and codecs register
+  when the program starts its codecs (sharkd and Wireshark do, after
+  `epan_init`; tshark only for `-G`).
 
 - For a plugin that learns its protocols when it loads. `plugin!(dynamic =
   f)` calls `f` once, in `plugin_register`; its protocols are registered
