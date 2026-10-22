@@ -28,11 +28,7 @@ from libwireshark import (
 from libwireshark.kinds import Dissector, Packet
 
 HEADER_FILE = (
-    Path(__file__).resolve().parents[3]
-    / "crates"
-    / "libwireshark-api"
-    / "include"
-    / "libwireshark_api.h"
+    Path(__file__).resolve().parents[3] / "crates" / "libwireshark-api" / "include" / "libwireshark_api.h"
 )
 
 
@@ -115,11 +111,7 @@ def test_a_header_class_lays_out_its_annotated_fields() -> None:
         "values": [{"value": 7, "name": "seven"}],
     }
     assert fields[1]["base"] == "hex" and fields[1]["name"] == "flags"
-    assert (
-        fields[2]["offset"] == 1
-        and fields[2]["bitmask"] == 1
-        and fields[2]["type"] == "bool"
-    )
+    assert fields[2]["offset"] == 1 and fields[2]["bitmask"] == 1 and fields[2]["type"] == "bool"
     assert fields[3]["little_endian"] is True
 
 
@@ -187,9 +179,7 @@ def test_describe_answers_the_description_map() -> None:
 
 def test_dissect_on_and_dissect_receive_typed_instances() -> None:
     foo = Foo()
-    assert foo.dissect_on({"port": 999}) == [
-        {"on": "table", "table": "udp.port", "value": 999}
-    ]
+    assert foo.dissect_on({"port": 999}) == [{"on": "table", "table": "udp.port", "value": 999}]
     packet = Recorder()
     header = {"version": 9, "flags": 1, "up": True, "length": 4}
     assert foo.dissect(b"\x09\x01\x04\x00", header, {"label": "BAR"}, packet, {}) == 4
@@ -207,15 +197,10 @@ def test_a_packet_too_short_for_the_header_is_declined() -> None:
 
 def test_the_spellings_are_the_rust_encodings() -> None:
     assert FieldType.U24.value == "u24" and Base.DEC_HEX.value == "dec_hex"
-    assert (
-        ExpertGroup.RESPONSE_CODE.value == "response_code"
-        and Severity.WARN.value == "warn"
-    )
+    assert ExpertGroup.RESPONSE_CODE.value == "response_code" and Severity.WARN.value == "warn"
 
 
-@pytest.mark.skipif(
-    not HEADER_FILE.is_file(), reason="outside a checkout of the repository"
-)
+@pytest.mark.skipif(not HEADER_FILE.is_file(), reason="outside a checkout of the repository")
 def test_the_kind_classes_carry_the_c_headers_hashes() -> None:
     header = HEADER_FILE.read_text(encoding="utf-8")
     for kind, table in (

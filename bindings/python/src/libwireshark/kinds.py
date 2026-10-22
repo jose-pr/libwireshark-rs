@@ -43,9 +43,7 @@ class Packet(
 
     @required
     @fallible
-    def add_item(
-        self, field: str, offset: I64, length: I64, little_endian: bool
-    ) -> None: ...
+    def add_item(self, field: str, offset: I64, length: I64, little_endian: bool) -> None: ...
 
     @required
     @fallible
@@ -81,9 +79,7 @@ class Packet(
     def dst_port(self) -> I64: ...
 
 
-class Dissector(
-    KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1003939949
-):
+class Dissector(KindProtocol, Protocol, kind="wireshark_dissector", floor_hash=1003939949):
     """`wireshark_dissector_vtable`: a protocol and its dissection.
 
     `describe` answers the protocol as a map (the crate's `Description`);
