@@ -254,3 +254,106 @@ impl Drop for Profile {
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
+
+/// The base64 standard alphabet's value of `byte`.
+fn base64_value(byte: u8) -> Option<u32> {
+    let value = match byte {
+        b'A'..=b'Z' => byte - b'A',
+        b'a'..=b'z' => byte - b'a' + 26,
+        b'0'..=b'9' => byte - b'0' + 52,
+        b'+' => 62,
+        b'/' => 63,
+        _ => return None,
+    };
+    Some(u32::from(value))
+}
+
+fn base64_decode(text: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let values = text.bytes().filter_map(base64_value).collect::<Vec<_>>();
+    for chunk in values.chunks(4) {
+        let word = chunk
+            .iter()
+            .enumerate()
+            .fold(0, |word, (index, value)| word | value << (18 - 6 * index));
+        let word = word.to_be_bytes();
+        bytes.extend(&word[1..chunk.len()]);
+    }
+    bytes
+}
+
+/// Asserts that sharkd, in `profile`, decodes an RTP stream whose SDP names
+/// `codec` as the L8 encoding: each byte less 128, scaled to 16 bits.
+pub fn assert_decodes_l8(profile: &Profile, codec: &str) {
+    // SDP names payload type 96 `codec` at 8 kHz for RTP to 192.0.2.2:47200.
+    let sdp = format!(
+        "v=0\r\no=- 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.2\r\nt=0 0\r\n\
+         m=audio 47200 RTP/AVP 96\r\na=rtpmap:96 {codec}/8000\r\n"
+    );
+    let invite = format!(
+        "INVITE sip:bob@192.0.2.2 SIP/2.0\r\n\
+         Via: SIP/2.0/UDP 192.0.2.1:61000;branch=z9hG4bK1\r\n\
+         From: <sip:alice@192.0.2.1>;tag=1\r\n\
+         To: <sip:bob@192.0.2.2>\r\n\
+         Call-ID: 1@192.0.2.1\r\n\
+         CSeq: 1 INVITE\r\n\
+         Content-Type: application/sdp\r\n\
+         Content-Length: {}\r\n\r\n{sdp}",
+        sdp.len()
+    );
+    let rtp = |sequence: u16, payload: &[u8]| {
+        let mut packet = vec![0x80, 96];
+        packet.extend(sequence.to_be_bytes());
+        packet.extend((u32::from(sequence) * 160).to_be_bytes());
+        packet.extend(0x1122_3344u32.to_be_bytes());
+        packet.extend(payload);
+        packet
+    };
+    let frames = [
+        frame(&Segment::Udp(5060, invite.as_bytes())),
+        frame(&Segment::Udp(47200, &rtp(1, &[128, 255, 0, 192]))),
+        frame(&Segment::Udp(47200, &rtp(2, &[64, 129]))),
+    ];
+    let capture = profile.write("rtp.pcap", &pcap(&frames));
+    let requests = format!(
+        "{}\n{}\n",
+        format_args!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"load","params":{{"file":{capture:?}}}}}"#
+        ),
+        r#"{"jsonrpc":"2.0","id":2,"method":"download","params":{"token":"rtp:192.0.2.1_61000_192.0.2.2_47200_11223344"}}"#,
+    );
+    let output = profile.output(
+        &program("LIBWIRESHARK_TEST_SHARKD", "sharkd"),
+        &["-"],
+        &requests,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = stdout
+        .lines()
+        .find(|line| line.contains(r#""id":2"#))
+        .and_then(|line| line.split_once(r#""data":""#))
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(data, _)| data)
+        .unwrap_or_else(|| {
+            panic!(
+                "no decoded audio:\n{stdout}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+    let wav = base64_decode(data);
+    assert_eq!(&wav[..4], b"RIFF", "a WAV file");
+    assert_eq!(
+        u32::from_le_bytes(wav[24..28].try_into().unwrap()),
+        8000,
+        "the rate the codec reported"
+    );
+    let samples = wav[44..]
+        .chunks(2)
+        .map(|sample| i16::from_le_bytes([sample[0], sample[1]]))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        samples,
+        [0, 127 << 8, -128 << 8, 64 << 8, -64 << 8, 1 << 8],
+        "each byte less 128, scaled to 16 bits"
+    );
+}
