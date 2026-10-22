@@ -71,6 +71,8 @@ from ._dissector import (
     Table,
     TypedPacket,
 )
+from ._engine import Dissected, Encapsulation, Engine, Node
+from .exceptions import DisplayFilterError, EngineError, WiresharkError
 from .kinds import Dissector, Packet
 
 __version__ = "0.0.0a0"
@@ -109,4 +111,11 @@ __all__ = [
     "IPv4",
     "IPv6",
     "Ether",
+    "Engine",
+    "Encapsulation",
+    "Dissected",
+    "Node",
+    "WiresharkError",
+    "EngineError",
+    "DisplayFilterError",
 ]
