@@ -629,6 +629,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "libwireshark-engine"
+version = "0.0.0-alpha.0"
+dependencies = [
+ "basic-dissector",
+ "guatiao",
+ "libc",
+ "libloading",
+ "libwireshark",
+ "libwireshark-api",
+ "libwireshark-sys",
+ "multi-protocol",
+]
+
+[[package]]
 name = "libwireshark-guatiao"
 version = "0.0.0-alpha.0"
 dependencies = [

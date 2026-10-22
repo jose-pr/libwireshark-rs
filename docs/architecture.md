@@ -45,6 +45,20 @@ description from typed structs, so a provider reads like a
 `libwireshark::Dissector`. The kinds name no Wireshark type: providers are
 built once for every release line.
 
+## Wireshark in another process's hands
+
+`libwireshark-engine` runs EPAN the way tshark does, for one release line
+(4.6 on, where a `wtap_rec` carries its own data): it registers the plugins
+it is given with their `plugin_register` before `wtap_init` and
+`epan_init`, as Wireshark's own loader would, applies the profile's
+preferences and the caller's, then dissects each frame as tshark's single
+pass does and walks the tree into plain data. Functions of libwiretap,
+libwsutil and GLib, which the sys crate does not link, are resolved from
+the libraries libwireshark loaded. EPAN's state is the process's, so the
+engine starts once and holds one session at a time. With its `provider`
+feature the same library serves the `wireshark_engine` kind, which is how a
+host in another language opens it.
+
 ## A plugin at run time
 
 `plugin!(A, B)` expands, in the plugin crate, to a `static` `Plugin` built

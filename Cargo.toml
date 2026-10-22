@@ -6,6 +6,7 @@ members = [
     "crates/libwireshark-derive",
     "crates/libwireshark-api",
     "crates/libwireshark-guatiao",
+    "crates/libwireshark-engine",
     "crates/cargo-wireshark",
     "examples/audio-codec",
     "examples/basic-dissector",

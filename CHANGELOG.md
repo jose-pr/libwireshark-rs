@@ -48,6 +48,12 @@ First release of the crates under these names.
   written in any language guatiao reaches (Rust, C, Python), each declaring
   its header and preferences as typed structs and binding in `dissect_on`;
   one host plugin loads them all. Examples in `examples/guatiao`.
+- `libwireshark-engine`: Wireshark's dissection engine in the caller's
+  process, for Wireshark 4.6 and later: dissect frames and read capture
+  files (with a display filter) using Wireshark's dissectors and the
+  plugins it is given, into the protocol tree and the packet list's
+  columns; with its `provider` feature, a guatiao provider of the
+  `wireshark_engine` kind (`libwireshark-api::engine`).
 - `PacketView::add_item` refuses a length its field's type does not take
   (`PacketFieldError::WrongLength`) instead of letting Wireshark throw; a
   TCP framing length that cannot be read hands the rest of the segment to
