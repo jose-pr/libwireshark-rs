@@ -495,3 +495,45 @@ fn a_protocol_described_at_run_time_dissects_like_a_static_one() {
     let moved = profile.fields_of(&capture, &["-o", "rfoo.port:113"], &["_ws.col.Protocol"]);
     assert_eq!(moved, ["UDP"], "dissect_on follows the port preference");
 }
+
+#[test]
+#[ignore = "needs tshark from the release line libwireshark-sys was built for"]
+fn taps_and_filter_functions_registered_at_run_time_work() {
+    let profile = profile("runtime-extras");
+    let capture = profile.write(
+        "rfoo.pcap",
+        &pcap(&[
+            frame(&Segment::Udp(112, &[7, 1, 2, 3])),
+            frame(&Segment::Udp(112, &[9, 1, 2, 3])),
+        ]),
+    );
+    let report = profile.run(&["-r", capture.as_str(), "-q", "-z", "rtap"]);
+    assert!(report.contains("rtap: 2 frames"), "{report}");
+    let filtered = profile.output(
+        &tshark(),
+        &[
+            "-r",
+            capture.as_str(),
+            "-Y",
+            "rdouble(rfoo.version) == 14",
+            "-T",
+            "fields",
+            "-e",
+            "frame.number",
+        ],
+        "",
+    );
+    if !since((4, 4)) {
+        assert!(
+            String::from_utf8_lossy(&filtered.stderr).contains("does not exist"),
+            "before 4.4 the function is not registered"
+        );
+        return;
+    }
+    assert_eq!(
+        String::from_utf8_lossy(&filtered.stdout).trim(),
+        "1",
+        "{}",
+        String::from_utf8_lossy(&filtered.stderr)
+    );
+}

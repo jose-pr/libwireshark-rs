@@ -1,12 +1,18 @@
-//! Protocols described at run time: for a plugin that learns what it
-//! dissects when it loads, such as a host of plugins written in other
-//! languages. A protocol known at compile time is a [`Dissector`](crate::Dissector).
+//! What a plugin registers at run time: for a plugin that learns what it
+//! provides when it loads, such as a host of plugins written in other
+//! languages. Protocols, taps and display-filter functions known at compile
+//! time are a [`Dissector`](crate::Dissector), a [`Tap`](crate::Tap) and a
+//! [`FilterFunction`](crate::FilterFunction).
 
 use crate::dissector::Binding;
 use crate::expert::Expert;
+use crate::filter::FieldValue;
 use crate::header::FieldInfo;
 use crate::packet::PacketView;
 use crate::prefs::{Declaration, PreferenceMap};
+use crate::tap::TapPacket;
+use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 pub use crate::__private::Protocol;
@@ -115,4 +121,135 @@ pub trait DynamicDissector: Send + Sync + 'static {
         preferences: &Self::Preferences,
         packet: &mut PacketView<'_>,
     ) -> Option<usize>;
+}
+
+/// Everything a plugin registers at run time: what
+/// [`plugin!(dynamic = f)`](crate::plugin)'s `f` answers. A `Vec<Protocol>`
+/// converts into one holding only protocols.
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct Registrations {
+    /// Protocols, as [`Protocol::dynamic`] builds them.
+    pub protocols: Vec<Protocol>,
+    /// Tap listeners, offered as `-z <name>`.
+    pub taps: Vec<Tap>,
+    /// Display-filter functions (Wireshark 4.4 and later).
+    pub filters: Vec<FilterFunction>,
+}
+
+impl From<Vec<Protocol>> for Registrations {
+    fn from(protocols: Vec<Protocol>) -> Self {
+        Self {
+            protocols,
+            ..Self::default()
+        }
+    }
+}
+
+/// A tap listener's state, as [`Tap`](crate::Tap) is for a static one:
+/// one per `-z` invocation, made by [`Tap::new`]'s factory.
+pub trait DynamicTap: Send + 'static {
+    /// One packet that reached the tap.
+    fn packet(&mut self, packet: &TapPacket<'_>);
+
+    /// The report printed when the capture ends.
+    fn draw(&self) -> String;
+
+    /// Wireshark starts over (a new capture).
+    fn reset(&mut self);
+}
+
+/// The factory of a run-time tap's listeners.
+pub(crate) type TapFactory = dyn Fn() -> Box<dyn DynamicTap> + Send + Sync;
+
+/// A tap listener registered at run time, offered as `-z <name>[,<filter>]`.
+pub struct Tap {
+    pub(crate) name: &'static str,
+    pub(crate) tap: &'static str,
+    pub(crate) new: Box<TapFactory>,
+}
+
+impl core::fmt::Debug for Tap {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Tap")
+            .field("name", &self.name)
+            .field("tap", &self.tap)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Tap {
+    /// The listener `name` on Wireshark's tap `tap` (a protocol's filter
+    /// name, such as `"frame"` or `"ip"`); `new` makes each invocation's
+    /// state.
+    pub fn new(
+        name: &'static str,
+        tap: &'static str,
+        new: impl Fn() -> Box<dyn DynamicTap> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name,
+            tap,
+            new: Box::new(new),
+        }
+    }
+}
+
+/// What a run-time display-filter function answers for each value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FilterReturn {
+    /// An unsigned 32-bit number.
+    Count,
+    /// Text.
+    Text,
+}
+
+/// One answer of a run-time display-filter function; one that is not of
+/// its declared [`FilterReturn`] counts as no answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FilterValue {
+    /// For [`FilterReturn::Count`].
+    Count(u32),
+    /// For [`FilterReturn::Text`].
+    Text(String),
+}
+
+/// A run-time display-filter function's body, as
+/// [`FilterFunction`](crate::FilterFunction) is for a static one.
+pub trait DynamicFilterFunction: Send + Sync + 'static {
+    /// The answer for one value of the field passed, or `None` to give
+    /// none for it.
+    fn call(&self, value: &FieldValue<'_>) -> Option<FilterValue>;
+}
+
+/// A display-filter function registered at run time: `name(field)` in a
+/// display filter, from Wireshark 4.4.
+pub struct FilterFunction {
+    pub(crate) name: &'static str,
+    pub(crate) returns: FilterReturn,
+    pub(crate) function: Box<dyn DynamicFilterFunction>,
+}
+
+impl core::fmt::Debug for FilterFunction {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FilterFunction")
+            .field("name", &self.name)
+            .field("returns", &self.returns)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FilterFunction {
+    /// The function `name`, answering `returns` through `function`.
+    pub fn new(
+        name: &'static str,
+        returns: FilterReturn,
+        function: impl DynamicFilterFunction,
+    ) -> Self {
+        Self {
+            name,
+            returns,
+            function: Box::new(function),
+        }
+    }
 }

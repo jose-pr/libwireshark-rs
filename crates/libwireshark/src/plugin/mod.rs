@@ -10,6 +10,7 @@ mod filters;
 mod preferences;
 mod protocol;
 mod runtime;
+mod slots;
 mod symbols;
 mod taps;
 
@@ -18,9 +19,12 @@ pub use codecs::CodecSpec;
 pub use file_types::FileTypeSpec;
 pub use filters::{FilterSpec, PluginStatic};
 pub use protocol::Protocol;
+pub use slots::Slots;
 pub use taps::TapSpec;
 
+use crate::dynamic::{self, Registrations};
 use crate::sys;
+use alloc::boxed::Box;
 use core::ffi::c_int;
 use core::panic::AssertUnwindSafe;
 use runtime::Runtime;
@@ -111,11 +115,30 @@ pub struct Callbacks {
     pub cleanup: extern "C" fn(),
 }
 
+/// What a plugin's `dynamic` builder registered, kept for the process.
+#[derive(Debug, Default)]
+struct Built {
+    protocols: Vec<Protocol>,
+    taps: Vec<dynamic::Tap>,
+    filters: Vec<dynamic::FilterFunction>,
+}
+
+impl From<Registrations> for Built {
+    fn from(registrations: Registrations) -> Self {
+        Self {
+            protocols: registrations.protocols,
+            taps: registrations.taps,
+            filters: registrations.filters,
+        }
+    }
+}
+
 /// A plugin's protocols and their registration state.
 pub struct Plugin {
     protocols: &'static [Protocol],
-    dynamic: Option<fn() -> Vec<Protocol>>,
-    dynamic_protocols: Mutex<&'static [Protocol]>,
+    dynamic: Option<fn() -> Registrations>,
+    built: Mutex<Option<&'static Built>>,
+    slots: Slots,
     taps: &'static [TapSpec],
     filters: &'static [FilterSpec],
     file_types: &'static [FileTypeSpec],
@@ -129,7 +152,7 @@ impl core::fmt::Debug for Plugin {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Plugin")
             .field("protocols", &self.protocols)
-            .field("dynamic_protocols", &self.dynamic_protocols)
+            .field("built", &self.built)
             .field("taps", &self.taps)
             .field("filters", &self.filters)
             .field("file_types", &self.file_types)
@@ -139,20 +162,23 @@ impl core::fmt::Debug for Plugin {
 }
 
 impl Plugin {
-    /// A plugin of `protocols`, those `dynamic` builds when Wireshark loads
-    /// it, `taps`, `filters`, `file_types` and `codecs`.
+    /// A plugin of `protocols`, what `dynamic` builds when Wireshark loads
+    /// it, `taps`, `filters`, `file_types` and `codecs`; `slots` are its
+    /// callbacks for what `dynamic` builds.
     pub const fn new(
         protocols: &'static [Protocol],
-        dynamic: Option<fn() -> Vec<Protocol>>,
+        dynamic: Option<fn() -> Registrations>,
         taps: &'static [TapSpec],
         filters: &'static [FilterSpec],
         file_types: &'static [FileTypeSpec],
         codecs: &'static [CodecSpec],
+        slots: Slots,
     ) -> Self {
         Self {
             protocols,
             dynamic,
-            dynamic_protocols: Mutex::new(&[]),
+            built: Mutex::new(None),
+            slots,
             taps,
             filters,
             file_types,
@@ -171,15 +197,25 @@ impl Plugin {
         const CODEC: u32 = 1 << 2;
         const TAP_LISTENER: u32 = 1 << 4;
         const DFILTER: u32 = 1 << 5;
+        // Wireshark registers a plugin before describing it; before that, a
+        // builder counts as a dissector.
+        let built = self.built();
+        let dynamic = |count: fn(&Built) -> usize| built.map_or(0, count);
+        let protocols = built.map_or(usize::from(self.dynamic.is_some()), |built| {
+            built.protocols.len()
+        });
         [
-            (
-                self.protocols.len() + usize::from(self.dynamic.is_some()),
-                DISSECTOR,
-            ),
+            (self.protocols.len() + protocols, DISSECTOR),
             (self.file_types.len(), FILE_TYPE),
             (self.codecs.len(), CODEC),
-            (self.taps.len(), TAP_LISTENER),
-            (self.filters.len(), DFILTER),
+            (
+                self.taps.len() + dynamic(|built| built.taps.len()),
+                TAP_LISTENER,
+            ),
+            (
+                self.filters.len() + dynamic(|built| built.filters.len()),
+                DFILTER,
+            ),
         ]
         .into_iter()
         .filter(|&(count, _)| count > 0)
@@ -191,29 +227,26 @@ impl Plugin {
     pub fn register(&'static self, tables: &'static Tables) {
         let _ = catch_unwind(AssertUnwindSafe(|| {
             if let Some(build) = self.dynamic {
-                let mut built = self
-                    .dynamic_protocols
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                // A panicking builder means no run-time protocols, not none
-                // of the plugin's other tables.
-                if built.is_empty()
-                    && let Ok(protocols) = catch_unwind(build)
-                {
-                    *built = protocols.leak();
+                let mut built = self.built.lock().unwrap_or_else(PoisonError::into_inner);
+                // A panicking builder means nothing registered at run time,
+                // not none of the plugin's other tables.
+                if built.is_none() {
+                    let registrations = catch_unwind(build).unwrap_or_default();
+                    *built = Some(Box::leak(Box::new(Built::from(registrations))));
                 }
             }
+            let built = self.built();
             // SAFETY: the tables and their callbacks are statics of the
             // plugin library.
             unsafe {
                 if self.protocols().next().is_some() {
                     sys::proto_register_plugin(&tables.protocols);
                 }
-                if !self.taps.is_empty() {
+                if self.all_taps().next().is_some() {
                     sys::tap_register_plugin(&tables.taps);
                 }
             }
-            if !self.filters.is_empty() {
+            if !self.filters.is_empty() || built.is_some_and(|built| !built.filters.is_empty()) {
                 filters::register_plugin(&tables.filters);
             }
             if !self.file_types.is_empty() {
@@ -254,7 +287,8 @@ impl Plugin {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if state.is_none() {
-                *state = filters::register(self.filters);
+                let dynamic = self.built().map_or(&[][..], |built| &built.filters[..]);
+                *state = filters::register(self.filters, dynamic, &self.slots.filters);
             }
         }));
     }
@@ -273,6 +307,11 @@ impl Plugin {
         }));
     }
 
+    /// The run-time filter function in slot `index`.
+    fn dynamic_filter(&'static self, index: usize) -> Option<&'static dynamic::FilterFunction> {
+        self.built()?.filters.get(index)
+    }
+
     fn filter_api(&'static self) -> Option<filters::Api> {
         self.filter_state
             .lock()
@@ -284,19 +323,30 @@ impl Plugin {
     /// Wireshark's tap registration: offers each tap as `-z <name>`.
     pub fn register_taps(&'static self) {
         let _ = catch_unwind(AssertUnwindSafe(|| {
-            for spec in self.taps {
+            for spec in self.all_taps() {
                 taps::register(spec, self);
             }
         }));
     }
 
+    /// What the `dynamic` builder registered, once it ran.
+    fn built(&self) -> Option<&'static Built> {
+        *self.built.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// The static protocols, then those built when the plugin registered.
     fn protocols(&'static self) -> impl Iterator<Item = &'static Protocol> {
-        let dynamic: &'static [Protocol] = *self
-            .dynamic_protocols
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let dynamic = self.built().map_or(&[][..], |built| &built.protocols[..]);
         self.protocols.iter().chain(dynamic)
+    }
+
+    /// The static taps, then those built when the plugin registered.
+    fn all_taps(&'static self) -> impl Iterator<Item = taps::Listed> {
+        let dynamic = self.built().map_or(&[][..], |built| &built.taps[..]);
+        self.taps
+            .iter()
+            .map(taps::Listed::from)
+            .chain(dynamic.iter().map(taps::Listed::from))
     }
 
     fn state(&self) -> MutexGuard<'_, Vec<Runtime>> {

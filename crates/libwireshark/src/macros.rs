@@ -17,6 +17,7 @@
 /// libwireshark::plugin!(file_types = [FooCapture], dissectors = [FooDissector]);
 /// libwireshark::plugin!(codecs = [FooCodec]);
 /// libwireshark::plugin!(dynamic = protocols); // fn protocols() -> Vec<Protocol>
+/// libwireshark::plugin!(dynamic = registrations); // fn registrations() -> Registrations
 /// libwireshark::plugin!(version = "1.2.0", dissectors = [FooDissector, BarDissector]);
 /// ```
 ///
@@ -27,7 +28,7 @@
 /// | `filters` | [`FilterFunction`](crate::FilterFunction) | `epan/` |
 /// | `file_types` | [`FileType`](crate::FileType) | `wiretap/`, for the whole library |
 /// | `codecs` | [`Codec`](crate::Codec) | `codecs/`, alone in their library |
-/// | `dynamic` | a `fn() -> Vec<`[`Protocol`](crate::dynamic::Protocol)`>`, called once when Wireshark loads the plugin | `epan/` |
+/// | `dynamic` | a `fn() -> R`, `R` a `Vec<`[`Protocol`](crate::dynamic::Protocol)`>` or [`Registrations`](crate::dynamic::Registrations), called once when Wireshark loads the plugin | `epan/` |
 ///
 /// Wireshark loads the `wiretap/` libraries before it registers protocols,
 /// so a library with file formats can hold anything but codecs; it loads
@@ -69,7 +70,10 @@ macro_rules! plugin {
     };
     (@parse { $v:tt $d:tt $t:tt $f:tt $ft:tt $c:tt $_dy:tt } dynamic = $value:tt $(, $($rest:tt)*)?) => {
         $crate::plugin!(@parse {
-            $v $d $t $f $ft $c (::core::option::Option::Some($value as fn() -> $crate::__private::Vec<$crate::dynamic::Protocol>))
+            $v $d $t $f $ft $c (::core::option::Option::Some(
+                // A closure: an item here could shadow the builder's own name.
+                (|| ::core::convert::Into::into($value())) as fn() -> $crate::dynamic::Registrations
+            ))
         } $($($rest)*)?);
     };
     (@parse { $($state:tt)* } $key:ident = $($rest:tt)*) => {
@@ -103,6 +107,7 @@ macro_rules! plugin {
                 &[$($crate::__private::FilterSpec::of::<$filter, ThisPlugin>()),*],
                 &[$($crate::__private::FileTypeSpec::of::<$file_type, ThisPlugin>()),*],
                 &[$($crate::__private::CodecSpec::of::<$codec>()),*],
+                $crate::__private::Slots::of::<ThisPlugin>(),
             );
 
             const _: () = {
@@ -113,7 +118,7 @@ macro_rules! plugin {
                     $(::core::stringify!($filter),)*
                     $(::core::stringify!($file_type),)*
                 ];
-                let dynamic: ::core::option::Option<fn() -> $crate::__private::Vec<$crate::dynamic::Protocol>> = $dynamic;
+                let dynamic: ::core::option::Option<fn() -> $crate::dynamic::Registrations> = $dynamic;
                 ::core::assert!(
                     codecs.is_empty() || (others.is_empty() && dynamic.is_none()),
                     "a plugin with codecs holds nothing else: Wireshark loads it after registering protocols"

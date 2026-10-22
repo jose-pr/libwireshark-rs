@@ -1,6 +1,7 @@
 //! A plugin's [`Tap`]s: their `-z` entries, listeners and callbacks.
 
 use super::Plugin;
+use crate::dynamic::{self, DynamicTap, TapFactory};
 use crate::sys;
 use crate::tap::{Tap, TapPacket};
 use alloc::boxed::Box;
@@ -19,7 +20,7 @@ use std::sync::{Mutex, PoisonError};
 pub struct TapSpec {
     pub(crate) name: &'static str,
     pub(crate) tap: &'static str,
-    new: fn() -> Box<dyn ErasedTap>,
+    new: fn() -> Box<dyn DynamicTap>,
 }
 
 impl TapSpec {
@@ -33,33 +34,58 @@ impl TapSpec {
     }
 }
 
-fn new<T: Tap>() -> Box<dyn ErasedTap> {
-    Box::new(T::default())
+/// A tap of either kind, as registration reads it.
+#[derive(Clone, Copy)]
+pub(crate) struct Listed {
+    pub(crate) name: &'static str,
+    pub(crate) tap: &'static str,
+    new: &'static TapFactory,
 }
 
-trait ErasedTap: Send {
-    fn packet(&mut self, packet: &TapPacket<'_>);
-    fn draw(&self) -> String;
-    fn reset(&mut self);
+impl From<&'static TapSpec> for Listed {
+    fn from(spec: &'static TapSpec) -> Self {
+        Self {
+            name: spec.name,
+            tap: spec.tap,
+            new: &spec.new,
+        }
+    }
 }
 
-impl<T: Tap> ErasedTap for T {
+impl From<&'static dynamic::Tap> for Listed {
+    fn from(tap: &'static dynamic::Tap) -> Self {
+        Self {
+            name: tap.name,
+            tap: tap.tap,
+            new: &*tap.new,
+        }
+    }
+}
+
+fn new<T: Tap>() -> Box<dyn DynamicTap> {
+    Box::new(Static(T::default()))
+}
+
+/// A static [`Tap`] as the state of a listener.
+struct Static<T>(T);
+
+impl<T: Tap> DynamicTap for Static<T> {
     fn packet(&mut self, packet: &TapPacket<'_>) {
-        Tap::packet(self, packet);
+        self.0.packet(packet);
     }
 
     fn draw(&self) -> String {
-        Tap::draw(self)
+        self.0.draw()
     }
 
     fn reset(&mut self) {
-        Tap::reset(self);
+        self.0.reset();
     }
 }
 
 /// What `register_stat_tap_ui` hands back to the init callback.
 struct Entry {
-    spec: &'static TapSpec,
+    spec: Listed,
     plugin: &'static Plugin,
 }
 
@@ -67,7 +93,7 @@ struct Entry {
 struct Listener {
     /// Whether the tap is a protocol of this plugin, whose data is ours.
     ours: bool,
-    state: Mutex<Box<dyn ErasedTap>>,
+    state: Mutex<Box<dyn DynamicTap>>,
 }
 
 fn leak(text: &str) -> *const c_char {
@@ -78,7 +104,7 @@ fn leak(text: &str) -> *const c_char {
 }
 
 /// Offers `spec` as `-z <name>`; called from the plugin's tap registration.
-pub(crate) fn register(spec: &'static TapSpec, plugin: &'static Plugin) {
+pub(crate) fn register(spec: Listed, plugin: &'static Plugin) {
     let name = leak(spec.name);
     let ui = Box::leak(Box::new(sys::stat_tap_ui {
         // REGISTER_STAT_GROUP_GENERIC, whose constant's name differs by release line.
@@ -148,8 +174,7 @@ unsafe extern "C" fn init<R: InitReturn>(argument: *const c_char, userdata: *mut
             .filter(|filter| !filter.is_empty());
         let ours = entry
             .plugin
-            .protocols
-            .iter()
+            .protocols()
             .any(|protocol| protocol.filter_name == entry.spec.tap);
         let listener = Box::leak(Box::new(Listener {
             ours,

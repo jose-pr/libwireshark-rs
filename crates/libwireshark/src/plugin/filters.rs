@@ -5,15 +5,19 @@
 //! still loads, and simply registers none.
 
 use super::Plugin;
+use super::slots;
 use super::symbols::loaded;
+use crate::dynamic::{self, FilterReturn, FilterValue};
 use crate::filter::sealed::Sealed;
-use crate::filter::{FieldValue, FilterFunction, FilterOutput, ValueApi};
+use crate::filter::{FieldValue, FilterFunction, ValueApi};
 use alloc::boxed::Box;
 use alloc::ffi::CString;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::ffi::{CStr, c_char, c_int, c_uint, c_void};
 use core::panic::AssertUnwindSafe;
 use core::ptr::NonNull;
+use std::io::Write as _;
 use std::panic::catch_unwind;
 
 /// How a filter function's generic callback reaches its plugin's static:
@@ -23,7 +27,8 @@ pub trait PluginStatic: 'static {
     fn plugin() -> &'static Plugin;
 }
 
-type Function = unsafe extern "C" fn(*mut GSList, u32, *mut c_void) -> bool;
+/// `DFFuncType`: a display-filter function's callback.
+pub(crate) type Function = unsafe extern "C" fn(*mut GSList, u32, *mut c_void) -> bool;
 
 /// One [`FilterFunction`] of a plugin, type-erased.
 #[derive(Debug)]
@@ -164,12 +169,53 @@ pub(crate) struct Registered {
 // plugin's mutex serialises registration and cleanup.
 unsafe impl Send for Registered {}
 
-/// Registers `specs` with the argument checks of Wireshark's `count` and
-/// `string`, so every check (and any error it raises) stays in C.
-pub(crate) fn register(specs: &[FilterSpec]) -> Option<Registered> {
+/// What one registration needs: the name, the built-in whose argument
+/// check it borrows, whether it answers text, and its callback.
+struct Definition<'a> {
+    name: &'a str,
+    checker: &'static CStr,
+    text: bool,
+    function: Function,
+}
+
+/// Registers `specs`, then `dynamic` through `slots`, with the argument
+/// checks of Wireshark's `count` and `string`, so every check (and any
+/// error it raises) stays in C.
+pub(crate) fn register(
+    specs: &[FilterSpec],
+    dynamic: &[dynamic::FilterFunction],
+    slots: &[Function; slots::COUNT],
+) -> Option<Registered> {
     let api = Api::load()?;
+    let statics = specs.iter().map(|spec| Definition {
+        name: spec.name,
+        checker: spec.checker,
+        text: spec.text,
+        function: spec.function,
+    });
+    if dynamic.len() > slots.len() {
+        // A plugin's loader has nowhere else to say what it left out.
+        let _ = writeln!(
+            std::io::stderr(),
+            "libwireshark: {} display-filter functions registered at run time; the first {} are kept",
+            dynamic.len(),
+            slots.len()
+        );
+    }
+    let dynamics = dynamic
+        .iter()
+        .zip(slots)
+        .map(|(function, &slot)| Definition {
+            name: function.name,
+            checker: match function.returns {
+                FilterReturn::Count => <u32 as Sealed>::CHECKER,
+                FilterReturn::Text => <String as Sealed>::CHECKER,
+            },
+            text: function.returns == FilterReturn::Text,
+            function: slot,
+        });
     let mut definitions = Vec::new();
-    for spec in specs {
+    for spec in statics.chain(dynamics) {
         // SAFETY: looks up a built-in function by its NUL-terminated name.
         let Some(builtin) = (unsafe { (api.lookup)(spec.checker.as_ptr()).as_ref() }) else {
             continue;
@@ -210,8 +256,50 @@ unsafe extern "C" fn call<F: FilterFunction, P: PluginStatic>(
     _arg_count: u32,
     retval: *mut c_void,
 ) -> bool {
+    // SAFETY: Wireshark's arguments for this call.
+    unsafe {
+        evaluate(P::plugin(), stack, retval, |value| {
+            F::call(value).map(Sealed::into_parts)
+        })
+    }
+}
+
+/// The callback of run-time filter function slot `N`.
+pub(crate) unsafe extern "C" fn slot<P: PluginStatic, const N: usize>(
+    stack: *mut GSList,
+    _arg_count: u32,
+    retval: *mut c_void,
+) -> bool {
+    let plugin = P::plugin();
+    let Some(function) = plugin.dynamic_filter(N) else {
+        return false;
+    };
+    // SAFETY: Wireshark's arguments for this call.
+    unsafe {
+        evaluate(plugin, stack, retval, |value| {
+            match (function.returns, function.function.call(value)?) {
+                (FilterReturn::Count, FilterValue::Count(count)) => Some((count, None)),
+                (FilterReturn::Text, FilterValue::Text(text)) => Some((0, Some(text))),
+                _ => None,
+            }
+        })
+    }
+}
+
+/// Appends `answer` for every value of the call's argument; whether any
+/// was appended.
+///
+/// # Safety
+///
+/// `stack` and `retval` are those of the running filter function call.
+unsafe fn evaluate(
+    plugin: &'static Plugin,
+    stack: *mut GSList,
+    retval: *mut c_void,
+    answer: impl Fn(&FieldValue<'_>) -> Option<(u32, Option<String>)>,
+) -> bool {
     catch_unwind(AssertUnwindSafe(|| {
-        let api = P::plugin().filter_api()?;
+        let api = plugin.filter_api()?;
         // SAFETY: Wireshark passes the argument stack: one entry, a
         // `GPtrArray` of the field's values (or NULL when it has none).
         let values = unsafe { stack.as_ref()?.data.cast::<GPtrArray>().as_ref()? };
@@ -223,7 +311,7 @@ unsafe extern "C" fn call<F: FilterFunction, P: PluginStatic>(
             };
             // SAFETY: a value of the running call; `api` was resolved here.
             let value = unsafe { FieldValue::from_raw(value, api.value) };
-            let Some(result) = F::call(&value) else {
+            let Some(result) = answer(&value) else {
                 continue;
             };
             // SAFETY: `retval` is the call's result cell; the new fvalue is
@@ -241,8 +329,7 @@ unsafe extern "C" fn call<F: FilterFunction, P: PluginStatic>(
 /// # Safety
 ///
 /// `retval` is the running call's result cell.
-unsafe fn append<T: FilterOutput>(api: &Api, retval: *mut c_void, result: T) {
-    let (number, text) = result.into_parts();
+unsafe fn append(api: &Api, retval: *mut c_void, (number, text): (u32, Option<String>)) {
     // SAFETY: the caller's contract; Wireshark copies the string.
     unsafe {
         let value = match text {

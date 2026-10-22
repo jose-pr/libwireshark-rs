@@ -1,13 +1,18 @@
-//! A protocol described at run time: RFOO over UDP 112 (a preference), FOO's
-//! twin, whose names, fields and preferences are built when Wireshark loads
-//! the plugin rather than declared as types. A plugin that learns its protocols from elsewhere (a
-//! file, other plugins) is built this way.
+//! What a plugin registers at run time: RFOO over UDP 112 (a preference),
+//! FOO's twin, whose names, fields and preferences are built when Wireshark
+//! loads the plugin rather than declared as types; the `rtap` tap listener,
+//! counting frames; and the `rdouble` display-filter function. A plugin that
+//! learns what it provides from elsewhere (a file, other plugins) is built
+//! this way.
 
 #![forbid(unsafe_code)]
 
-use libwireshark::dynamic::{DynamicDissector, Protocol, ProtocolSpec};
+use libwireshark::dynamic::{
+    DynamicDissector, DynamicFilterFunction, DynamicTap, FilterFunction, FilterReturn, FilterValue,
+    Protocol, ProtocolSpec, Registrations, Tap,
+};
 use libwireshark::prefs::{Declaration, PreferenceMap, Value};
-use libwireshark::{Binding, Encoding, FieldInfo, FieldType, PacketView};
+use libwireshark::{Binding, Encoding, FieldInfo, FieldType, FieldValue, PacketView, TapPacket};
 
 const PORT: u32 = 112;
 
@@ -61,6 +66,52 @@ fn protocols() -> Vec<Protocol> {
     vec![Protocol::dynamic(spec, Rfoo)]
 }
 
+/// `-z rtap`: counts the frames.
+#[derive(Default)]
+struct FrameCount(u64);
+
+impl DynamicTap for FrameCount {
+    fn packet(&mut self, _packet: &TapPacket<'_>) {
+        self.0 += 1;
+    }
+
+    fn draw(&self) -> String {
+        format!(
+            "rtap: {} frames
+",
+            self.0
+        )
+    }
+
+    fn reset(&mut self) {
+        self.0 = 0;
+    }
+}
+
+/// `rdouble(field)`: twice an unsigned field's value.
+struct Double;
+
+impl DynamicFilterFunction for Double {
+    fn call(&self, value: &FieldValue<'_>) -> Option<FilterValue> {
+        let doubled = value.as_u64()?.checked_mul(2)?;
+        Some(FilterValue::Count(u32::try_from(doubled).ok()?))
+    }
+}
+
+/// Everything this plugin registers, built when Wireshark loads it.
+fn registrations() -> Registrations {
+    let mut registrations = Registrations::from(protocols());
+    registrations.taps.push(Tap::new(
+        "rtap",
+        "frame",
+        || Box::new(FrameCount::default()),
+    ));
+    registrations
+        .filters
+        .push(FilterFunction::new("rdouble", FilterReturn::Count, Double));
+    registrations
+}
+
 fn capitalised(word: &str) -> String {
     let mut letters = word.chars();
     letters
@@ -69,4 +120,4 @@ fn capitalised(word: &str) -> String {
         .unwrap_or_default()
 }
 
-libwireshark::plugin!(dynamic = protocols);
+libwireshark::plugin!(dynamic = registrations);
