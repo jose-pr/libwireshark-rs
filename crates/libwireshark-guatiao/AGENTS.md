@@ -12,7 +12,9 @@ release line like any `libwireshark` plugin; installed in `epan/`.
    `<personal plugin dir>/guatiao`, then `<global plugin dir>/guatiao`, as
    the running Wireshark names those directories (libwsutil's
    `get_plugins_pers_dir`, `get_plugins_dir`). Each place is scanned once.
-2. A library is mapped only if it declares `kind=wireshark_dissector`. A
+2. A library is mapped only if it declares one of `kind=wireshark_dissector`,
+   `wireshark_tap`, `wireshark_filter_function`, `wireshark_file_type` or
+   `wireshark_codec`. A
    guatiao source file found there (one declaring `source=..`, such as the
    guatiao-py bridge) is added with the configuration
    `{"dirs": [its directory], "paths": [its directory]}`, then the registry
@@ -24,6 +26,27 @@ release line like any `libwireshark` plugin; installed in `epan/`.
    provider built only from a configuration is skipped.
 4. One registry, leaked: it lives for the process, as Wireshark's use of
    the protocols does.
+
+## The other kinds
+
+- Each provider of `wireshark_tap`, `wireshark_filter_function`,
+  `wireshark_file_type` and `wireshark_codec` is described once and
+  registered through `libwireshark::dynamic` (32 of each kind at most).
+  Names are checked (`[a-z][a-z0-9...]`: taps also `_.-`, functions and
+  formats `_`); a name another provider of the kind took is skipped.
+- Tap: each `-z` invocation `open`s a listener; a packet crosses as a
+  `TapPacket` map; a refused call is reported once per invocation; a
+  refused `open` leaves an invocation that reports nothing.
+- Filter function: an integer field's value crosses as a number, any
+  other as its display text; an answer of the wrong kind is no answer.
+- File type (4.6 on): `open` and `read` get a `CaptureSource` lent for the
+  call over Wireshark's file (from another thread it reads nothing);
+  `NOT_FOUND` from `open` means another format, any other refusal a read
+  error. Registered from `epan/`, the format serves the programs that
+  dissect, not the wiretap-only tools.
+- Codec: a decoder per stream (`open` with its `StreamFormat`); samples
+  cross as little-endian bytes. sharkd and Wireshark register codecs, tshark
+  only for `-G`.
 
 ## Preferences and bindings
 

@@ -51,6 +51,10 @@ First release of the crates under these names.
   written in any language guatiao reaches (Rust, C, Python), each declaring
   its header and preferences as typed structs and binding in `dissect_on`;
   one host plugin loads them all. Examples in `examples/guatiao`.
+- The guatiao kinds `wireshark_tap`, `wireshark_filter_function`,
+  `wireshark_file_type` and `wireshark_codec`, served by the same host, with
+  Python helper classes (`Tap`, `FilterFunction`, `FileType`, `Codec`) and
+  example providers in Rust, C and Python.
 - `libwireshark-engine`: Wireshark's dissection engine in the caller's
   process, for Wireshark 4.6 and later: dissect frames and read capture
   files (with a display filter) using Wireshark's dissectors and the

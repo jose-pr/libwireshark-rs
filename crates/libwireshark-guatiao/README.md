@@ -1,8 +1,9 @@
 # libwireshark-guatiao
 
-A Wireshark plugin that loads dissectors written in any language
+A Wireshark plugin that loads plugins written in any language
 [guatiao](https://github.com/Boriken-Dev/guatiao) reaches — Rust, C,
-Python and more — and registers each as a Wireshark protocol. A provider
+Python and more — and registers them with Wireshark: dissectors, tap
+listeners, display-filter functions, capture formats and audio codecs. A provider
 implements the kinds of [`libwireshark-api`](../libwireshark-api) and links
 no Wireshark: one build serves every Wireshark release line. As with
 `libwireshark`'s `Dissector`, a provider declares its header and its
@@ -24,7 +25,9 @@ and adds its fields, registers the preferences, and asks the provider's
 
 A provider is:
 
-- **a library** declaring `kind=wireshark_dissector`: a Rust `cdylib`
+- **a library** declaring one of the kinds (`kind=wireshark_dissector`,
+  `wireshark_tap`, `wireshark_filter_function`, `wireshark_file_type`,
+  `wireshark_codec`): a Rust `cdylib`
   calling `guatiao::providers!`, or a C shared library filling the tables
   of `libwireshark_api.h`;
 - **a Python module** with its `*.guatiao-py.toml` manifest, beside the

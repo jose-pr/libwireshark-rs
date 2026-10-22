@@ -43,7 +43,12 @@ values into a map for `dissect_on` and `dissect`, and lends the
 (`ProtocolDissector` in Rust and Python, literal trees in C) writes the
 description from typed structs, so a provider reads like a
 `libwireshark::Dissector`. The kinds name no Wireshark type: providers are
-built once for every release line.
+built once for every release line. Tap listeners, display-filter functions,
+capture formats and codecs go the same way, through `libwireshark::dynamic`
+registrations: Wireshark calls a filter function, a format's open routine
+and a codec's init with no data pointer, so each plugin carries a pool of
+callbacks monomorphised per slot index, each finding its registration
+through the plugin's static.
 
 ## Wireshark in another process's hands
 
