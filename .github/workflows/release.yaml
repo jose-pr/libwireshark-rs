@@ -32,7 +32,9 @@ jobs:
       # The bundles live on the `headers` branch; the sys crate ships them.
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
       - run: cargo publish --workspace --dry-run --allow-dirty
-      - run: cargo package --workspace --no-verify --allow-dirty
+      # Unlike `publish`, `package --workspace` takes the `publish = false`
+      # crates too, whose guatiao dependency is a git revision.
+      - run: cargo package -p libwireshark-sys -p libwireshark-derive -p libwireshark -p cargo-wireshark --no-verify --allow-dirty
       - uses: actions/upload-artifact@v4
         with:
           name: crates
