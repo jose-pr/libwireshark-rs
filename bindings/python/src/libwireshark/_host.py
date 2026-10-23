@@ -1,10 +1,10 @@
-"""Wireshark's dissection engine, run in this process through the
-libwireshark-engine library: dissect frames and read capture files with
+"""Wireshark's dissection engine, hosted in this process through the
+libwireshark-guatiao library: dissect frames and read capture files with
 Wireshark's dissectors and the plugins you load."""
 
 from __future__ import annotations
 
-__all__ = ["Dissected", "Encapsulation", "Engine", "Node"]
+__all__ = ["Dissected", "Encapsulation", "Host", "Node"]
 
 import os
 import threading
@@ -16,10 +16,10 @@ from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 from guatiao import GuatiaoError
 
 from . import kinds
-from .exceptions import DisplayFilterError, EngineError
+from .exceptions import DisplayFilterError, HostError
 
-#: The engine library's path, when `Engine` is not given `library=`.
-ENGINE_VARIABLE = "LIBWIRESHARK_ENGINE"
+#: The libwireshark-guatiao library's path, when `Host` is not given `library=`.
+HOST_VARIABLE = "LIBWIRESHARK_HOST"
 
 PathLike = Union[str, "os.PathLike[str]"]
 
@@ -116,32 +116,32 @@ class Dissected:
         return node.value
 
 
-# Wireshark's state is the process's and lives in the engine library, so
+# Wireshark's state is the process's and lives in the library that hosts it, so
 # the library, once loaded, stays loaded: the registry is never closed.
 _lock = threading.Lock()
 _registry: Optional[Any] = None
-_engine: Optional[Any] = None
-_engine_path: Optional[str] = None
-_open: Optional["Engine"] = None
+_host: Optional[Any] = None
+_library_path: Optional[str] = None
+_open: Optional["Host"] = None
 
 
-def _refused(error: GuatiaoError) -> EngineError:
+def _refused(error: GuatiaoError) -> HostError:
     message = str(error)
     if "display filter:" in message:
         return DisplayFilterError(message)
-    return EngineError(message)
+    return HostError(message)
 
 
 def _bind(library: Optional[PathLike]) -> Any:
-    """The engine library's `wireshark_engine` provider, loaded once."""
-    global _registry, _engine, _engine_path
-    path = os.fspath(library) if library is not None else os.environ.get(ENGINE_VARIABLE)
-    if _engine is not None:
-        if path is not None and os.path.abspath(path) != _engine_path:
-            raise EngineError(f"the engine library is already loaded from {_engine_path}")
-        return _engine
+    """The libwireshark-guatiao library's `wireshark_host` provider, loaded once."""
+    global _registry, _host, _library_path
+    path = os.fspath(library) if library is not None else os.environ.get(HOST_VARIABLE)
+    if _host is not None:
+        if path is not None and os.path.abspath(path) != _library_path:
+            raise HostError(f"libwireshark-guatiao is already loaded from {_library_path}")
+        return _host
     if not path:
-        raise EngineError(f"no engine library: pass library= or set {ENGINE_VARIABLE}")
+        raise HostError(f"no libwireshark-guatiao library: pass library= or set {HOST_VARIABLE}")
     from guatiao.registry import Registry
 
     from . import __version__
@@ -149,14 +149,14 @@ def _bind(library: Optional[PathLike]) -> Any:
     registry = Registry("libwireshark", __version__)
     try:
         registry.load_file(path)
-        offers = registry.providers(kinds.Engine.kind.name)
+        offers = registry.providers(kinds.Host.kind.name)
         if not offers:
-            raise EngineError(f"{path} provides no {kinds.Engine.kind.name}")
-        _engine = registry.bind(offers[0]["key"], kinds.Engine)
+            raise HostError(f"{path} provides no {kinds.Host.kind.name}")
+        _host = registry.bind(offers[0]["key"], kinds.Host)
     except GuatiaoError as error:
-        raise EngineError(f"{path}: {error}") from error
-    _registry, _engine_path = registry, os.path.abspath(path)
-    return _engine
+        raise HostError(f"{path}: {error}") from error
+    _registry, _library_path = registry, os.path.abspath(path)
+    return _host
 
 
 def _nanoseconds(time: Union[None, int, float, datetime]) -> int:
@@ -168,11 +168,11 @@ def _nanoseconds(time: Union[None, int, float, datetime]) -> int:
     return round(seconds * 1_000_000_000)
 
 
-class Engine:
-    """Wireshark's dissection engine, started in this process.
+class Host:
+    """Wireshark's dissection engine, hosted in this process.
 
     ```python
-    with Engine(plugins=["foo.dll"], preferences={"foo.port": 113}) as wireshark:
+    with Host(plugins=["foo.dll"], preferences={"foo.port": 113}) as wireshark:
         frame = wireshark.dissect(data)
         frame["foo.version"]
         for frame in wireshark.read("capture.pcapng", display_filter="foo"):
@@ -186,9 +186,9 @@ class Engine:
     in `config_dir` (the user's by default), with `preferences` set on top
     as `tshark -o name:value` sets them.
 
-    Wireshark starts once per process, with the first engine's settings: a
-    later `Engine` must give the same ones, and one may be open at a time.
-    The engine library is `library`, else `LIBWIRESHARK_ENGINE`.
+    Wireshark starts once per process, with the first `Host`'s settings: a
+    later `Host` must give the same ones, and one may be open at a time.
+    The libwireshark-guatiao library is `library`, else `LIBWIRESHARK_HOST`.
     """
 
     def __init__(
@@ -212,19 +212,19 @@ class Engine:
         self._calls = threading.Lock()
         with _lock:
             if _open is not None:
-                raise EngineError(f"an engine is already open in this process: {_open!r}")
-            engine = _bind(library)
+                raise HostError(f"a host is already open in this process: {_open!r}")
+            host = _bind(library)
             try:
-                self._session: Optional[Any] = engine.open(config)
+                self._session: Optional[Any] = host.open(config)
             except GuatiaoError as error:
                 raise _refused(error) from error
             _open = self
 
     def __repr__(self) -> str:
         state = "open" if self._session is not None else "closed"
-        return f"<Engine plugins={self._plugins!r} {state}>"
+        return f"<Host plugins={self._plugins!r} {state}>"
 
-    def __enter__(self) -> "Engine":
+    def __enter__(self) -> "Host":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -232,7 +232,7 @@ class Engine:
 
     def _live(self) -> Any:
         if self._session is None:
-            raise ValueError("the engine is closed")
+            raise ValueError("the host is closed")
         return self._session
 
     def dissect(

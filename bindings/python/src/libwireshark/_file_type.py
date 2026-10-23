@@ -34,7 +34,7 @@ from typing import Any, ClassVar, Dict, Optional, Sequence
 from guatiao import NotFound
 
 from . import kinds
-from ._engine import Encapsulation
+from ._host import Encapsulation
 
 
 class CaptureFile:

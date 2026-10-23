@@ -72,11 +72,11 @@ from ._dissector import (
     TypedPacket,
 )
 from ._codec import Codec, Decoder, StreamFormat
-from ._engine import Dissected, Encapsulation, Engine, Node
+from ._host import Dissected, Encapsulation, Host, Node
 from ._file_type import CaptureFile, CaptureReader, FileType, Record
 from ._filter import FilterFunction, FilterReturn
 from ._tap import Tap, TapListener, TapPacket
-from .exceptions import DisplayFilterError, EngineError, WiresharkError
+from .exceptions import DisplayFilterError, HostError, WiresharkError
 from .kinds import Dissector, Packet
 
 __version__ = "0.0.0a0"
@@ -127,11 +127,11 @@ __all__ = [
     "Codec",
     "Decoder",
     "StreamFormat",
-    "Engine",
+    "Host",
     "Encapsulation",
     "Dissected",
     "Node",
     "WiresharkError",
-    "EngineError",
+    "HostError",
     "DisplayFilterError",
 ]

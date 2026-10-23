@@ -2,7 +2,7 @@
 //! libwireshark ones its headers bundle lacks, resolved from the libraries
 //! the process already holds: the build links libwireshark alone.
 
-use crate::EngineError;
+use super::HostError;
 use core::ffi::{c_char, c_int, c_uint, c_void};
 use libwireshark_sys as sys;
 use std::path::PathBuf;
@@ -52,7 +52,7 @@ pub(crate) struct Api {
 
 /// The path libwireshark was loaded from.
 #[cfg(unix)]
-pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
+pub(crate) fn libwireshark_path() -> Result<PathBuf, HostError> {
     use std::os::unix::ffi::OsStrExt;
     // A string in libwireshark's own read-only data: its address names the
     // library even where the process loaded it with local symbols.
@@ -62,7 +62,7 @@ pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
     let mut info: libc::Dl_info = unsafe { core::mem::zeroed() };
     // SAFETY: `anchor` lies in a loaded library.
     if unsafe { libc::dladdr(anchor, &mut info) } == 0 || info.dli_fname.is_null() {
-        return Err(EngineError::Symbols("the path of libwireshark".into()));
+        return Err(HostError::Symbols("the path of libwireshark".into()));
     }
     // SAFETY: `dladdr` answered a NUL-terminated path.
     let path = unsafe { core::ffi::CStr::from_ptr(info.dli_fname) };
@@ -71,14 +71,14 @@ pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
 
 /// The path libwireshark was loaded from.
 #[cfg(windows)]
-pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
+pub(crate) fn libwireshark_path() -> Result<PathBuf, HostError> {
     use std::os::windows::ffi::OsStringExt;
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetModuleFileNameW(module: *mut c_void, name: *mut u16, size: u32) -> u32;
     }
     let library = libloading::os::windows::Library::open_already_loaded("libwireshark.dll")
-        .map_err(|error| EngineError::Symbols(format!("libwireshark.dll: {error}")))?;
+        .map_err(|error| HostError::Symbols(format!("libwireshark.dll: {error}")))?;
     // Leaked: libwireshark stays loaded for the process.
     let module = library.into_raw() as *mut c_void;
     let mut name = vec![0u16; 32 * 1024];
@@ -86,7 +86,7 @@ pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
     // SAFETY: `module` is loaded; the buffer holds `size` units.
     let written = unsafe { GetModuleFileNameW(module, name.as_mut_ptr(), size) } as usize;
     if written == 0 || written >= name.len() {
-        return Err(EngineError::Symbols("the path of libwireshark.dll".into()));
+        return Err(HostError::Symbols("the path of libwireshark.dll".into()));
     }
     name.truncate(written);
     Ok(PathBuf::from(std::ffi::OsString::from_wide(&name)))
@@ -95,13 +95,13 @@ pub(crate) fn libwireshark_path() -> Result<PathBuf, EngineError> {
 /// The already loaded library `windows` names on Windows, or whose file
 /// name starts with `unix_prefix` beside libwireshark elsewhere: loading it
 /// again opens the copy the process holds.
-fn loaded(windows: &str, unix_prefix: &str) -> Result<libloading::Library, EngineError> {
+fn loaded(windows: &str, unix_prefix: &str) -> Result<libloading::Library, HostError> {
     #[cfg(windows)]
     {
         let _ = unix_prefix;
         libloading::os::windows::Library::open_already_loaded(windows)
             .map(Into::into)
-            .map_err(|error| EngineError::Symbols(format!("{windows}: {error}")))
+            .map_err(|error| HostError::Symbols(format!("{windows}: {error}")))
     }
     #[cfg(unix)]
     {
@@ -110,13 +110,13 @@ fn loaded(windows: &str, unix_prefix: &str) -> Result<libloading::Library, Engin
         if unix_prefix.is_empty() {
             // SAFETY: libwireshark itself, already loaded.
             return unsafe { libloading::Library::new(&path) }
-                .map_err(|error| EngineError::Symbols(format!("{}: {error}", path.display())));
+                .map_err(|error| HostError::Symbols(format!("{}: {error}", path.display())));
         }
         let dir = path
             .parent()
-            .ok_or_else(|| EngineError::Symbols(format!("the directory of {}", path.display())))?;
+            .ok_or_else(|| HostError::Symbols(format!("the directory of {}", path.display())))?;
         let mut candidates = std::fs::read_dir(dir)
-            .map_err(|error| EngineError::Symbols(format!("{}: {error}", dir.display())))?
+            .map_err(|error| HostError::Symbols(format!("{}: {error}", dir.display())))?
             .filter_map(Result::ok)
             .map(|entry| entry.path())
             .filter(|path| {
@@ -132,14 +132,12 @@ fn loaded(windows: &str, unix_prefix: &str) -> Result<libloading::Library, Engin
             // SAFETY: a library of the running Wireshark, already loaded:
             // its initialisers do not run again.
             .find_map(|candidate| unsafe { libloading::Library::new(candidate) }.ok())
-            .ok_or_else(|| {
-                EngineError::Symbols(format!("{unix_prefix}* beside {}", path.display()))
-            })
+            .ok_or_else(|| HostError::Symbols(format!("{unix_prefix}* beside {}", path.display())))
     }
 }
 
 /// GLib, which every Wireshark library links.
-fn glib() -> Result<libloading::Library, EngineError> {
+fn glib() -> Result<libloading::Library, HostError> {
     #[cfg(windows)]
     {
         loaded("glib-2.0-0.dll", "")
@@ -156,7 +154,7 @@ fn glib() -> Result<libloading::Library, EngineError> {
             .iter()
             // SAFETY: GLib, already loaded as libwireshark's dependency.
             .find_map(|name| unsafe { libloading::Library::new(name) }.ok())
-            .ok_or_else(|| EngineError::Symbols("GLib".into()))
+            .ok_or_else(|| HostError::Symbols("GLib".into()))
     }
 }
 
@@ -165,19 +163,19 @@ fn glib() -> Result<libloading::Library, EngineError> {
 /// # Safety
 ///
 /// `T` is the function's signature.
-unsafe fn function<T: Copy>(library: &libloading::Library, name: &[u8]) -> Result<T, EngineError> {
+unsafe fn function<T: Copy>(library: &libloading::Library, name: &[u8]) -> Result<T, HostError> {
     // SAFETY: the caller's contract.
     unsafe { library.get::<T>(name) }
         .map(|symbol| *symbol)
         .map_err(|_| {
-            EngineError::Symbols(
+            HostError::Symbols(
                 String::from_utf8_lossy(name.strip_suffix(b"\0").unwrap_or(name)).into_owned(),
             )
         })
 }
 
 impl Api {
-    pub(crate) fn load() -> Result<Self, EngineError> {
+    pub(crate) fn load() -> Result<Self, HostError> {
         // Loads libwireshark, with wiretap and wsutil, where a binary
         // delay-loads it.
         // SAFETY: no arguments; answers a static string.

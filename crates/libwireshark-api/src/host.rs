@@ -9,17 +9,17 @@ use guatiao::library::{Object, ProviderError};
 use guatiao::{FromValue, Map, Schema, ToValue};
 
 /// Opens Wireshark's dissection engine in the calling process:
-/// `wireshark_engine`.
-#[guatiao::kind(name = "wireshark_engine")]
-pub trait Engine: Send + Sync {
-    /// Starts the engine with `config` (an [`EngineConfig`] map) and
+/// `wireshark_host`.
+#[guatiao::kind(name = "wireshark_host")]
+pub trait Host: Send + Sync {
+    /// Starts the engine with `config` (an [`HostConfig`] map) and
     /// answers its session. Wireshark's state is per process: a second
     /// session while one is open is refused, and plugins and preferences
     /// are fixed once the first starts.
     fn open(&self, config: &Map) -> Result<Object<dyn Session>, ProviderError>;
 }
 
-/// The open engine: `wireshark_session`. Calls are one at a time.
+/// The open host: `wireshark_session`. Calls are one at a time.
 #[guatiao::kind(object, name = "wireshark_session")]
 pub trait Session: Send {
     /// Dissects one frame of `encapsulation` (a `WTAP_ENCAP_*` value: 1 is
@@ -42,9 +42,9 @@ pub trait Session: Send {
     fn next(&mut self) -> Result<Map, ProviderError>;
 }
 
-/// How the engine starts.
+/// How the host starts Wireshark.
 #[derive(Clone, Debug, Default, PartialEq, ToValue, FromValue, Schema)]
-pub struct EngineConfig {
+pub struct HostConfig {
     /// Plugin libraries to load besides Wireshark's own: dissector plugins
     /// built for this release line, `libwireshark-guatiao` among them.
     #[map(default)]

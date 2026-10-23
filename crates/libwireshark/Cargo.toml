@@ -16,11 +16,18 @@ exclude = [".*", "*.local.*"]
 default = []
 # `#[derive(Header)]` and `#[derive(Preferences)]`, re-exported from the root.
 derive = ["dep:libwireshark-derive"]
+# `libwireshark::engine`: Wireshark's dissection engine in a program (not a
+# plugin), from Wireshark 4.6.
+host = ["dep:libc"]
 
 [dependencies]
 libwireshark-sys.workspace = true
 libwireshark-derive = { workspace = true, optional = true }
 libloading.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# `dladdr`, to find the libraries beside libwireshark.
+libc = { version = "0.2", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
@@ -37,3 +44,7 @@ capture-file = { path = "../../examples/capture-file" }
 multi-protocol = { path = "../../examples/multi-protocol" }
 runtime-protocol = { path = "../../examples/runtime-protocol" }
 stream-protocol = { path = "../../examples/stream-protocol" }
+
+[[test]]
+name = "host"
+required-features = ["host"]

@@ -20,7 +20,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-libwireshark.workspace = true
+libwireshark = { workspace = true, features = ["host"] }
 libwireshark-api.workspace = true
 guatiao = { workspace = true, features = ["provider", "load"] }
 libloading.workspace = true

@@ -602,6 +602,7 @@ dependencies = [
  "audio-codec",
  "basic-dissector",
  "capture-file",
+ "libc",
  "libloading",
  "libwireshark-derive",
  "libwireshark-sys",
@@ -626,20 +627,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "libwireshark-engine"
-version = "0.0.0-alpha.0"
-dependencies = [
- "basic-dissector",
- "guatiao",
- "libc",
- "libloading",
- "libwireshark",
- "libwireshark-api",
- "libwireshark-sys",
- "multi-protocol",
 ]
 
 [[package]]

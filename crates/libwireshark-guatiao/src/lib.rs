@@ -9,6 +9,10 @@
 //! as the Python bridge, serving the Python modules beside it), and asks
 //! each provider to describe itself. Problems go to stderr;
 //! `LIBWIRESHARK_GUATIAO_LOG` set to anything reports what loaded too.
+//!
+//! The other way round, the library is also a guatiao provider of
+//! `wireshark_host`: a guatiao host (such as the `libwireshark` Python
+//! package) loads it to run Wireshark's engine in its own process.
 
 extern crate alloc;
 
@@ -21,8 +25,13 @@ mod header;
 mod host;
 mod packet;
 mod tap;
+mod wireshark_host;
 
 libwireshark::plugin!(dynamic = registrations);
+
+// The same library, loaded by a guatiao host rather than Wireshark, serves
+// Wireshark itself, hosted in that process.
+guatiao::providers!(wireshark_host::WiresharkHost);
 
 fn registrations() -> libwireshark::dynamic::Registrations {
     host::registrations()

@@ -26,6 +26,10 @@ mod file_type;
 #[allow(unsafe_code)]
 mod filter;
 mod header;
+#[cfg(feature = "host")]
+#[cfg_attr(docsrs, doc(cfg(feature = "host")))]
+#[allow(unsafe_code)]
+pub mod host;
 mod macros;
 #[allow(unsafe_code)]
 mod packet;

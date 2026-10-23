@@ -31,7 +31,7 @@ from libwireshark.kinds import (
     Codec,
     Decoder,
     Dissector,
-    Engine,
+    Host,
     FileType,
     FilterFunction,
     Packet,
@@ -227,7 +227,7 @@ def test_the_kind_classes_carry_the_c_headers_hashes() -> None:
         (CaptureSource, "wireshark_capture_source_vtable"),
         (Codec, "wireshark_codec_vtable"),
         (Decoder, "wireshark_decoder_vtable"),
-        (Engine, "wireshark_engine_vtable"),
+        (Host, "wireshark_host_vtable"),
         (Session, "wireshark_session_vtable"),
     ):
         hash_ = int(re.search(rf"#define {table}_FLOOR_HASH (\d+)", header).group(1))  # type: ignore[union-attr]

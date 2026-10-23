@@ -1,8 +1,8 @@
 //! The engine on Wireshark 4.6: started as tshark starts, one frame at a
 //! time as tshark's single pass dissects it.
 
-use crate::symbols::Api;
-use crate::{Column, Dissected, EngineConfig, EngineError, Node};
+use super::symbols::Api;
+use super::{Column, Dissected, HostConfig, HostError, Node};
 use alloc::ffi::CString;
 use core::ffi::{CStr, c_char, c_int, c_void};
 use core::ptr::{self, null_mut};
@@ -15,22 +15,22 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 
 /// Wireshark's state is per process and starts once: the configuration it
 /// started with, or why it did not.
-static STARTED: Mutex<Option<Result<Started, EngineError>>> = Mutex::new(None);
+static STARTED: Mutex<Option<Result<Started, HostError>>> = Mutex::new(None);
 
 /// Whether a session is open: EPAN dissects for one at a time.
 static OPEN: AtomicBool = AtomicBool::new(false);
 
 /// The functions, for the report callbacks too.
-static API: OnceLock<Result<Api, EngineError>> = OnceLock::new();
+static API: OnceLock<Result<Api, HostError>> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 struct Started {
-    config: EngineConfig,
+    config: HostConfig,
     /// The packet list's column count, from the loaded preferences.
     columns: c_int,
 }
 
-fn api() -> Result<Api, EngineError> {
+fn api() -> Result<Api, HostError> {
     API.get_or_init(Api::load).clone()
 }
 
@@ -80,17 +80,14 @@ unsafe fn wtap_error(api: &Api, err: c_int, detail: *mut c_char) -> String {
     message
 }
 
-fn c_string(
-    value: &str,
-    error: impl FnOnce(String) -> EngineError,
-) -> Result<CString, EngineError> {
+fn c_string(value: &str, error: impl FnOnce(String) -> HostError) -> Result<CString, HostError> {
     CString::new(value).map_err(|_| error(format!("{value:?} holds a NUL byte")))
 }
 
 /// Starts Wireshark as tshark does: the plugins in `config` registered
 /// before wiretap and EPAN start, then the profile's preferences with
 /// `config`'s on top.
-fn start(config: &EngineConfig) -> Result<Started, EngineError> {
+fn start(config: &HostConfig) -> Result<Started, HostError> {
     let api = api()?;
     // SAFETY: each call is one tshark makes once, in this order, before
     // any dissection.
@@ -108,11 +105,12 @@ fn start(config: &EngineConfig) -> Result<Started, EngineError> {
             report(&format!("configuration: {why}"));
         }
         if let Some(dir) = &config.config_dir {
-            let dir = c_string(dir, EngineError::Init)?;
+            let dir = path_bytes(dir)
+                .ok_or_else(|| HostError::Init(format!("{}: not a valid path", dir.display())))?;
             (api.set_persconffile_dir)(dir.as_ptr());
         }
         (api.init_report_message)(
-            c"libwireshark-engine".as_ptr(),
+            c"libwireshark-host".as_ptr(),
             ptr::from_ref(&ROUTINES).cast(),
         );
         // tshark's defaults: times relative to the first frame.
@@ -128,7 +126,7 @@ fn start(config: &EngineConfig) -> Result<Started, EngineError> {
         let installed = !config.skip_installed_plugins;
         (api.wtap_init)(installed);
         if !sys::epan_init(None, null_mut(), installed) {
-            return Err(EngineError::Init("epan_init failed".into()));
+            return Err(HostError::Init("epan_init failed".into()));
         }
         let prefs = sys::epan_load_settings();
         for (name, value) in &config.preferences {
@@ -146,11 +144,18 @@ fn start(config: &EngineConfig) -> Result<Started, EngineError> {
     }
 }
 
+/// Whether EPAN runs in this process already: it has protocols.
+fn running() -> bool {
+    let mut cookie = null_mut();
+    // SAFETY: answers -1 before any protocol registers.
+    unsafe { sys::proto_get_first_protocol(&mut cookie) != -1 }
+}
+
 /// Points Wireshark at the installation libwireshark came from: on
 /// Windows it otherwise looks beside the running program.
 #[cfg(windows)]
-fn locate_installation() -> Result<(), EngineError> {
-    let library = crate::symbols::libwireshark_path()?;
+fn locate_installation() -> Result<(), HostError> {
+    let library = super::symbols::libwireshark_path()?;
     let Some(dir) = library.parent() else {
         return Ok(());
     };
@@ -169,9 +174,9 @@ fn locate_installation() -> Result<(), EngineError> {
 
 /// Loads the plugin library at `path` and runs its `plugin_register`, as
 /// Wireshark's own loader does, so it registers with EPAN's start.
-fn register(path: &str, line: (c_int, c_int)) -> Result<(), EngineError> {
-    let fail = |reason: String| EngineError::Plugin {
-        path: path.into(),
+fn register(path: &Path, line: (c_int, c_int)) -> Result<(), HostError> {
+    let fail = |reason: String| HostError::Plugin {
+        path: path.display().to_string(),
         reason,
     };
     // SAFETY: a Wireshark plugin's initialisers only set its statics.
@@ -210,9 +215,9 @@ fn register(path: &str, line: (c_int, c_int)) -> Result<(), EngineError> {
 /// # Safety
 ///
 /// After `epan_load_settings`.
-unsafe fn set_preference(api: &Api, name: &str, value: &str) -> Result<(), EngineError> {
+unsafe fn set_preference(api: &Api, name: &str, value: &str) -> Result<(), HostError> {
     let preference = format!("{name}:{value}");
-    let fail = |reason: String| EngineError::Preference {
+    let fail = |reason: String| HostError::Preference {
         preference: preference.clone(),
         reason,
     };
@@ -233,7 +238,7 @@ unsafe fn set_preference(api: &Api, name: &str, value: &str) -> Result<(), Engin
 }
 
 fn report(message: &str) {
-    let _ = writeln!(std::io::stderr(), "libwireshark-engine: {message}");
+    let _ = writeln!(std::io::stderr(), "libwireshark-host: {message}");
 }
 
 /// `struct report_message_routines`: where Wireshark reports failures
@@ -391,7 +396,7 @@ struct File {
     file_type: c_int,
 }
 
-/// One session of the started engine.
+/// One session of the started host.
 pub(crate) struct Session {
     api: Api,
     frames: Box<Frames>,
@@ -407,15 +412,18 @@ pub(crate) struct Session {
 unsafe impl Send for Session {}
 
 impl Session {
-    pub(crate) fn open(config: &EngineConfig) -> Result<Self, EngineError> {
+    pub(crate) fn open(config: &HostConfig) -> Result<Self, HostError> {
         let mut started = STARTED.lock().unwrap_or_else(PoisonError::into_inner);
         if OPEN.load(Ordering::Acquire) {
-            return Err(EngineError::AlreadyOpen);
+            return Err(HostError::AlreadyOpen);
         }
         let columns = match &*started {
             Some(Ok(started)) if started.config == *config => started.columns,
-            Some(Ok(_)) => return Err(EngineError::Configured),
+            Some(Ok(_)) => return Err(HostError::Configured),
             Some(Err(error)) => return Err(error.clone()),
+            // Inside Wireshark (a plugin opening an host), EPAN runs
+            // already: starting it again would corrupt it.
+            None if running() => return Err(HostError::AlreadyOpen),
             None => {
                 let result = start(config);
                 *started = Some(result.clone());
@@ -496,7 +504,7 @@ impl Session {
         &mut self,
         path: &Path,
         display_filter: Option<&str>,
-    ) -> Result<(), EngineError> {
+    ) -> Result<(), HostError> {
         self.close_file();
         let filter = match display_filter.filter(|filter| !filter.trim().is_empty()) {
             Some(filter) => self.compile(filter)?,
@@ -507,7 +515,7 @@ impl Session {
             None => {
                 // SAFETY: compiled above, not used.
                 unsafe { free_filter(filter) };
-                return Err(EngineError::File(format!(
+                return Err(HostError::File(format!(
                     "{}: not a valid path",
                     path.display()
                 )));
@@ -528,9 +536,9 @@ impl Session {
             // SAFETY: as above; `detail` is freed once read.
             unsafe { free_filter(filter) };
             let why = unsafe { wtap_error(&self.api, err, detail) };
-            return Err(EngineError::File(format!("{}: {why}", path.display())));
+            return Err(HostError::File(format!("{}: {why}", path.display())));
         }
-        // SAFETY: an open file, and the started engine.
+        // SAFETY: an open file, and the started host.
         let file_type = unsafe { (self.api.wtap_file_type_subtype)(wtap) };
         unsafe { self.restart() };
         self.file = Some(File {
@@ -541,7 +549,7 @@ impl Session {
         Ok(())
     }
 
-    pub(crate) fn next(&mut self) -> Result<Option<Dissected>, EngineError> {
+    pub(crate) fn next(&mut self) -> Result<Option<Dissected>, HostError> {
         loop {
             let Some(file) = &self.file else {
                 return Ok(None);
@@ -562,7 +570,7 @@ impl Session {
                     return Ok(None);
                 }
                 // SAFETY: `detail` is wiretap's, freed once read.
-                return Err(EngineError::File(unsafe {
+                return Err(HostError::File(unsafe {
                     wtap_error(&self.api, err, detail)
                 }));
             }
@@ -573,8 +581,8 @@ impl Session {
         }
     }
 
-    fn compile(&self, filter: &str) -> Result<*mut sys::dfilter_t, EngineError> {
-        let source = c_string(filter, EngineError::Filter)?;
+    fn compile(&self, filter: &str) -> Result<*mut sys::dfilter_t, HostError> {
+        let source = c_string(filter, HostError::Filter)?;
         let (mut compiled, mut error) = (null_mut(), null_mut::<sys::df_error_t>());
         // SAFETY: a NUL-terminated filter; EPAN fills the out-slots.
         let ok = unsafe {
@@ -583,7 +591,7 @@ impl Session {
                 &mut compiled,
                 &mut error,
                 sys::DF_EXPAND_MACROS | sys::DF_OPTIMIZE,
-                c"libwireshark-engine".as_ptr(),
+                c"libwireshark-host".as_ptr(),
             )
         };
         if ok {
@@ -599,7 +607,7 @@ impl Session {
                 message
             }
         };
-        Err(EngineError::Filter(format!("{filter}: {message}")))
+        Err(HostError::Filter(format!("{filter}: {message}")))
     }
 
     fn close_file(&mut self) {

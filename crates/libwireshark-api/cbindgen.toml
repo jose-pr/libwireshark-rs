@@ -28,8 +28,8 @@ header = """
  * (listener, reader, decoder) are the host's to destroy, and the
  * wireshark_capture_source it lends to open and read is not.
  *
- * wireshark_engine and wireshark_session go the other way: the
- * libwireshark-engine library provides them, and a host opens a session
+ * wireshark_host and wireshark_session go the other way: the
+ * libwireshark-guatiao library provides them, and a host opens a session
  * to dissect frames and read captures with Wireshark itself.
  */
 """
@@ -38,7 +38,7 @@ header = """
 include = [
     "DissectorVtable",
     "PacketVtable",
-    "EngineVtable",
+    "HostVtable",
     "SessionVtable",
     "TapVtable",
     "TapListenerVtable",
@@ -53,7 +53,7 @@ include = [
 [export.rename]
 "DissectorVtable" = "wireshark_dissector_vtable"
 "PacketVtable" = "wireshark_packet_vtable"
-"EngineVtable" = "wireshark_engine_vtable"
+"HostVtable" = "wireshark_host_vtable"
 "SessionVtable" = "wireshark_session_vtable"
 "TapVtable" = "wireshark_tap_vtable"
 "TapListenerVtable" = "wireshark_tap_listener_vtable"

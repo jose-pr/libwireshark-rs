@@ -1,9 +1,10 @@
-"""`Engine` dissecting with the example plugins: a Rust dissector plugin, and
+"""`Host` dissecting with the example plugins: a Rust dissector plugin, and
 the guatiao host serving the Rust provider.
 
-Runs when `LIBWIRESHARK_ENGINE` names the engine library built with its
-`provider` feature, the example plugins built beside it, and guatiao's
-native library is found (`GUATIAO_LIBRARY`). Wireshark starts once per
+Runs when `LIBWIRESHARK_HOST` names the built libwireshark-guatiao library
+(which serves the host and is the plugin the test loads), the example
+plugins are built beside it, and guatiao's native library is found
+(`GUATIAO_LIBRARY`). Wireshark starts once per
 process, so every test shares one start.
 """
 
@@ -18,17 +19,17 @@ from typing import Iterator, List
 
 import pytest
 
-from libwireshark import DisplayFilterError, Encapsulation, Engine, EngineError
+from libwireshark import DisplayFilterError, Encapsulation, Host, HostError
 
-LIBRARY = os.environ.get("LIBWIRESHARK_ENGINE", "")
+LIBRARY = os.environ.get("LIBWIRESHARK_HOST", "")
 
 pytestmark = pytest.mark.skipif(
-    not Path(LIBRARY).is_file(), reason="LIBWIRESHARK_ENGINE names no built engine library"
+    not Path(LIBRARY).is_file(), reason="LIBWIRESHARK_HOST names no built libwireshark-guatiao library"
 )
 
 
 def built(name: str) -> str:
-    """A library built beside the engine's, by its crate name."""
+    """A library built beside libwireshark-guatiao, by its crate name."""
     if sys.platform == "win32":
         file = f"{name}.dll"
     elif sys.platform == "darwin":
@@ -37,7 +38,7 @@ def built(name: str) -> str:
         file = f"lib{name}.so"
     path = Path(LIBRARY).parent / file
     if not path.is_file():
-        pytest.skip(f"{file} is not built beside the engine")
+        pytest.skip(f"{file} is not built beside libwireshark-guatiao")
     return str(path)
 
 
@@ -84,7 +85,7 @@ FRAMES = [
 
 @pytest.fixture(scope="module")
 def settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict]:
-    root = tmp_path_factory.mktemp("engine")
+    root = tmp_path_factory.mktemp("host")
     providers = root / "providers"
     providers.mkdir()
     shutil.copy(built("guatiao_rust_provider"), providers)
@@ -97,22 +98,22 @@ def settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict]:
         "skip_installed_plugins": True,
     }
     try:
-        Engine(**settings).close()
-    except EngineError as error:
+        Host(**settings).close()
+    except HostError as error:
         if "4.6 or later" in str(error):
-            pytest.skip("the engine is built for a release line before 4.6")
+            pytest.skip("libwireshark-guatiao is built for a release line before 4.6")
         raise
     yield settings
 
 
 @pytest.fixture
-def engine(settings: dict) -> Iterator[Engine]:
-    with Engine(**settings) as engine:
-        yield engine
+def host(settings: dict) -> Iterator[Host]:
+    with Host(**settings) as host:
+        yield host
 
 
-def test_a_frame_dissects_into_fields_and_columns(engine: Engine) -> None:
-    foo = engine.dissect(FRAMES[0], Encapsulation.ETHERNET, time=1_700_000_000)
+def test_a_frame_dissects_into_fields_and_columns(host: Host) -> None:
+    foo = host.dissect(FRAMES[0], Encapsulation.ETHERNET, time=1_700_000_000)
     assert foo.frame == 1
     assert foo["foo.version"] == "7" and foo["foo.length"] == "515"
     assert foo["ip.dst"] == "192.0.2.2"
@@ -126,32 +127,32 @@ def test_a_frame_dissects_into_fields_and_columns(engine: Engine) -> None:
         foo["bar.version"]
 
 
-def test_a_guatiao_provider_dissects_on_its_preference(engine: Engine) -> None:
-    rsfoo = engine.dissect(FRAMES[1])
+def test_a_guatiao_provider_dissects_on_its_preference(host: Host) -> None:
+    rsfoo = host.dissect(FRAMES[1])
     assert rsfoo.columns["Protocol"] == "RSFOO"
     assert rsfoo["rsfoo.version"] == "7"
 
 
-def test_a_capture_reads_through_a_display_filter(engine: Engine, settings: dict) -> None:
+def test_a_capture_reads_through_a_display_filter(host: Host, settings: dict) -> None:
     capture = Path(settings["config_dir"]) / "capture.pcap"
-    frames = list(engine.read(capture, display_filter="foo"))
+    frames = list(host.read(capture, display_filter="foo"))
     assert [(frame.frame, frame["foo.version"]) for frame in frames] == [(1, "7"), (3, "9")]
-    assert len(list(engine.read(capture))) == len(FRAMES)
+    assert len(list(host.read(capture))) == len(FRAMES)
 
 
-def test_refusals_raise(engine: Engine, settings: dict) -> None:
+def test_refusals_raise(host: Host, settings: dict) -> None:
     with pytest.raises(DisplayFilterError):
-        engine.read(Path(settings["config_dir"]) / "capture.pcap", display_filter="foo ==")
-    with pytest.raises(EngineError):
-        engine.read(Path(settings["config_dir"]) / "missing.pcap")
-    with pytest.raises(EngineError, match="already open"):
-        Engine(**settings)
+        host.read(Path(settings["config_dir"]) / "capture.pcap", display_filter="foo ==")
+    with pytest.raises(HostError):
+        host.read(Path(settings["config_dir"]) / "missing.pcap")
+    with pytest.raises(HostError, match="already open"):
+        Host(**settings)
 
 
 def test_wireshark_starts_once_per_process(settings: dict) -> None:
-    with pytest.raises(EngineError):
-        Engine()
-    with Engine(**settings) as engine:
-        assert engine.dissect(FRAMES[0]).frame == 1
+    with pytest.raises(HostError):
+        Host()
+    with Host(**settings) as host:
+        assert host.dissect(FRAMES[0]).frame == 1
     with pytest.raises(ValueError, match="closed"):
-        engine.dissect(FRAMES[0])
+        host.dissect(FRAMES[0])

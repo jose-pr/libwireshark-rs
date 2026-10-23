@@ -1,28 +1,56 @@
-#![doc = include_str!("../README.md")]
-#![warn(missing_docs, missing_debug_implementations)]
+//! Wireshark's dissection engine in this process, for a program rather than
+//! a plugin: dissect frames and read capture files with Wireshark's
+//! dissectors and the plugins it loads, into the protocol tree and the
+//! packet list's columns. Behind the `host` feature; it exists
+//! from Wireshark 4.6, and before that every call answers
+//! [`HostError::Unsupported`].
+//!
+//! ```no_run
+//! use core::time::Duration;
+//! use libwireshark::Encapsulation;
+//! use libwireshark::host::{Host, HostConfig};
+//!
+//! let config = HostConfig {
+//!     plugins: vec!["basic_dissector.dll".into()],
+//!     ..HostConfig::default()
+//! };
+//! let mut host = Host::open(&config)?;
+//! let frame = std::fs::read("frame.bin")?;
+//! let dissected = host.dissect(&frame, Encapsulation::ETHERNET, Duration::ZERO)?;
+//! println!("{:?}", dissected.get("foo.version"));
+//! for frame in host.read("capture.pcapng".as_ref(), Some("foo"))? {
+//!     let frame = frame?;
+//!     println!("{}: {:?}", frame.frame, frame.column("Info"));
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! Wireshark's state is the process's: it starts once, at the first
+//! [`Host::open`], with that configuration, and one session is open at a
+//! time. Never open one inside Wireshark (from a plugin): it refuses.
 
-extern crate alloc;
-
-#[cfg(engine)]
-mod epan;
-#[cfg(feature = "provider")]
-mod provider;
-#[cfg(engine)]
+mod model;
+#[cfg(host)]
+mod session;
+#[cfg(host)]
 mod symbols;
 
+pub use model::{Column, Dissected, HostConfig, Node};
+
+use crate::Encapsulation;
+use alloc::string::String;
 use core::fmt;
 use core::time::Duration;
 use std::path::Path;
 
-pub use libwireshark_api::engine::{Column, Dissected, EngineConfig, Node};
-
-/// Why the engine could not do what was asked.
+/// Why the host could not do what was asked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum EngineError {
-    /// This build's release line has no engine (it needs 4.6 or later).
+pub enum HostError {
+    /// This build's release line has no host (it needs 4.6 or later).
     Unsupported,
-    /// A session is already open in this process.
+    /// A session is already open in this process, or Wireshark itself
+    /// runs it.
     AlreadyOpen,
     /// Wireshark started once with another configuration; it cannot start
     /// again in this process.
@@ -51,11 +79,15 @@ pub enum EngineError {
     File(String),
 }
 
-impl fmt::Display for EngineError {
+impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unsupported => f.write_str("the engine needs a build for Wireshark 4.6 or later"),
-            Self::AlreadyOpen => f.write_str("a session is already open in this process"),
+            Self::Unsupported => {
+                f.write_str("hosting Wireshark needs a build for Wireshark 4.6 or later")
+            }
+            Self::AlreadyOpen => {
+                f.write_str("a session is already open, or Wireshark itself runs this process")
+            }
             Self::Configured => {
                 f.write_str("Wireshark already started in this process with another configuration")
             }
@@ -71,54 +103,43 @@ impl fmt::Display for EngineError {
     }
 }
 
-impl core::error::Error for EngineError {}
+impl core::error::Error for HostError {}
 
-/// A frame's link-layer type (`WTAP_ENCAP_*`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Encapsulation(pub i32);
-
-impl Encapsulation {
-    /// Ethernet.
-    pub const ETHERNET: Self = Self(1);
-    /// Raw IP, v4 or v6 by its version field.
-    pub const RAW_IP: Self = Self(7);
-}
-
-/// Wireshark's dissection engine, running in this process.
+/// Wireshark's dissection host, running in this process.
 ///
 /// Wireshark's state is per process: one session at a time, and the
 /// plugins and preferences of the first [`open`](Self::open) stay for the
 /// process (a later open must give the same configuration).
-pub struct Engine {
-    #[cfg(engine)]
-    session: epan::Session,
+pub struct Host {
+    #[cfg(host)]
+    session: session::Session,
 }
 
-impl fmt::Debug for Engine {
+impl fmt::Debug for Host {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Engine").finish_non_exhaustive()
+        f.debug_struct("Host").finish_non_exhaustive()
     }
 }
 
-impl Engine {
+impl Host {
     /// Starts Wireshark (the first time in the process) and opens a session.
     ///
     /// # Errors
     ///
-    /// [`EngineError`]: another session is open, the configuration differs
+    /// [`HostError`]: another session is open, the configuration differs
     /// from the first, a plugin or preference is refused, or this build has
-    /// no engine.
-    pub fn open(config: &EngineConfig) -> Result<Self, EngineError> {
-        #[cfg(engine)]
+    /// no host.
+    pub fn open(config: &HostConfig) -> Result<Self, HostError> {
+        #[cfg(host)]
         {
             Ok(Self {
-                session: epan::Session::open(config)?,
+                session: session::Session::open(config)?,
             })
         }
-        #[cfg(not(engine))]
+        #[cfg(not(host))]
         {
             let _ = config;
-            Err(EngineError::Unsupported)
+            Err(HostError::Unsupported)
         }
     }
 
@@ -133,15 +154,15 @@ impl Engine {
         data: &[u8],
         encapsulation: Encapsulation,
         time: Duration,
-    ) -> Result<Dissected, EngineError> {
-        #[cfg(engine)]
+    ) -> Result<Dissected, HostError> {
+        #[cfg(host)]
         {
-            Ok(self.session.dissect(data, encapsulation.0, time))
+            Ok(self.session.dissect(data, encapsulation.to_raw(), time))
         }
-        #[cfg(not(engine))]
+        #[cfg(not(host))]
         {
             let _ = (data, encapsulation, time);
-            Err(EngineError::Unsupported)
+            Err(HostError::Unsupported)
         }
     }
 
@@ -151,42 +172,51 @@ impl Engine {
     ///
     /// # Errors
     ///
-    /// [`EngineError::Filter`] or [`EngineError::File`].
+    /// [`HostError::Filter`] or [`HostError::File`].
     pub fn read(
         &mut self,
         path: &Path,
         display_filter: Option<&str>,
-    ) -> Result<Capture<'_>, EngineError> {
+    ) -> Result<Capture<'_>, HostError> {
         self.open_file(path, display_filter)?;
-        Ok(Capture { engine: self })
+        Ok(Capture { host: self })
     }
 
     /// Opens a capture file for [`next_frame`](Self::next_frame), closing
-    /// one already open.
-    pub(crate) fn open_file(
+    /// one already open: [`read`](Self::read) without the borrow, for a
+    /// caller that keeps the host and the file together.
+    ///
+    /// # Errors
+    ///
+    /// [`HostError::Filter`] or [`HostError::File`].
+    pub fn open_file(
         &mut self,
         path: &Path,
         display_filter: Option<&str>,
-    ) -> Result<(), EngineError> {
-        #[cfg(engine)]
+    ) -> Result<(), HostError> {
+        #[cfg(host)]
         {
             self.session.open_file(path, display_filter)
         }
-        #[cfg(not(engine))]
+        #[cfg(not(host))]
         {
             let _ = (path, display_filter);
-            Err(EngineError::Unsupported)
+            Err(HostError::Unsupported)
         }
     }
 
     /// The open file's next matching frame: `None` at its end, after an
     /// error, or with no file open.
-    pub(crate) fn next_frame(&mut self) -> Result<Option<Dissected>, EngineError> {
-        #[cfg(engine)]
+    ///
+    /// # Errors
+    ///
+    /// [`HostError::File`] when the file cannot be read further.
+    pub fn next_frame(&mut self) -> Result<Option<Dissected>, HostError> {
+        #[cfg(host)]
         {
             self.session.next()
         }
-        #[cfg(not(engine))]
+        #[cfg(not(host))]
         {
             Ok(None)
         }
@@ -196,7 +226,7 @@ impl Engine {
 /// The frames of a capture file being read, dissected one at a time; an
 /// error ends it.
 pub struct Capture<'a> {
-    engine: &'a mut Engine,
+    host: &'a mut Host,
 }
 
 impl fmt::Debug for Capture<'_> {
@@ -206,9 +236,9 @@ impl fmt::Debug for Capture<'_> {
 }
 
 impl Iterator for Capture<'_> {
-    type Item = Result<Dissected, EngineError>;
+    type Item = Result<Dissected, HostError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.engine.next_frame().transpose()
+        self.host.next_frame().transpose()
     }
 }

@@ -18,8 +18,8 @@
  * (listener, reader, decoder) are the host's to destroy, and the
  * wireshark_capture_source it lends to open and read is not.
  *
- * wireshark_engine and wireshark_session go the other way: the
- * libwireshark-engine library provides them, and a host opens a session
+ * wireshark_host and wireshark_session go the other way: the
+ * libwireshark-guatiao library provides them, and a host opens a session
  * to dissect frames and read captures with Wireshark itself.
  */
 
@@ -128,19 +128,19 @@ typedef struct wireshark_packet_vtable {
  The kind's function table: a header, then one slot per method,
  in declaration order.
  */
-typedef struct wireshark_engine_vtable {
+typedef struct wireshark_host_vtable {
   guatiao_kind_header header;
   guatiao_status (*open)(void *ctx,
                          const guatiao_map *config,
                          guatiao_object *out,
                          guatiao_provider_error *err);
-} wireshark_engine_vtable;
+} wireshark_host_vtable;
 /*
  FNV-1a over the shape and the required signatures, as a
  literal, so a C header generator can render it: what a C
  implementation writes into the table's header.
  */
-#define wireshark_engine_vtable_FLOOR_HASH 2496675255
+#define wireshark_host_vtable_FLOOR_HASH 2496675255
 
 /*
  The kind's function table: a header, then one slot per method,

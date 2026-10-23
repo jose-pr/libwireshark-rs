@@ -50,6 +50,8 @@ fn unsafe_code_stays_in_the_ffi_modules() {
         [
             "file_type.rs",
             "filter.rs",
+            "host/session.rs",
+            "host/symbols.rs",
             "lib.rs",
             "macros.rs",
             "packet.rs",
@@ -69,7 +71,9 @@ fn unsafe_code_stays_in_the_ffi_modules() {
 
 #[test]
 fn the_library_keeps_no_process_global_state() {
-    // macros.rs declares the plugin's statics inside the plugin crate.
+    // macros.rs declares the plugin's statics inside the plugin crate; the
+    // host (a feature, for programs) keeps Wireshark's start, which is the
+    // process's.
     let statics = files_containing(|line| {
         let line = line.trim_start();
         line.starts_with("static ")
@@ -78,7 +82,7 @@ fn the_library_keeps_no_process_global_state() {
             || line.contains("LazyLock")
             || line.contains("thread_local!")
     });
-    assert_eq!(statics, ["macros.rs"]);
+    assert_eq!(statics, ["host/session.rs", "macros.rs"]);
 }
 
 #[test]

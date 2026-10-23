@@ -7,8 +7,8 @@ A dissector usually subclasses `libwireshark.ProtocolDissector`, which
 implements `Dissector` from typed classes; the host lends a `Packet` to
 `dissect`. `Tap`, `FilterFunction`, `FileType` and `Codec` are the other
 plugin kinds; `libwireshark.Tap` and its siblings implement them from typed
-classes. `Engine` and `Session` go the other way: the libwireshark-engine
-library provides them, and `libwireshark.Engine` drives them.
+classes. `Host` and `Session` go the other way: the libwireshark-guatiao
+library provides them, and `libwireshark.Host` drives them.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ __all__ = [
     "CaptureSource",
     "Codec",
     "Decoder",
-    "Engine",
+    "Host",
     "Session",
 ]
 
@@ -296,7 +296,7 @@ class Session(
     floor_hash=1680421174,
     is_object=True,
 ):
-    """`wireshark_session_vtable`: an open engine, owned by whoever opened it.
+    """`wireshark_session_vtable`: an open session, owned by whoever opened it.
 
     `dissect` answers one frame (the crate's `Dissected` map) of a
     `WTAP_ENCAP_*` link type captured `time_ns` after the Unix epoch;
@@ -318,10 +318,10 @@ class Session(
     def next(self) -> MapAnswer: ...
 
 
-class Engine(KindProtocol, Protocol, kind="wireshark_engine", floor_hash=2496675255):
-    """`wireshark_engine_vtable`: starts Wireshark in the calling process.
+class Host(KindProtocol, Protocol, kind="wireshark_host", floor_hash=2496675255):
+    """`wireshark_host_vtable`: starts Wireshark in the calling process.
 
-    `open` takes the crate's `EngineConfig` map (`plugins`,
+    `open` takes the crate's `HostConfig` map (`plugins`,
     `skip_installed_plugins`, `config_dir`, `preferences`) and answers the
     session; one may be open at a time.
     """
