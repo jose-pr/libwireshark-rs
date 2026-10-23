@@ -125,9 +125,6 @@ jobs:
           import urllib.error
           import urllib.request
 
-          if not os.environ.get("CARGO_REGISTRY_TOKEN"):
-              sys.exit("no crates.io token: set the CARGO_REGISTRY_TOKEN secret, "
-                       "or configure trusted publishing and CRATES_IO_TRUSTED_PUBLISHING")
           version = tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"]
           headers = {"User-Agent": "libwireshark-rs release workflow (github.com/jose-pr/libwireshark-rs)"}
 
@@ -141,10 +138,16 @@ jobs:
                       return False
                   raise
 
-          for name in ["libwireshark-sys", "libwireshark-derive", "libwireshark", "cargo-wireshark"]:
-              if published(name):
+          crates = ["libwireshark-sys", "libwireshark-derive", "libwireshark", "cargo-wireshark"]
+          missing = [name for name in crates if not published(name)]
+          for name in crates:
+              if name not in missing:
                   print(f"{name} {version} is already on crates.io; skipped")
-                  continue
+          # A release whose crates were published by hand needs no token.
+          if missing and not os.environ.get("CARGO_REGISTRY_TOKEN"):
+              sys.exit("no crates.io token: set the CARGO_REGISTRY_TOKEN secret, "
+                       "or configure trusted publishing and CRATES_IO_TRUSTED_PUBLISHING")
+          for name in missing:
               subprocess.run(["cargo", "publish", "-p", name, "--allow-dirty"], check=True)
 
   docs:
