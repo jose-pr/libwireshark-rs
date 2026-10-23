@@ -844,9 +844,11 @@ impl Session {
             {
                 // The frame's bytes, as tshark hands them over before 4.6;
                 // EPAN frees the buffer at its next reset.
+                // The record's own length: readers before 4.2 write at the
+                // buffer's start without moving its end.
                 let buffer = &*self.buffer;
                 let start = size(buffer.start);
-                let length = size(buffer.first_free).saturating_sub(start);
+                let length = record_len(&*record).min(size(buffer.allocated).saturating_sub(start));
                 let tvb = sys::tvb_new_real_data(
                     buffer.data.add(start),
                     length.try_into().unwrap_or(0),
@@ -908,8 +910,8 @@ unsafe fn free_filter(filter: *mut sys::dfilter_t) {
     }
 }
 
-/// The bytes of the record 3.0's `wtap_read` read.
-#[cfg(not(wireshark_3_2))]
+/// The captured bytes of a record, as its header gives them.
+#[cfg(not(wireshark_4_6))]
 fn record_len(record: &sys::wtap_rec) -> usize {
     // SAFETY: the union member the record type names.
     let length = unsafe {
