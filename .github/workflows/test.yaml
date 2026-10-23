@@ -84,7 +84,7 @@ jobs:
         run: cargo test -p libwireshark --all-features --test tshark -- --ignored
       - name: Host Wireshark in this process
         run: cargo test -p libwireshark --all-features --test host -- --ignored
-      # The guatiao host's providers: Rust, C (compiled by the test) and
+      # The bridge's providers: Rust, C (compiled by the test) and
       # Python, through guatiao's Python bridge, built from the revision the
       # workspace pins, against this job's Python.
       - uses: actions/setup-python@v5
@@ -106,21 +106,21 @@ jobs:
           cargo build --manifest-path "$RUNNER_TEMP/guatiao/Cargo.toml" -p guatiao --features load
           echo "LIBWIRESHARK_TEST_GUATIAO=$RUNNER_TEMP/guatiao" >> "$GITHUB_ENV"
           echo "GUATIAO_LIBRARY=$RUNNER_TEMP/guatiao/target/debug" >> "$GITHUB_ENV"
-      - name: Load dissectors from Rust, C and Python through the guatiao host
+      - name: Load dissectors from Rust, C and Python through the bridge
         env:
           LIBWIRESHARK_TEST_REQUIRE_ALL: "1"
-        run: cargo test -p libwireshark-guatiao --test tshark -- --ignored
-      # Wireshark hosted in Python: the guatiao plugin is also a provider of
+        run: cargo test -p libwireshark-bridge --test tshark -- --ignored
+      # Wireshark hosted in Python: the bridge is also a provider of
       # `wireshark_host`, which the Python package drives with the example
-      # plugins and the guatiao plugin itself loaded.
+      # plugins and the bridge itself loaded.
       - name: Run Wireshark from Python
         shell: bash
         run: |
-          cargo build -p libwireshark-guatiao -p guatiao-rust-provider -p basic-dissector
+          cargo build -p libwireshark-bridge -p bridge-rust-provider -p basic-dissector
           case "$RUNNER_OS" in
-            Windows) library="$(cygpath -w "$PWD/target/debug/libwireshark_guatiao.dll")" ;;
-            macOS) library="$PWD/target/debug/liblibwireshark_guatiao.dylib" ;;
-            *) library="$PWD/target/debug/liblibwireshark_guatiao.so" ;;
+            Windows) library="$(cygpath -w "$PWD/target/debug/libwireshark_bridge.dll")" ;;
+            macOS) library="$PWD/target/debug/liblibwireshark_bridge.dylib" ;;
+            *) library="$PWD/target/debug/liblibwireshark_bridge.so" ;;
           esac
           LIBWIRESHARK_HOST="$library" python -m pytest -q -rs bindings/python/tests/test_host.py
 
@@ -155,6 +155,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+      # The checkout belongs to the runner's user, not the container's root.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
       - run: cargo test -p libwireshark --all-features --test host -- --ignored
 
@@ -176,7 +178,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo run -p cargo-wireshark -- wireshark headers fetch
-      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec -p runtime-protocol -p libwireshark-guatiao
+      - run: cargo check -p libwireshark --all-features -p basic-dissector -p multi-protocol -p stream-protocol -p capture-file -p audio-codec -p runtime-protocol -p libwireshark-bridge
 
   docs:
     name: Docs
