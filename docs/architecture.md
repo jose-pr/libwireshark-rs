@@ -8,8 +8,12 @@
 | `libwireshark` | `libwireshark-sys`, libloading; `libwireshark-derive` with `derive` | the plugin API and its runtime |
 | `libwireshark-derive` | syn, quote | `#[derive(Header)]`, `#[derive(Preferences)]` |
 | `cargo-wireshark` | clap, bindgen, ureq, archive readers | installation discovery; bundle generation and the `headers` branch |
+| `libwireshark-api` | guatiao | the guatiao kinds providers implement, their models, the C header; links no Wireshark |
+| `libwireshark-guatiao` | `libwireshark` (`host`), `libwireshark-api`, guatiao | the plugin serving providers, and the `wireshark_host` provider |
+| `bindings/python` (`libwireshark` on PyPI) | guatiao's Python binding | the kinds as classes, typed helpers, and `Host` |
 
-`examples/` are plugin `cdylib`s; `libwireshark`'s tshark test loads them.
+`examples/` are plugin `cdylib`s, and `examples/guatiao/` providers;
+`libwireshark`'s and `libwireshark-guatiao`'s tshark tests load them.
 
 ## Header bundles
 

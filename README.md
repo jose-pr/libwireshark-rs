@@ -11,8 +11,12 @@
 Wireshark dissector plugins in Rust. **A protocol is a type implementing
 `Dissector`, its fields and preferences are derived from plain structs, and
 a plugin is one `plugin!` line**, built with Cargo against an installed
-Wireshark, with no Wireshark SDK, C code or `unsafe`. See
-[`libwireshark`](https://docs.rs/libwireshark).
+Wireshark, with no Wireshark SDK, C code or `unsafe`. The same model
+reaches C and Python through one host plugin, and the other way round a
+program can host Wireshark to dissect frames and read captures.
+
+**Documentation: <https://jose-pr.github.io/libwireshark-rs/>**, with a
+guide to each way in, the examples, and the Rust and Python API references.
 
 ## Features
 
@@ -24,16 +28,18 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
 | [`libwireshark-guatiao`](crates/libwireshark-guatiao) | one plugin that loads dissectors written in Rust, C or Python as [guatiao](https://github.com/Boriken-Dev/guatiao) providers |
 | [`libwireshark-api`](crates/libwireshark-api) | what those providers implement: the kinds, a C header, and the Rust helpers (typed headers, preferences and expert findings) |
-| [`bindings/python`](bindings/python) | the `libwireshark` Python package: dissectors as typed classes, for the guatiao host |
+| [`bindings/python`](bindings/python) | the `libwireshark` Python package: plugins as typed classes for the guatiao host, and `Host`, Wireshark hosted in Python |
 
-The [examples](examples) are plugins: `basic-dissector` (one protocol with
-fields and a port preference), `multi-protocol` (two protocols in one
-library) and `stream-protocol` (TCP reassembly, conversation state, named
-values and expert findings; a heuristic dissector; a post-dissector; two
-`tshark -z` statistics; two display-filter functions), `capture-file` (a
-capture file format Wireshark opens), `audio-codec` (an RTP audio
-decoder) and `runtime-protocol` (a protocol described when the plugin
-loads).
+The [examples](https://jose-pr.github.io/libwireshark-rs/examples/) are
+plugins, each loaded by the test suite in the real tshark: `basic-dissector`
+(one protocol with fields and a port preference), `multi-protocol` (two
+protocols in one library), `stream-protocol` (TCP reassembly, conversation
+state, named values and expert findings; a heuristic dissector; a
+post-dissector; two `tshark -z` statistics; two display-filter functions),
+`capture-file` (a capture file format), `audio-codec` (an RTP audio
+decoder), `runtime-protocol` (all of them registered when the plugin loads),
+and `guatiao/` (the same protocol, a tap, a filter function, a format and a
+codec written as providers in Rust, C and Python).
 
 ## Installation
 
@@ -88,8 +94,10 @@ the library `*.so`, the only suffix Wireshark loads there). `tshark -Y foo` then
 
 ## API overview
 
-See the crates' READMEs and, for agents, the `AGENTS.md` beside each crate's
-`Cargo.toml`: [libwireshark](crates/libwireshark/AGENTS.md),
+The [documentation site](https://jose-pr.github.io/libwireshark-rs/) has the
+guides and the [Rust](https://jose-pr.github.io/libwireshark-rs/rust/libwireshark/index.html)
+and [Python](https://jose-pr.github.io/libwireshark-rs/api/python/) API
+references. For agents, the `AGENTS.md` beside each crate's `Cargo.toml`: [libwireshark](crates/libwireshark/AGENTS.md),
 [libwireshark-sys](crates/libwireshark-sys/AGENTS.md),
 [libwireshark-derive](crates/libwireshark-derive/AGENTS.md),
 [cargo-wireshark](crates/cargo-wireshark/AGENTS.md).

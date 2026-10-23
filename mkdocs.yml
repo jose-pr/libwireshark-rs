@@ -1,0 +1,69 @@
+site_name: libwireshark
+site_description: Wireshark plugins in Rust, plugins in any language through one host plugin, and Wireshark hosted in your program
+site_url: https://jose-pr.github.io/libwireshark-rs/
+repo_url: https://github.com/jose-pr/libwireshark-rs
+repo_name: jose-pr/libwireshark-rs
+edit_uri: edit/master/docs/
+
+# Constrained to docs/ so a strict build does not read the repository's
+# other markdown: the crates' API headers are not pages.
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - content.code.copy
+    - content.tabs.link
+
+nav:
+  - Home: index.md
+  - Plugins in Rust: plugins.md
+  - Examples: examples.md
+  - Plugins in other languages: other-languages.md
+  - Python: python.md
+  - Hosting Wireshark: hosting.md
+  - API Reference:
+      # rustdoc's own output, copied under rust/ by the docs workflow:
+      # absolute, since a relative link to a page mkdocs does not know
+      # fails --strict.
+      - Rust: https://jose-pr.github.io/libwireshark-rs/rust/libwireshark/index.html
+      - Python: api/python.md
+      - C header: https://github.com/jose-pr/libwireshark-rs/blob/master/crates/libwireshark-api/include/libwireshark_api.h
+  - Internals:
+      - Architecture: architecture.md
+      - FFI safety: ffi-safety.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [bindings/python/src]
+          options:
+            show_source: false
+            show_root_heading: true
+            merge_init_into_class: true
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true

@@ -8,6 +8,8 @@ CLAUDE*
 .claude
 
 /target/
+# The documentation site mkdocs builds.
+/site/
 /wireshark-src
 /libwireshark-dev
 

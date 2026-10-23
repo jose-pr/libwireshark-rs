@@ -26,6 +26,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["black", "build", "pytest"]
+# The documentation site: mkdocs.yml at the repository root.
+docs = ["mkdocs<2", "mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]
 Homepage = "https://github.com/jose-pr/libwireshark-rs/"

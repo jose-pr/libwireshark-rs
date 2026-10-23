@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/pypi/v/libwireshark.svg)](https://pypi.org/project/libwireshark/)
 [![Python versions](https://img.shields.io/pypi/pyversions/libwireshark.svg)](https://pypi.org/project/libwireshark/)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
-[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://github.com/jose-pr/libwireshark-rs/)
+[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://jose-pr.github.io/libwireshark-rs/python/)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
 Wireshark dissectors written in Python, and Wireshark run from Python.
