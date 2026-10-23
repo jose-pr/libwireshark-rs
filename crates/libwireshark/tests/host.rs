@@ -93,6 +93,19 @@ fn session(mut host: Host, config: &HostConfig, frames: &[Vec<u8>], profile: &Pr
     assert_eq!(second.frame, 2, "frames count on within a session");
     assert_eq!(column(&second, "Protocol"), "BAZ");
 
+    let all = host
+        .read(profile.capture().as_ref(), None)
+        .expect("the capture opens")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("the capture reads");
+    assert_eq!(
+        all.iter()
+            .map(|frame| (frame.frame, column(frame, "Protocol").to_owned()))
+            .collect::<Vec<_>>(),
+        [(1, "FOO".into()), (2, "BAZ".into()), (3, "FOO".into())],
+        "every frame of the file, dissected"
+    );
+
     let read = host
         .read(profile.capture().as_ref(), Some("foo"))
         .expect("the capture opens")
