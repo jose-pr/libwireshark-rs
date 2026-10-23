@@ -77,8 +77,8 @@ The library also exports guatiao's library entry with one provider,
 `WiresharkHost` (`wireshark_host`): `open(config)` starts Wireshark in the
 caller's process through `libwireshark::host` and answers a
 `wireshark_session` (`dissect`, `open_file`, `next`, crossing the
-`libwireshark_api::host` models). Errors cross as `UNSUPPORTED` (before
-4.6), `BUSY` (a session open, or inside Wireshark), `INTERNAL` (start,
+`libwireshark_api::host` models). Errors cross as `BUSY` (a session open,
+or inside Wireshark), `INTERNAL` (start,
 symbols), else `BAD_VALUE`. Wireshark itself never calls this entry; a
 guatiao host never calls `plugin_register` unless it lists this library
 as a plugin.

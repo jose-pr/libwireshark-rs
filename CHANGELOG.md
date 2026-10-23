@@ -56,7 +56,7 @@ First release of the crates under these names.
   Python helper classes (`Tap`, `FilterFunction`, `FileType`, `Codec`) and
   example providers in Rust, C and Python.
 - `libwireshark::host` (feature `host`): Wireshark's dissection engine
-  hosted in a program, for Wireshark 4.6 and later: dissect frames and read
+  hosted in a program, on every release line (3.0 to 4.6): dissect frames and read
   capture files (with a display filter) using Wireshark's dissectors and
   the plugins it is given, into the protocol tree and the packet list's
   columns. `libwireshark-guatiao` serves it as the `wireshark_host` kind

@@ -96,7 +96,7 @@ class Foo(provide.Provider, ProtocolDissector):
 ## Running Wireshark from Python
 
 `Host` runs Wireshark's dissection engine in your process, with the
-plugins you give it: Wireshark plugins built for its release line (4.6 on),
+plugins you give it: Wireshark plugins built for its release line,
 the `libwireshark-guatiao` host and its providers among them.
 
 ```python

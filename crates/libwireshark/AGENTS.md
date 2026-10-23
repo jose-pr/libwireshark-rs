@@ -231,8 +231,8 @@ impl Codec { pub fn new(name: &'static str,
 ## Hosting Wireshark (`libwireshark::host`, feature `host`)
 
 For a program, never a plugin: Wireshark's dissection engine (EPAN with
-wiretap) in the calling process. Exists from 4.6 (`cfg(host)`); before,
-every call answers `HostError::Unsupported`.
+wiretap) in the calling process, on every release line (3.0 to 4.6; the
+build script's `wireshark_M_m` flags select each line's calls).
 
 ```rust
 pub struct HostConfig {                    // Clone, Default, PartialEq
@@ -257,7 +257,7 @@ pub struct Column { pub title: String, pub text: String }
 pub struct Node { abbrev, name, label, value: Option<String>, offset: i64, length: i64,
                   hidden: bool, generated: bool, children: Vec<Node> } // text items: empty abbrev/name
 #[non_exhaustive] pub enum HostError {
-    Unsupported, AlreadyOpen, Configured, Symbols(String), Init(String),
+    AlreadyOpen, Configured, Symbols(String), Init(String),
     Plugin { path, reason }, Preference { preference, reason }, Filter(String), File(String),
 }
 ```

@@ -52,8 +52,11 @@ through the plugin's static.
 
 ## Wireshark in another process's hands
 
-`libwireshark::host` runs EPAN the way tshark does, for one release line
-(4.6 on, where a `wtap_rec` carries its own data): it registers the plugins
+`libwireshark::host` runs EPAN the way tshark does, on every release line;
+the program side changed shape across them (from 4.6 a `wtap_rec` carries
+its own data; 4.0 to 4.4 take a namespace at start, 3.x report through five
+callbacks and 3.0 reads into the file's own record), and the build script's
+`wireshark_M_m` flags keep each difference in one place: it registers the plugins
 it is given with their `plugin_register` before `wtap_init` and
 `epan_init`, as Wireshark's own loader would, applies the profile's
 preferences and the caller's, then dissects each frame as tshark's single

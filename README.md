@@ -2,6 +2,8 @@
 
 [![Version](https://img.shields.io/crates/v/libwireshark.svg)](https://crates.io/crates/libwireshark)
 [![Rust version](https://img.shields.io/crates/msrv/libwireshark.svg)](https://crates.io/crates/libwireshark)
+[![PyPI](https://img.shields.io/pypi/v/libwireshark.svg?label=pypi)](https://pypi.org/project/libwireshark/)
+[![Python versions](https://img.shields.io/pypi/pyversions/libwireshark.svg)](https://pypi.org/project/libwireshark/)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
 [![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
@@ -16,7 +18,7 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 
 | Crate | What it is |
 | --- | --- |
-| [`libwireshark`](crates/libwireshark) | the plugin API: `Dissector`, `PacketView`, `plugin!`, the `derive` feature, and the `host` feature: Wireshark hosted in a program (4.6 on) |
+| [`libwireshark`](crates/libwireshark) | the plugin API: `Dissector`, `PacketView`, `plugin!`, the `derive` feature, and the `host` feature: Wireshark hosted in a program |
 | [`libwireshark-derive`](crates/libwireshark-derive) | `#[derive(Header)]` and `#[derive(Preferences)]`, used through `libwireshark` |
 | [`libwireshark-sys`](crates/libwireshark-sys) | raw bindings, generated from bundled headers for Wireshark 3.0 to 4.6 |
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |

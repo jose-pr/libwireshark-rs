@@ -182,7 +182,7 @@ class Node:
 ```
 
 - It loads the `libwireshark-guatiao` library (the plugin itself, built
-  for the running Wireshark's release line, 4.6 on) through
+  for the running Wireshark's release line) through
   guatiao's registry, so guatiao's native library must be found
   (`GUATIAO_LIBRARY`, see guatiao's documentation) and, on Windows,
   Wireshark's directory must be on `PATH`.

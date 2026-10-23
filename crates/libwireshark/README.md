@@ -37,7 +37,7 @@ the [API documentation](https://docs.rs/libwireshark).
   provides when it loads.
 - `plugin!`: exports what Wireshark's loader reads, for any mix of the
   above.
-- `host` (feature `host`, Wireshark 4.6 on): the other way round,
+- `host` (feature `host`): the other way round,
   Wireshark's dissection engine hosted in a program: dissect frames and
   read capture files with Wireshark and the plugins it loads, into the
   protocol tree and the packet list's columns.
