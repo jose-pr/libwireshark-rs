@@ -137,9 +137,17 @@ jobs:
         image: ["ubuntu:20.04", "debian:bullseye", "ubuntu:22.04", "debian:bookworm", "debian:trixie"]
     env:
       DEBIAN_FRONTEND: noninteractive
+      # The runner sets HOME to its own directory, which rustup refuses for
+      # root in a container.
+      HOME: /root
     steps:
       - name: Install Wireshark and a toolchain
         run: |
+          # Debian 11 is no longer on the mirrors: read it from the archive.
+          if grep -qs bullseye /etc/os-release; then
+            sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list
+            echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+          fi
           apt-get update
           apt-get install -y --no-install-recommends tshark libwireshark-dev libclang-dev clang build-essential pkg-config git curl ca-certificates
           curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
