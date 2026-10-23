@@ -1,5 +1,5 @@
 [package]
-name = "libwireshark-guatiao"
+name = "libwireshark-bridge"
 description = "A Wireshark plugin that loads dissectors written in any language guatiao reaches: Rust, C, Python and more"
 version.workspace = true
 edition.workspace = true
@@ -27,7 +27,7 @@ libloading.workspace = true
 
 # Built beside the test binaries so `tests/tshark.rs` can install it.
 [dev-dependencies]
-guatiao-rust-provider = { path = "../../examples/guatiao/rust-provider" }
+bridge-rust-provider = { path = "../../examples/bridge/rust-provider" }
 
 [lints]
 workspace = true

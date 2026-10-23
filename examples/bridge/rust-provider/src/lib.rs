@@ -1,7 +1,7 @@
 //! Plugins as guatiao providers, written in Rust: RSFOO over UDP 113 (a
 //! preference), a twin of FOO, and in `extras` a tap listener, a
 //! display-filter function, a capture format and a codec.
-//! `libwireshark-guatiao` loads this library and registers what it
+//! `libwireshark-bridge` loads this library and registers what it
 //! describes; the library links no Wireshark.
 //!
 //! The header and the preferences are structs, as with `libwireshark`'s

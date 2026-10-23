@@ -1,5 +1,5 @@
 [package]
-name = "guatiao-rust-provider"
+name = "bridge-rust-provider"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [lib]
-# A guatiao library: what libwireshark-guatiao scans for. Nothing links it.
+# A guatiao library: what libwireshark-bridge scans for. Nothing links it.
 crate-type = ["cdylib"]
 
 [dependencies]

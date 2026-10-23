@@ -13,7 +13,7 @@ Install from the repository (`bindings/python`); it requires guatiao's
 Python binding at the revision the plugin is built with. No extras.
 
 A dissector written here is served to Wireshark by the
-`libwireshark-guatiao` plugin through guatiao's Python bridge
+`libwireshark-bridge` plugin through guatiao's Python bridge
 (`guatiao_py`), which imports the module its `*.guatiao-py.toml` manifest
 names. On Windows the directory holding `python3.dll` must be on Wireshark's
 `PATH`.
@@ -142,7 +142,7 @@ class Decoder:
 ```
 
 - An `EOFError` while `reader` reads counts as another format; any other
-  exception is reported by the host and counts as another format too.
+  exception is reported by the bridge and counts as another format too.
 - `apply` answering the wrong type (a float, a negative or 33-bit int for
   `COUNT`) raises `guatiao.BadValue`: no answer for that value.
 - Decoded samples past the host's buffer are dropped and the rest clamped
@@ -181,14 +181,14 @@ class Node:
     offset: int; length: int; hidden: bool; generated: bool; children: tuple[Node, ...]
 ```
 
-- It loads the `libwireshark-guatiao` library (the plugin itself, built
+- It loads the `libwireshark-bridge` library (the plugin itself, built
   for the running Wireshark's release line) through
   guatiao's registry, so guatiao's native library must be found
   (`GUATIAO_LIBRARY`, see guatiao's documentation) and, on Windows,
   Wireshark's directory must be on `PATH`.
 - Wireshark starts once per process, at the first `Host`, as tshark
   starts: the listed plugins are registered before it (dissectors and file
-  types, the `libwireshark-guatiao` host among them), installed ones after
+  types, the `libwireshark-bridge` host among them), installed ones after
   unless skipped. A later `Host` must give the same settings; one may be
   open at a time (`HostError` names the open one). The library, once
   loaded, stays loaded.
@@ -212,7 +212,7 @@ class Node:
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_HOST` | the `libwireshark-guatiao` library's path, when `Host` gets no `library` |
+| `LIBWIRESHARK_HOST` | the `libwireshark-bridge` library's path, when `Host` gets no `library` |
 | `GUATIAO_LIBRARY` | guatiao's native library (guatiao's own variable) |
 
 ## Other exports

@@ -4,13 +4,13 @@ use core::ffi::{CStr, c_char};
 use std::path::PathBuf;
 
 /// The variable naming more places to look, separated as `PATH` is.
-pub(crate) const PATH_VARIABLE: &str = "LIBWIRESHARK_GUATIAO_PATH";
+pub(crate) const PATH_VARIABLE: &str = "LIBWIRESHARK_BRIDGE_PATH";
 
 /// The directory below a plugin directory that holds providers: not below
 /// a release line's, since a provider serves every line.
-const PROVIDERS: &str = "guatiao";
+const PROVIDERS: &str = "bridge";
 
-/// The `guatiao` directory of Wireshark's personal plugin directory, then
+/// The `bridge` directory of Wireshark's personal plugin directory, then
 /// of its global one, as the running Wireshark names them.
 pub(crate) fn plugin_dirs() -> Vec<PathBuf> {
     let Some(wsutil) = wsutil() else {

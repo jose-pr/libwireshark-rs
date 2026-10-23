@@ -11,9 +11,16 @@
 Wireshark dissector plugins in Rust. **A protocol is a type implementing
 `Dissector`, its fields and preferences are derived from plain structs, and
 a plugin is one `plugin!` line**, built with Cargo against an installed
-Wireshark, with no Wireshark SDK, C code or `unsafe`. The same model
-reaches C and Python through one host plugin, and the other way round a
-program can host Wireshark to dissect frames and read captures.
+Wireshark, with no Wireshark SDK, C code or `unsafe`.
+
+Plugins are not limited to Rust: one plugin, `libwireshark-bridge`, loads
+dissectors, taps, display-filter functions, capture formats and codecs
+written in **any language [guatiao](https://github.com/Boriken-Dev/guatiao)
+supports** — Python and C with typed helpers and examples here, and Node.js,
+Go, Julia, R, MATLAB/Octave, Fortran, C++ or Rust through guatiao's own
+bindings — each built once for every Wireshark release line. The other way
+round, a program in any of those languages can host Wireshark to dissect
+frames and read captures.
 
 **Documentation: <https://jose-pr.github.io/libwireshark-rs/>**, with a
 guide to each way in, the examples, and the Rust and Python API references.
@@ -26,9 +33,9 @@ guide to each way in, the examples, and the Rust and Python API references.
 | [`libwireshark-derive`](crates/libwireshark-derive) | `#[derive(Header)]` and `#[derive(Preferences)]`, used through `libwireshark` |
 | [`libwireshark-sys`](crates/libwireshark-sys) | raw bindings, generated from bundled headers for Wireshark 3.0 to 4.6 |
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
-| [`libwireshark-guatiao`](crates/libwireshark-guatiao) | one plugin that loads dissectors written in Rust, C or Python as [guatiao](https://github.com/Boriken-Dev/guatiao) providers |
+| [`libwireshark-bridge`](crates/libwireshark-bridge) | one plugin that loads dissectors written in Rust, C or Python as [guatiao](https://github.com/Boriken-Dev/guatiao) providers |
 | [`libwireshark-api`](crates/libwireshark-api) | what those providers implement: the kinds, a C header, and the Rust helpers (typed headers, preferences and expert findings) |
-| [`bindings/python`](bindings/python) | the `libwireshark` Python package: plugins as typed classes for the guatiao host, and `Host`, Wireshark hosted in Python |
+| [`bindings/python`](bindings/python) | the `libwireshark` Python package: plugins as typed classes for the bridge, and `Host`, Wireshark hosted in Python |
 
 The [examples](https://jose-pr.github.io/libwireshark-rs/examples/) are
 plugins, each loaded by the test suite in the real tshark: `basic-dissector`

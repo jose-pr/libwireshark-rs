@@ -1,7 +1,7 @@
 # `libwireshark-api` — API header
 
 The guatiao kinds a Wireshark plugin written in any language implements,
-and `libwireshark-guatiao` loads. Self-contained: a provider author reads
+and `libwireshark-bridge` loads. Self-contained: a provider author reads
 this, `include/libwireshark_api.h` (C) or the `libwireshark` Python
 package (the repository's `bindings/python`), not the source. Source:
 <https://github.com/jose-pr/libwireshark-rs>.
@@ -153,7 +153,7 @@ pub trait Session: Send {
 }
 ```
 
-`libwireshark-guatiao` provides these; a program opens a session to
+`libwireshark-bridge` provides these; a program opens a session to
 dissect with Wireshark itself. Models in `libwireshark_api::host`:
 `HostConfig { plugins, skip_installed_plugins, config_dir, preferences }`,
 `Dissected { frame, columns: [Column { title, text }], tree: [Node] }`,

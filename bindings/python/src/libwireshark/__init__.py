@@ -1,6 +1,6 @@
 """Wireshark dissectors written in Python: a protocol's header, preferences
 and expert findings as typed classes, served to Wireshark by the
-libwireshark-guatiao host plugin through guatiao's Python bridge.
+libwireshark-bridge host plugin through guatiao's Python bridge.
 
 ```python
 from typing import Annotated, List

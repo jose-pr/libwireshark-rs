@@ -4,10 +4,11 @@
 plugin, and Wireshark itself hosted in your program.** A protocol is a Rust
 type implementing `Dissector`, its fields and preferences are plain structs,
 and a plugin is one `plugin!` line: no Wireshark SDK, no C, no `unsafe`.
-The same model reaches C and Python through
-[guatiao](https://github.com/Boriken-Dev/guatiao), and the other way round
-a Rust or Python program can dissect frames and read captures with
-Wireshark and the plugins you load.
+The same model reaches C, Python and every other language
+[guatiao](https://github.com/Boriken-Dev/guatiao) supports (Node.js, Go,
+Julia, R, MATLAB/Octave, Fortran, C++) through one plugin, the bridge, and
+the other way round a program in any of them can dissect frames and read
+captures with Wireshark and the plugins you load.
 
 Every Wireshark release line from 3.0 to 4.6 is supported, on Windows,
 Linux, macOS and FreeBSD, x86_64 and aarch64. A plugin is built for one
@@ -18,7 +19,7 @@ line, as Wireshark requires.
 | You want to | Use | Start here |
 | --- | --- | --- |
 | Write a dissector, tap, display-filter function, capture format or codec in Rust | the `libwireshark` crate | [Plugins in Rust](plugins.md) |
-| Write one in C or Python, and build it once for every release line | the `libwireshark-guatiao` plugin and the `libwireshark-api` kinds | [Plugins in other languages](other-languages.md), [Python](python.md) |
+| Write one in Python, C or any other language guatiao supports, built once for every release line | the `libwireshark-bridge` plugin and the `libwireshark-api` kinds | [Plugins in other languages](other-languages.md), [Python](python.md) |
 | Dissect frames or read captures with Wireshark from a program | `libwireshark::host`, or `libwireshark.Host` in Python | [Hosting Wireshark](hosting.md) |
 
 Each comes with runnable examples, which the test suite loads in the real

@@ -9,11 +9,11 @@
 | `libwireshark-derive` | syn, quote | `#[derive(Header)]`, `#[derive(Preferences)]` |
 | `cargo-wireshark` | clap, bindgen, ureq, archive readers | installation discovery; bundle generation and the `headers` branch |
 | `libwireshark-api` | guatiao | the guatiao kinds providers implement, their models, the C header; links no Wireshark |
-| `libwireshark-guatiao` | `libwireshark` (`host`), `libwireshark-api`, guatiao | the plugin serving providers, and the `wireshark_host` provider |
+| `libwireshark-bridge` | `libwireshark` (`host`), `libwireshark-api`, guatiao | the plugin serving providers, and the `wireshark_host` provider |
 | `bindings/python` (`libwireshark` on PyPI) | guatiao's Python binding | the kinds as classes, typed helpers, and `Host` |
 
-`examples/` are plugin `cdylib`s, and `examples/guatiao/` providers;
-`libwireshark`'s and `libwireshark-guatiao`'s tshark tests load them.
+`examples/` are plugin `cdylib`s, and `examples/bridge/` providers;
+`libwireshark`'s and `libwireshark-bridge`'s tshark tests load them.
 
 ## Header bundles
 
@@ -35,12 +35,12 @@ an umbrella that includes the deps bundle first.
 
 ## Plugins in other languages
 
-`libwireshark-guatiao` is a plugin built with `plugin!(dynamic = ..)`. When
+`libwireshark-bridge` is a plugin built with `plugin!(dynamic = ..)`. When
 Wireshark loads it, it scans for guatiao libraries declaring
 `kind=wireshark_dissector` (and adds guatiao sources found beside them, such
 as the Python bridge), asks each provider to `describe` its protocol, and
 registers that as a run-time protocol. The description carries the header
-layout and the preferences: the host decodes the header for each packet,
+layout and the preferences: the bridge decodes the header for each packet,
 adds its fields once the provider accepts, turns Wireshark's preference
 values into a map for `dissect_on` and `dissect`, and lends the
 `PacketView` as the `wireshark_packet` object kind. Each language's helper
@@ -68,7 +68,7 @@ pass does and walks the tree into plain data. Functions of libwiretap,
 libwsutil and GLib, which the sys crate does not link, are resolved from
 the libraries libwireshark loaded. EPAN's state is the process's, so the
 host starts Wireshark once and holds one session at a time. The
-`libwireshark-guatiao` library serves it as the `wireshark_host` kind as
+`libwireshark-bridge` library serves it as the `wireshark_host` kind as
 well as being a plugin, which is how a program in another language opens
 it: the one file is loaded by Wireshark as a plugin, and by a guatiao host
 as a provider.

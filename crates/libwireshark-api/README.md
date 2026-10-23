@@ -2,7 +2,7 @@
 
 The [guatiao](https://github.com/Boriken-Dev/guatiao) kinds of a Wireshark
 plugin written in any language guatiao reaches (Rust, C, Python and more):
-the contract between a provider and the `libwireshark-guatiao` host plugin,
+the contract between a provider and the `libwireshark-bridge` plugin,
 which loads providers and registers what they describe with Wireshark.
 
 - `Dissector` (`wireshark_dissector`): a protocol's description, where it
@@ -17,7 +17,7 @@ which loads providers and registers what they describe with Wireshark.
   (`TapListener`, `CaptureReader`, `Decoder`) and the `CaptureSource` a
   reader is lent.
 - `host::Host` and `host::Session` (`wireshark_host`,
-  `wireshark_session`): the other direction, which `libwireshark-guatiao`
+  `wireshark_session`): the other direction, which `libwireshark-bridge`
   provides — a program opens Wireshark in its own process and dissects
   with it.
 

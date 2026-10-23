@@ -21,19 +21,19 @@ Build them all with `cargo build --release`; each library lands in
 
 ## Plugins in other languages
 
-[`examples/guatiao`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/guatiao)
+[`examples/bridge`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/bridge)
 holds the same protocol three times, each a twin of FOO, written as a
-guatiao provider and loaded by the `libwireshark-guatiao` plugin:
+guatiao provider and loaded by the `libwireshark-bridge` plugin:
 
 | Provider | Language | Protocol | Also provides |
 | --- | --- | --- | --- |
-| [`rust-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/guatiao/rust-provider) | Rust: a `ProtocolDissector` with header and preference structs | RSFOO, UDP 113 | `-z rstap`, `rs_double()`, the RSGCAP format, the RSL8 codec |
-| [`c-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/guatiao/c-provider) | C: `cfoo.c`, the tables of `libwireshark_api.h` and literal trees | CFOO, UDP 114 | `-z ctap`, `c_double()` |
-| [`python-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/guatiao/python-provider) | Python: `pyfoo.py`, typed `Header`, `Preferences` and `Expert` classes | PYFOO, UDP 115 | `-z pytap`, `py_double()`, the PYGCAP format, the PYL8 codec |
+| [`rust-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/bridge/rust-provider) | Rust: a `ProtocolDissector` with header and preference structs | RSFOO, UDP 113 | `-z rstap`, `rs_double()`, the RSGCAP format, the RSL8 codec |
+| [`c-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/bridge/c-provider) | C: `cfoo.c`, the tables of `libwireshark_api.h` and literal trees | CFOO, UDP 114 | `-z ctap`, `c_double()` |
+| [`python-provider`](https://github.com/jose-pr/libwireshark-rs/tree/master/examples/bridge/python-provider) | Python: `pyfoo.py`, typed `Header`, `Preferences` and `Expert` classes | PYFOO, UDP 115 | `-z pytap`, `py_double()`, the PYGCAP format, the PYL8 codec |
 
-Install `libwireshark-guatiao` as an `epan/` plugin and the providers in a
-`guatiao` directory of a plugin directory, or in a directory named by
-`LIBWIRESHARK_GUATIAO_PATH`; see [Plugins in other languages](other-languages.md).
+Install `libwireshark-bridge` as an `epan/` plugin and the providers in a
+`bridge` directory of a plugin directory, or in a directory named by
+`LIBWIRESHARK_BRIDGE_PATH`; see [Plugins in other languages](other-languages.md).
 
 ## Wireshark hosted in a program
 
@@ -42,5 +42,5 @@ The host's tests are its examples: the
 dissects frames and reads a capture through a display filter with
 `basic-dissector` and `multi-protocol` loaded, and the
 [Python test](https://github.com/jose-pr/libwireshark-rs/blob/master/bindings/python/tests/test_host.py)
-does the same from Python, with the guatiao plugin serving the Rust
+does the same from Python, with the bridge serving the Rust
 provider. See [Hosting Wireshark](hosting.md).

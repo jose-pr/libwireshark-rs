@@ -1,7 +1,7 @@
 """Plugins as guatiao providers, written in Python: PYFOO over UDP 115 (a
 preference), a twin of FOO; the `pytap` tap listener; the `py_double`
 display-filter function; the PYGCAP capture format; and the PYL8 codec.
-libwireshark-guatiao serves them through the guatiao-py bridge; they need
+libwireshark-bridge serves them through the guatiao-py bridge; they need
 the `libwireshark` package (bindings/python) importable, which brings
 guatiao's Python binding.
 

@@ -7,7 +7,7 @@ A dissector usually subclasses `libwireshark.ProtocolDissector`, which
 implements `Dissector` from typed classes; the host lends a `Packet` to
 `dissect`. `Tap`, `FilterFunction`, `FileType` and `Codec` are the other
 plugin kinds; `libwireshark.Tap` and its siblings implement them from typed
-classes. `Host` and `Session` go the other way: the libwireshark-guatiao
+classes. `Host` and `Session` go the other way: the libwireshark-bridge
 library provides them, and `libwireshark.Host` drives them.
 """
 

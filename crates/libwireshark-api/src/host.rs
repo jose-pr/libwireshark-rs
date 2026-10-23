@@ -46,7 +46,7 @@ pub trait Session: Send {
 #[derive(Clone, Debug, Default, PartialEq, ToValue, FromValue, Schema)]
 pub struct HostConfig {
     /// Plugin libraries to load besides Wireshark's own: dissector plugins
-    /// built for this release line, `libwireshark-guatiao` among them.
+    /// built for this release line, `libwireshark-bridge` among them.
     #[map(default)]
     pub plugins: Vec<String>,
     /// Load only `plugins`, not those installed in Wireshark's plugin

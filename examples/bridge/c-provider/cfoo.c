@@ -1,12 +1,12 @@
 /*
  * Plugins as guatiao providers, written in C: CFOO over UDP 114, a twin of
  * FOO; the `ctap` tap listener, counting frames; and the `c_double`
- * display-filter function. libwireshark-guatiao loads this library and
+ * display-filter function. libwireshark-bridge loads this library and
  * registers what it describes. It links nothing: the tables come from
  * libwireshark_api.h, the value types from guatiao.h. Its answers are
  * literal trees and buffers it owns, which record no allocator. guatiao.h
  * asks a provider to build an answer in the allocator the carrier names;
- * a Rust caller such as libwireshark-guatiao copies any answer as the call
+ * a Rust caller such as libwireshark-bridge copies any answer as the call
  * returns, which is what these rely on. A provider for other hosts builds
  * through the carrier's `alloc`.
  *

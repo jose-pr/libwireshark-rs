@@ -1,5 +1,5 @@
 """Wireshark's dissection engine, hosted in this process through the
-libwireshark-guatiao library: dissect frames and read capture files with
+libwireshark-bridge library: dissect frames and read capture files with
 Wireshark's dissectors and the plugins you load."""
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from guatiao import GuatiaoError
 from . import kinds
 from .exceptions import DisplayFilterError, HostError
 
-#: The libwireshark-guatiao library's path, when `Host` is not given `library=`.
+#: The libwireshark-bridge library's path, when `Host` is not given `library=`.
 HOST_VARIABLE = "LIBWIRESHARK_HOST"
 
 PathLike = Union[str, "os.PathLike[str]"]
@@ -133,15 +133,15 @@ def _refused(error: GuatiaoError) -> HostError:
 
 
 def _bind(library: Optional[PathLike]) -> Any:
-    """The libwireshark-guatiao library's `wireshark_host` provider, loaded once."""
+    """The libwireshark-bridge library's `wireshark_host` provider, loaded once."""
     global _registry, _host, _library_path
     path = os.fspath(library) if library is not None else os.environ.get(HOST_VARIABLE)
     if _host is not None:
         if path is not None and os.path.abspath(path) != _library_path:
-            raise HostError(f"libwireshark-guatiao is already loaded from {_library_path}")
+            raise HostError(f"libwireshark-bridge is already loaded from {_library_path}")
         return _host
     if not path:
-        raise HostError(f"no libwireshark-guatiao library: pass library= or set {HOST_VARIABLE}")
+        raise HostError(f"no libwireshark-bridge library: pass library= or set {HOST_VARIABLE}")
     from guatiao.registry import Registry
 
     from . import __version__
@@ -181,14 +181,14 @@ class Host:
 
     `plugins` are Wireshark plugin libraries built for the running
     Wireshark's release line (dissectors, file types; the
-    libwireshark-guatiao host among them), loaded besides the installed
+    libwireshark-bridge host among them), loaded besides the installed
     ones unless `skip_installed_plugins`. Preferences come from the profile
     in `config_dir` (the user's by default), with `preferences` set on top
     as `tshark -o name:value` sets them.
 
     Wireshark starts once per process, with the first `Host`'s settings: a
     later `Host` must give the same ones, and one may be open at a time.
-    The libwireshark-guatiao library is `library`, else `LIBWIRESHARK_HOST`.
+    The libwireshark-bridge library is `library`, else `LIBWIRESHARK_HOST`.
     """
 
     def __init__(

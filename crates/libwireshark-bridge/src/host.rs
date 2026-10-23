@@ -14,13 +14,13 @@ use libwireshark_api::{Codec, Description, Dissector, FileType, FilterFunction, 
 use std::path::Path;
 
 /// Set to anything: report what loaded, not only what failed.
-const LOG_VARIABLE: &str = "LIBWIRESHARK_GUATIAO_LOG";
+const LOG_VARIABLE: &str = "LIBWIRESHARK_BRIDGE_LOG";
 
 /// Writes `line` to stderr when it is a problem (`verbose`) or when
-/// `LIBWIRESHARK_GUATIAO_LOG` asks for everything.
+/// `LIBWIRESHARK_BRIDGE_LOG` asks for everything.
 pub(crate) fn report(verbose: bool, line: &str) {
     if verbose || std::env::var_os(LOG_VARIABLE).is_some() {
-        eprintln!("libwireshark-guatiao: {line}");
+        eprintln!("libwireshark-bridge: {line}");
     }
 }
 
@@ -54,7 +54,7 @@ fn load() -> &'static Registry {
     // Handles taken from the registry point into the libraries it mapped,
     // which Wireshark uses for the process: the registry lives as long.
     let registry: &'static mut Registry = Box::leak(Box::new(Registry::new(
-        "libwireshark-guatiao",
+        "libwireshark-bridge",
         env!("CARGO_PKG_VERSION"),
     )));
     let scanned = scan_path_with(registry, &path, Order::Ascending, |declared| {

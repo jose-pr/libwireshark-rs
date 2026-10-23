@@ -1,10 +1,12 @@
 # Plugins in other languages
 
-`libwireshark-guatiao` is one Wireshark plugin that loads plugins written in
-any language [guatiao](https://github.com/Boriken-Dev/guatiao) reaches: Rust,
-C and Python today. A provider implements the kinds of
+`libwireshark-bridge` is one Wireshark plugin that loads plugins written in
+any language [guatiao](https://github.com/Boriken-Dev/guatiao) supports.
+Rust, C and Python have typed helpers and examples here; Node.js, Go, Julia,
+R, MATLAB/Octave, Fortran and C++ reach the same kinds through guatiao's own
+bindings, from the C header `libwireshark_api.h` or the kind descriptions. A provider implements the kinds of
 `libwireshark-api` and links no Wireshark, so **one provider build serves
-every Wireshark release line**; only the host plugin is built per line.
+every Wireshark release line**; only the bridge is built per line.
 
 | Kind | What it is | Typed helper (Rust, Python) |
 | --- | --- | --- |
@@ -16,21 +18,21 @@ every Wireshark release line**; only the host plugin is built per line.
 
 ## Installing
 
-1. Build `libwireshark-guatiao` for your Wireshark release line and copy it
+1. Build `libwireshark-bridge` for your Wireshark release line and copy it
    into `<plugins>/<major>.<minor>/epan/`, like any plugin.
-2. Put providers in a `guatiao` directory of a plugin directory (personal
-   or global), or in a directory named by `LIBWIRESHARK_GUATIAO_PATH`.
+2. Put providers in a `bridge` directory of a plugin directory (personal
+   or global), or in a directory named by `LIBWIRESHARK_BRIDGE_PATH`.
 
 A provider is a library declaring one of the kinds (a Rust `cdylib`
 calling `guatiao::providers!`, or a C shared library filling the tables of
 `libwireshark_api.h`), or a Python module with its `*.guatiao-py.toml`
 manifest beside the guatiao-py bridge library. Problems are written to
-stderr as `libwireshark-guatiao: ...`; `LIBWIRESHARK_GUATIAO_LOG` set to
+stderr as `libwireshark-bridge: ...`; `LIBWIRESHARK_BRIDGE_LOG` set to
 anything reports what loaded as well.
 
 ## A protocol, three ways
 
-The header and the preferences are declared, not parsed: the host decodes
+The header and the preferences are declared, not parsed: the bridge decodes
 the header for each packet and adds its fields once the provider accepts,
 registers the preferences, and asks `dissect_on` where to bind each time
 they change.

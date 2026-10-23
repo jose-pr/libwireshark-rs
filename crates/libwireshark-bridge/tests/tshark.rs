@@ -1,4 +1,4 @@
-//! The host plugin, loaded by the real tshark (and sharkd for codecs),
+//! The bridge, loaded by the real tshark (and sharkd for codecs),
 //! serving providers written in Rust, C and Python: dissectors, tap
 //! listeners, display-filter functions, capture formats and codecs.
 //!
@@ -43,10 +43,10 @@ fn moved(profile: &Profile, filter: &str) -> Vec<String> {
     profile.fields(&["-o", &preference], &["_ws.col.Protocol"])
 }
 
-/// A profile with the host in `epan/`, the capture of [`frames`], and
-/// `providers/` as the host's search path.
+/// A profile with the bridge in `epan/`, the capture of [`frames`], and
+/// `providers/` as the bridge's search path.
 fn profile(test: &str, port: u16) -> (Profile, PathBuf) {
-    let profile = Profile::new(test, &[("libwireshark_guatiao", "epan")], &frames(port));
+    let profile = Profile::new(test, &[("libwireshark_bridge", "epan")], &frames(port));
     let providers = profile.root().join("providers");
     std::fs::create_dir_all(&providers).expect("create the providers directory");
     let path = providers
@@ -54,7 +54,7 @@ fn profile(test: &str, port: u16) -> (Profile, PathBuf) {
         .expect("a UTF-8 temporary path")
         .to_owned();
     (
-        profile.with_env("LIBWIRESHARK_GUATIAO_PATH", &path),
+        profile.with_env("LIBWIRESHARK_BRIDGE_PATH", &path),
         providers,
     )
 }
@@ -142,8 +142,8 @@ fn the_host_loads_as_a_dissector_plugin() {
     let plugins = profile.run(&["-G", "plugins"]);
     let line = plugins
         .lines()
-        .find(|line| line.contains("libwireshark_guatiao"))
-        .unwrap_or_else(|| panic!("the host is not loaded:\n{plugins}"));
+        .find(|line| line.contains("libwireshark_bridge"))
+        .unwrap_or_else(|| panic!("the bridge is not loaded:\n{plugins}"));
     assert!(line.contains("dissector"), "{line}");
 }
 
@@ -151,7 +151,7 @@ fn the_host_loads_as_a_dissector_plugin() {
 #[ignore = "needs tshark from the release line libwireshark-sys was built for"]
 fn a_provider_written_in_rust_dissects_through_the_host() {
     let (profile, providers) = profile("guatiao-rust", 113);
-    let library = plugin("guatiao_rust_provider");
+    let library = plugin("bridge_rust_provider");
     std::fs::copy(
         &library,
         providers.join(library.file_name().expect("a file")),
@@ -206,7 +206,7 @@ fn a_provider_written_in_c_dissects_through_the_host() {
         .arg(manifest.join("../libwireshark-api/include"))
         .arg("-o")
         .arg(&library)
-        .arg(manifest.join("../../examples/guatiao/c-provider/cfoo.c"))
+        .arg(manifest.join("../../examples/bridge/c-provider/cfoo.c"))
         .output()
         .expect("the compiler answered --version");
     assert!(
@@ -252,7 +252,7 @@ fn a_provider_written_in_python_dissects_through_the_host() {
     for file in ["pyfoo.py", "pyfoo.guatiao-py.toml"] {
         std::fs::copy(
             manifest
-                .join("../../examples/guatiao/python-provider")
+                .join("../../examples/bridge/python-provider")
                 .join(file),
             providers.join(file),
         )

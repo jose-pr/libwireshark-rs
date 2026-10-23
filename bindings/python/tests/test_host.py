@@ -1,7 +1,7 @@
 """`Host` dissecting with the example plugins: a Rust dissector plugin, and
-the guatiao host serving the Rust provider.
+the bridge serving the Rust provider.
 
-Runs when `LIBWIRESHARK_HOST` names the built libwireshark-guatiao library
+Runs when `LIBWIRESHARK_HOST` names the built libwireshark-bridge library
 (which serves the host and is the plugin the test loads), the example
 plugins are built beside it, and guatiao's native library is found
 (`GUATIAO_LIBRARY`). Wireshark starts once per
@@ -24,12 +24,12 @@ from libwireshark import DisplayFilterError, Encapsulation, Host, HostError
 LIBRARY = os.environ.get("LIBWIRESHARK_HOST", "")
 
 pytestmark = pytest.mark.skipif(
-    not Path(LIBRARY).is_file(), reason="LIBWIRESHARK_HOST names no built libwireshark-guatiao library"
+    not Path(LIBRARY).is_file(), reason="LIBWIRESHARK_HOST names no built libwireshark-bridge library"
 )
 
 
 def built(name: str) -> str:
-    """A library built beside libwireshark-guatiao, by its crate name."""
+    """A library built beside libwireshark-bridge, by its crate name."""
     if sys.platform == "win32":
         file = f"{name}.dll"
     elif sys.platform == "darwin":
@@ -38,7 +38,7 @@ def built(name: str) -> str:
         file = f"lib{name}.so"
     path = Path(LIBRARY).parent / file
     if not path.is_file():
-        pytest.skip(f"{file} is not built beside libwireshark-guatiao")
+        pytest.skip(f"{file} is not built beside libwireshark-bridge")
     return str(path)
 
 
@@ -88,11 +88,11 @@ def settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict]:
     root = tmp_path_factory.mktemp("host")
     providers = root / "providers"
     providers.mkdir()
-    shutil.copy(built("guatiao_rust_provider"), providers)
-    os.environ["LIBWIRESHARK_GUATIAO_PATH"] = str(providers)
+    shutil.copy(built("bridge_rust_provider"), providers)
+    os.environ["LIBWIRESHARK_BRIDGE_PATH"] = str(providers)
     (root / "capture.pcap").write_bytes(pcap(FRAMES))
     settings = {
-        "plugins": [built("basic_dissector"), built("libwireshark_guatiao")],
+        "plugins": [built("basic_dissector"), built("libwireshark_bridge")],
         "preferences": {"rsfoo.port": RSFOO_PORT},
         "config_dir": root,
         "skip_installed_plugins": True,

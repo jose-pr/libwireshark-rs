@@ -1,6 +1,6 @@
 [package]
 name = "libwireshark-api"
-description = "The guatiao kinds of Wireshark plugins written in any language, as libwireshark-guatiao loads them"
+description = "The guatiao kinds of Wireshark plugins written in any language, as libwireshark-bridge loads them"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

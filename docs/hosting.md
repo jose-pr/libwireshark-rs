@@ -37,7 +37,7 @@ preferences set on top, as `tshark -o` sets them.
 
 ## From Python and other languages
 
-`libwireshark-guatiao` is also a guatiao provider of the `wireshark_host`
+`libwireshark-bridge` is also a guatiao provider of the `wireshark_host`
 kind: a guatiao host loads the same library Wireshark loads as a plugin,
 and drives `libwireshark::host` through it. The Python package's `Host` is
 that host; see [Python](python.md).

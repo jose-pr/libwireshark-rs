@@ -1,4 +1,4 @@
-# `libwireshark-guatiao` — API header
+# `libwireshark-bridge` — API header
 
 A Wireshark plugin (a `cdylib`; the `rlib` exists only for its tests) that
 loads guatiao providers of the `wireshark_dissector` kind
@@ -8,8 +8,8 @@ release line like any `libwireshark` plugin; installed in `epan/`.
 
 ## When Wireshark loads it
 
-1. Search path: `LIBWIRESHARK_GUATIAO_PATH` (separated as `PATH`), then
-   `<personal plugin dir>/guatiao`, then `<global plugin dir>/guatiao`, as
+1. Search path: `LIBWIRESHARK_BRIDGE_PATH` (separated as `PATH`), then
+   `<personal plugin dir>/bridge`, then `<global plugin dir>/bridge`, as
    the running Wireshark names those directories (libwsutil's
    `get_plugins_pers_dir`, `get_plugins_dir`). Each place is scanned once.
 2. A library is mapped only if it declares one of `kind=wireshark_dissector`,
@@ -87,12 +87,12 @@ as a plugin.
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_GUATIAO_PATH` | more places to look for providers, first |
-| `LIBWIRESHARK_GUATIAO_LOG` | any value: report what loaded, not only problems |
+| `LIBWIRESHARK_BRIDGE_PATH` | more places to look for providers, first |
+| `LIBWIRESHARK_BRIDGE_LOG` | any value: report what loaded, not only problems |
 
 Problems (a failed load, a refused module, a description that does not
 read, a table of the wrong shape) always go to stderr as
-`libwireshark-guatiao: ...`.
+`libwireshark-bridge: ...`.
 
 ## Gotchas
 

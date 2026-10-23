@@ -10,7 +10,7 @@ Wireshark dissectors written in Python, and Wireshark run from Python.
 **A protocol's header, preferences
 and expert findings are typed classes, and `dissect_on` and `dissect` are
 the methods to write**, as with the Rust `libwireshark::Dissector`. The
-[libwireshark-guatiao](https://github.com/jose-pr/libwireshark-rs/tree/master/crates/libwireshark-guatiao)
+[libwireshark-bridge](https://github.com/jose-pr/libwireshark-rs/tree/master/crates/libwireshark-bridge)
 Wireshark plugin loads it through guatiao's Python bridge.
 
 ## Features
@@ -97,7 +97,7 @@ class Foo(provide.Provider, ProtocolDissector):
 
 `Host` runs Wireshark's dissection engine in your process, with the
 plugins you give it: Wireshark plugins built for its release line,
-the `libwireshark-guatiao` host and its providers among them.
+the `libwireshark-bridge` host and its providers among them.
 
 ```python
 from libwireshark import Host
@@ -109,7 +109,7 @@ with Host(plugins=["basic_dissector.dll"], preferences={"foo.port": 111}) as wir
         print(frame.frame, [node.abbrev for node in frame.tree])
 ```
 
-It needs the `libwireshark-guatiao` library (the same one Wireshark loads
+It needs the `libwireshark-bridge` library (the same one Wireshark loads
 as a plugin), built against the Wireshark it runs with and named by
 `LIBWIRESHARK_HOST` (or `library=`), and
 guatiao's native library (`GUATIAO_LIBRARY`). On Windows, Wireshark's
@@ -129,7 +129,7 @@ directory must be on `PATH`. Wireshark starts once per process.
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_HOST` | the `libwireshark-guatiao` library's path, when `Host` gets no `library` |
+| `LIBWIRESHARK_HOST` | the `libwireshark-bridge` library's path, when `Host` gets no `library` |
 | `GUATIAO_LIBRARY` | guatiao's native library, read by guatiao |
 
 ## Development

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostConfig {
     /// Plugin libraries to load besides Wireshark's own: plugins built for
-    /// this release line, `libwireshark-guatiao` among them.
+    /// this release line, `libwireshark-bridge` among them.
     pub plugins: Vec<PathBuf>,
     /// Load only `plugins`, not those installed in Wireshark's plugin
     /// directories. A plugin listed and also installed would register its

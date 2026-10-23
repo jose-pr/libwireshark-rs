@@ -47,10 +47,10 @@ First release of the crates under these names.
   and codecs registered at run time (`dynamic::Registrations`); a plugin
   in `epan/` provides run-time formats and codecs to the programs that
   dissect (tshark, sharkd, Wireshark).
-- `libwireshark-api` and `libwireshark-guatiao`: Wireshark dissectors
+- `libwireshark-api` and `libwireshark-bridge`: Wireshark dissectors
   written in any language guatiao reaches (Rust, C, Python), each declaring
   its header and preferences as typed structs and binding in `dissect_on`;
-  one host plugin loads them all. Examples in `examples/guatiao`.
+  one host plugin loads them all. Examples in `examples/bridge`.
 - The guatiao kinds `wireshark_tap`, `wireshark_filter_function`,
   `wireshark_file_type` and `wireshark_codec`, served by the same host, with
   Python helper classes (`Tap`, `FilterFunction`, `FileType`, `Codec`) and
@@ -59,7 +59,7 @@ First release of the crates under these names.
   hosted in a program, on every release line (3.0 to 4.6): dissect frames and read
   capture files (with a display filter) using Wireshark's dissectors and
   the plugins it is given, into the protocol tree and the packet list's
-  columns. `libwireshark-guatiao` serves it as the `wireshark_host` kind
+  columns. `libwireshark-bridge` serves it as the `wireshark_host` kind
   (`libwireshark-api::host`), which the Python package's `Host` drives.
 - `PacketView::add_item` refuses a length its field's type does not take
   (`PacketFieldError::WrongLength`) instead of letting Wireshark throw; a

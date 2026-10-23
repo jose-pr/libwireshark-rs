@@ -3,7 +3,7 @@
 The `libwireshark` package does two things:
 
 - **Dissectors and other plugins written in Python**, served to Wireshark
-  by the `libwireshark-guatiao` plugin through guatiao's Python bridge.
+  by the `libwireshark-bridge` plugin through guatiao's Python bridge.
 - **Wireshark hosted in a Python process** (`Host`): dissect frames and
   read captures with Wireshark and the plugins you load.
 
@@ -113,14 +113,14 @@ with Host(plugins=["basic_dissector.dll"], preferences={"foo.port": 111}) as wir
         print(frame.frame, [node.abbrev for node in frame.tree])
 ```
 
-It needs the `libwireshark-guatiao` library (the same one Wireshark loads
+It needs the `libwireshark-bridge` library (the same one Wireshark loads
 as a plugin), built for the Wireshark it runs with and named by
 `LIBWIRESHARK_HOST`, and guatiao's native library (`GUATIAO_LIBRARY`). See
 [Hosting Wireshark](hosting.md).
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_HOST` | the `libwireshark-guatiao` library's path, when `Host` gets no `library` |
+| `LIBWIRESHARK_HOST` | the `libwireshark-bridge` library's path, when `Host` gets no `library` |
 | `GUATIAO_LIBRARY` | guatiao's native library |
 
 The complete reference is [the Python API](api/python.md).

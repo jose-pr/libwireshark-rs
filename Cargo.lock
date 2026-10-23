@@ -139,6 +139,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bridge-rust-provider"
+version = "0.1.0"
+dependencies = [
+ "libwireshark-api",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,13 +501,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "guatiao-rust-provider"
-version = "0.1.0"
-dependencies = [
- "libwireshark-api",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,6 +620,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libwireshark-bridge"
+version = "0.0.0-alpha.0"
+dependencies = [
+ "bridge-rust-provider",
+ "guatiao",
+ "libloading",
+ "libwireshark",
+ "libwireshark-api",
+]
+
+[[package]]
 name = "libwireshark-derive"
 version = "0.0.0-alpha.0"
 dependencies = [
@@ -627,17 +638,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "libwireshark-guatiao"
-version = "0.0.0-alpha.0"
-dependencies = [
- "guatiao",
- "guatiao-rust-provider",
- "libloading",
- "libwireshark",
- "libwireshark-api",
 ]
 
 [[package]]
