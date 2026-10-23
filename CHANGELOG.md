@@ -7,9 +7,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-First release of the crates under these names. `libwireshark-sys`,
-`libwireshark` and `libwireshark-bridge` are GPL-2.0-or-later, as
-Wireshark; `libwireshark-api`, `libwireshark-derive`, `cargo-wireshark` and
+## [0.0.0-alpha.0] - 2026-10-23
+
+First release of the crates under these names, on crates.io:
+`libwireshark-sys`, `libwireshark-derive`, `libwireshark` and
+`cargo-wireshark`. `libwireshark-api`, `libwireshark-bridge` and the Python
+package are not published yet: they depend on guatiao from a git revision.
+`libwireshark-sys`, `libwireshark` and `libwireshark-bridge` are
+GPL-2.0-or-later, as Wireshark; `libwireshark-api`, `libwireshark-derive`, `cargo-wireshark` and
 the `libwireshark` Python package are MPL-2.0.
 
 ### Added
@@ -74,4 +79,5 @@ the `libwireshark` Python package are MPL-2.0.
   aborting Wireshark.
 - Three example plugins, and tests that load them in tshark.
 
-[Unreleased]: https://github.com/jose-pr/libwireshark-rs/commits/master
+[Unreleased]: https://github.com/jose-pr/libwireshark-rs/compare/v0.0.0-alpha.0...HEAD
+[0.0.0-alpha.0]: https://github.com/jose-pr/libwireshark-rs/releases/tag/v0.0.0-alpha.0
