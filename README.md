@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/libwireshark.svg?label=pypi)](https://pypi.org/project/libwireshark/)
 [![Python versions](https://img.shields.io/pypi/pyversions/libwireshark.svg)](https://pypi.org/project/libwireshark/)
 [![License: MPL-2.0 / GPL-2.0-or-later](https://img.shields.io/badge/license-MPL--2.0%20%2F%20GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs#license)
-[![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
+[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://jose-pr.github.io/libwireshark-rs/)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
 Wireshark dissector plugins in Rust. **A protocol is a type implementing
