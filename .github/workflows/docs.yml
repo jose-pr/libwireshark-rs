@@ -1,0 +1,110 @@
+name: Docs
+
+# The only workflow that deploys Pages, so the site can be rebuilt without
+# cutting a release: on a push to master that touches a docs source, and on
+# demand for any ref -- which is how a release ships its docs: release.yaml
+# dispatches this at its tag. It cannot listen for the release itself: a
+# release made with the workflow's own GITHUB_TOKEN starts no workflow.
+#
+# release.yaml also CALLS it with `deploy: false`, as the strict docs build
+# that gates a release without the release owning a deployment.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "CHANGELOG.md"
+      - "crates/**/*.rs"
+      - "crates/**/*.md"
+      - "bindings/python/src/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      deploy:
+        description: "Deploy the built site, or only prove it builds"
+        type: boolean
+        required: false
+        default: true
+      ref:
+        description: "Git ref to build"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the documentation site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `configure-pages` needs this to turn Pages on by itself, so a
+      # fresh clone or fork does not depend on a setting somebody clicked.
+      pages: write
+    env:
+      # The bindings come from the bundled headers; nothing is linked.
+      WIRESHARK_NO_LINK: "1"
+      WIRESHARK_VERSION: "4.6"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - name: Build the Rust API reference
+        # Strict, so a broken intra-doc link fails here rather than
+        # shipping; `--all-features` is what docs.rs publishes.
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Install the Python package and the docs tooling
+        # mkdocstrings renders the package by importing it, which needs no
+        # native library.
+        run: pip install -e "bindings/python[docs]"
+      - name: Build the narrative site and the Python reference
+        run: mkdocs build --strict
+      - name: Add the Rust reference under /rust/
+        # `cargo doc` writes no root index for a workspace, so the crate a
+        # reader starts from gets one.
+        run: |
+          mkdir -p site/rust
+          cp -r target/doc/. site/rust/
+          printf '%s' '<!doctype html><meta http-equiv="refresh" content="0; url=libwireshark/index.html">' > site/rust/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    # Absent outside a call, so a push or a dispatch deploys; a caller that
+    # passes `deploy: false` only proves the site builds.
+    if: ${{ inputs.deploy != false }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

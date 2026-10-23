@@ -38,9 +38,22 @@ jobs:
           name: crates
           path: target/package/*.crate
 
+  # The strict docs build gates the release; deploying is docs.yml's, run
+  # at this tag once the crates are out.
+  docs-gate:
+    name: The documentation builds
+    uses: ./.github/workflows/docs.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      deploy: false
+      ref: ${{ github.ref }}
+
   github-release:
     name: Create the GitHub release
-    needs: check
+    needs: [check, docs-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -133,3 +146,15 @@ jobs:
                   print(f"{name} {version} is already on crates.io; skipped")
                   continue
               subprocess.run(["cargo", "publish", "-p", name, "--allow-dirty"], check=True)
+
+  docs:
+    name: Deploy this release's documentation
+    needs: publish-crates
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run the docs workflow at this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docs.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
