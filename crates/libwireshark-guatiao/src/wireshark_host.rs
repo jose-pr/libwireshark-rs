@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 
 fn refused(error: &HostError) -> ProviderError {
     let status = match error {
-        HostError::Unsupported => Status::GUATIAO_ERR_UNSUPPORTED,
         HostError::AlreadyOpen => Status::GUATIAO_ERR_BUSY,
         HostError::Symbols(_) | HostError::Init(_) => Status::GUATIAO_ERR_INTERNAL,
         _ => Status::GUATIAO_ERR_BAD_VALUE,

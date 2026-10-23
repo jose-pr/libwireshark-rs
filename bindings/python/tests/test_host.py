@@ -97,12 +97,6 @@ def settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict]:
         "config_dir": root,
         "skip_installed_plugins": True,
     }
-    try:
-        Host(**settings).close()
-    except HostError as error:
-        if "4.6 or later" in str(error):
-            pytest.skip("libwireshark-guatiao is built for a release line before 4.6")
-        raise
     yield settings
 
 

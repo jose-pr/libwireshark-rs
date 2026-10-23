@@ -1,5 +1,8 @@
-//! The engine on Wireshark 4.6: started as tshark starts, one frame at a
-//! time as tshark's single pass dissects it.
+//! Wireshark hosted in this process: started as tshark starts, one frame at
+//! a time as tshark's single pass dissects it. The program side of EPAN
+//! changed shape across release lines; `wireshark_M_m` marks a line M.m or
+//! later (see the build script), and the differences stay in this file and
+//! in `symbols`.
 
 use super::symbols::Api;
 use super::{Column, Dissected, HostConfig, HostError, Node};
@@ -80,6 +83,41 @@ unsafe fn wtap_error(api: &Api, err: c_int, detail: *mut c_char) -> String {
     message
 }
 
+/// A flag as the release line's C function takes it: `gboolean` or `bool`.
+fn flag<T: From<bool>>(value: bool) -> T {
+    T::from(value)
+}
+
+/// A count or offset as a `usize`, from whichever integer the release line
+/// declares it as.
+#[cfg(not(wireshark_4_6))]
+fn size<T: TryInto<usize>>(value: T) -> usize {
+    value.try_into().unwrap_or(0)
+}
+
+/// A constant as a `c_int`, from whichever integer type the release line's
+/// bindings give it.
+fn int<T: TryInto<c_int>>(value: T) -> c_int {
+    value.try_into().unwrap_or(-1)
+}
+
+/// A `gboolean` or `bool` answer as a `bool`.
+trait Truthy {
+    fn truthy(self) -> bool;
+}
+
+impl Truthy for bool {
+    fn truthy(self) -> bool {
+        self
+    }
+}
+
+impl Truthy for c_int {
+    fn truthy(self) -> bool {
+        self != 0
+    }
+}
+
 fn c_string(value: &str, error: impl FnOnce(String) -> HostError) -> Result<CString, HostError> {
     CString::new(value).map_err(|_| error(format!("{value:?} holds a NUL byte")))
 }
@@ -93,7 +131,10 @@ fn start(config: &HostConfig) -> Result<Started, HostError> {
     // any dissection.
     unsafe {
         // Wireshark's log levels, from `WIRESHARK_LOG_LEVEL` and the like.
+        #[cfg(wireshark_4_6)]
         (api.ws_log_init)(ptr::null());
+        #[cfg(all(wireshark_3_6, not(wireshark_4_6)))]
+        (api.ws_log_init)(c"libwireshark-host".as_ptr(), ptr::null());
         (api.init_process_policies)();
         #[cfg(windows)]
         locate_installation()?;
@@ -101,7 +142,14 @@ fn start(config: &HostConfig) -> Result<Started, HostError> {
             .ok()
             .and_then(|path| path.to_str().and_then(|path| CString::new(path).ok()))
             .unwrap_or_default();
-        if let Some(why) = take(&api, (api.configuration_init)(program.as_ptr())) {
+        #[cfg(any(wireshark_4_6, not(wireshark_4_0)))]
+        let why = take(&api, (api.configuration_init)(program.as_ptr()));
+        #[cfg(all(wireshark_4_0, not(wireshark_4_6)))]
+        let why = take(
+            &api,
+            (api.configuration_init)(program.as_ptr(), ptr::null()),
+        );
+        if let Some(why) = why {
             report(&format!("configuration: {why}"));
         }
         if let Some(dir) = &config.config_dir {
@@ -109,9 +157,19 @@ fn start(config: &HostConfig) -> Result<Started, HostError> {
                 .ok_or_else(|| HostError::Init(format!("{}: not a valid path", dir.display())))?;
             (api.set_persconffile_dir)(dir.as_ptr());
         }
+        #[cfg(wireshark_3_6)]
         (api.init_report_message)(
             c"libwireshark-host".as_ptr(),
             ptr::from_ref(&ROUTINES).cast(),
+        );
+        #[cfg(not(wireshark_3_6))]
+        (api.init_report_message)(
+            (formatted as unsafe extern "C" fn(*const c_char, *mut c_void)) as *const c_void,
+            (formatted as unsafe extern "C" fn(*const c_char, *mut c_void)) as *const c_void,
+            (system_error_open as unsafe extern "C" fn(*const c_char, c_int, c_int))
+                as *const c_void,
+            (system_error as unsafe extern "C" fn(*const c_char, c_int)) as *const c_void,
+            (system_error as unsafe extern "C" fn(*const c_char, c_int)) as *const c_void,
         );
         // tshark's defaults: times relative to the first frame.
         (api.timestamp_set_type)(0);
@@ -124,8 +182,8 @@ fn start(config: &HostConfig) -> Result<Started, HostError> {
             register(plugin, (major, minor))?;
         }
         let installed = !config.skip_installed_plugins;
-        (api.wtap_init)(installed);
-        if !sys::epan_init(None, null_mut(), installed) {
+        (api.wtap_init)(flag(installed));
+        if !sys::epan_init(None, null_mut(), flag(installed)).truthy() {
             return Err(HostError::Init("epan_init failed".into()));
         }
         let prefs = sys::epan_load_settings();
@@ -243,13 +301,18 @@ fn report(message: &str) {
 
 /// `struct report_message_routines`: where Wireshark reports failures
 /// that are not the caller's to handle, as tshark prints them.
+/// From 3.6; `report_rename_failure` from 4.6. The open routine's flag (a
+/// `gboolean`, then a `bool`) and the write routine's frame number (32,
+/// then 64 bits) are taken at their widest and ignored.
+#[cfg(wireshark_3_6)]
 #[repr(C)]
 struct Routines {
     vreport_failure: unsafe extern "C" fn(*const c_char, *mut c_void),
     vreport_warning: unsafe extern "C" fn(*const c_char, *mut c_void),
-    report_open_failure: unsafe extern "C" fn(*const c_char, c_int, bool),
+    report_open_failure: unsafe extern "C" fn(*const c_char, c_int, c_int),
     report_read_failure: unsafe extern "C" fn(*const c_char, c_int),
     report_write_failure: unsafe extern "C" fn(*const c_char, c_int),
+    #[cfg(wireshark_4_6)]
     report_rename_failure: unsafe extern "C" fn(*const c_char, *const c_char, c_int),
     report_cfile_open_failure: unsafe extern "C" fn(*const c_char, c_int, *mut c_char),
     report_cfile_dump_open_failure: unsafe extern "C" fn(*const c_char, c_int, *mut c_char, c_int),
@@ -259,12 +322,14 @@ struct Routines {
     report_cfile_close_failure: unsafe extern "C" fn(*const c_char, c_int, *mut c_char),
 }
 
+#[cfg(wireshark_3_6)]
 static ROUTINES: Routines = Routines {
     vreport_failure: formatted,
     vreport_warning: formatted,
     report_open_failure: system_error_open,
     report_read_failure: system_error,
     report_write_failure: system_error,
+    #[cfg(wireshark_4_6)]
     report_rename_failure: rename_failure,
     report_cfile_open_failure: capture_error,
     report_cfile_dump_open_failure: dump_error,
@@ -282,7 +347,7 @@ unsafe extern "C" fn formatted(format: *const c_char, arguments: *mut c_void) {
     }
 }
 
-unsafe extern "C" fn system_error_open(file: *const c_char, err: c_int, _writing: bool) {
+unsafe extern "C" fn system_error_open(file: *const c_char, err: c_int, _writing: c_int) {
     // SAFETY: Wireshark's file name.
     unsafe { system_error(file, err) };
 }
@@ -296,6 +361,7 @@ unsafe extern "C" fn system_error(file: *const c_char, err: c_int) {
     ));
 }
 
+#[cfg(wireshark_4_6)]
 unsafe extern "C" fn rename_failure(from: *const c_char, to: *const c_char, err: c_int) {
     // SAFETY: Wireshark's file names.
     let (from, to) = unsafe { (text(from), text(to)) };
@@ -305,6 +371,7 @@ unsafe extern "C" fn rename_failure(from: *const c_char, to: *const c_char, err:
     ));
 }
 
+#[cfg(wireshark_3_6)]
 unsafe extern "C" fn capture_error(file: *const c_char, err: c_int, detail: *mut c_char) {
     if let Some(Ok(api)) = API.get() {
         // SAFETY: Wireshark's file name, and its detail to free.
@@ -313,6 +380,7 @@ unsafe extern "C" fn capture_error(file: *const c_char, err: c_int, detail: *mut
     }
 }
 
+#[cfg(wireshark_3_6)]
 unsafe extern "C" fn dump_error(
     file: *const c_char,
     err: c_int,
@@ -323,6 +391,7 @@ unsafe extern "C" fn dump_error(
     unsafe { capture_error(file, err, detail) };
 }
 
+#[cfg(wireshark_3_6)]
 unsafe extern "C" fn write_error(
     _from: *const c_char,
     file: *const c_char,
@@ -379,14 +448,13 @@ unsafe extern "C" fn frame_time(
     ptr::null()
 }
 
-static FUNCS: sys::packet_provider_funcs = sys::packet_provider_funcs {
-    get_frame_ts: Some(frame_time),
-    get_interface_name: None,
-    get_interface_description: None,
-    get_modified_block: None,
-    get_process_id: None,
-    get_process_name: None,
-    get_process_uuid: None,
+/// The frame provider's callbacks: the time of a frame, and none of the
+/// others (their number grew across release lines).
+static FUNCS: sys::packet_provider_funcs = {
+    // SAFETY: every member is an optional function pointer: all `None`.
+    let mut funcs: sys::packet_provider_funcs = unsafe { core::mem::zeroed() };
+    funcs.get_frame_ts = Some(frame_time);
+    funcs
 };
 
 /// An open capture file.
@@ -404,6 +472,10 @@ pub(crate) struct Session {
     dissection: *mut sys::epan_dissect_t,
     columns: Box<sys::column_info>,
     record: Box<sys::wtap_rec>,
+    /// Before 4.6 a record's bytes are apart from it: those of the frame
+    /// being dissected.
+    #[cfg(not(wireshark_4_6))]
+    buffer: Box<sys::Buffer>,
     file: Option<File>,
 }
 
@@ -441,13 +513,21 @@ impl Session {
                 dissection: null_mut(),
                 columns: Box::new(core::mem::zeroed()),
                 record: Box::new(core::mem::zeroed()),
+                #[cfg(not(wireshark_4_6))]
+                buffer: Box::new(core::mem::zeroed()),
                 file: None,
             }
         };
         // SAFETY: Wireshark started; each structure is the session's own.
         unsafe {
-            sys::build_column_format_array(&mut *session.columns, columns, true);
+            sys::build_column_format_array(&mut *session.columns, columns, flag(true));
+            #[cfg(wireshark_4_6)]
             (api.wtap_rec_init)(&mut *session.record, 1514);
+            #[cfg(not(wireshark_4_6))]
+            {
+                (api.wtap_rec_init)(&mut *session.record);
+                (api.ws_buffer_init)(&mut *session.buffer, 1514);
+            }
             session.restart();
         }
         OPEN.store(true, Ordering::Release);
@@ -472,17 +552,25 @@ impl Session {
             self.frames = Frames::new();
             let provider = ptr::from_mut(&mut *self.frames).cast::<sys::packet_provider_data>();
             self.epan = sys::epan_new(provider, &FUNCS);
-            self.dissection = sys::epan_dissect_new(self.epan, true, true);
+            self.dissection = sys::epan_dissect_new(self.epan, flag(true), flag(true));
         }
     }
 
     pub(crate) fn dissect(&mut self, data: &[u8], encapsulation: i32, time: Duration) -> Dissected {
         let length = u32::try_from(data.len()).unwrap_or(u32::MAX);
+        let data = &data[..length as usize];
         let record = &mut *self.record;
         // SAFETY: the session's record, set up as a packet wiretap read.
         unsafe {
+            #[cfg(wireshark_3_6)]
             (self.api.wtap_rec_reset)(record);
+            #[cfg(wireshark_4_6)]
             (self.api.wtap_setup_packet_rec)(record, encapsulation);
+            #[cfg(not(wireshark_4_6))]
+            {
+                record.rec_type = sys::REC_TYPE_PACKET as _;
+                record.rec_header.packet_header.pkt_encap = encapsulation;
+            }
             record.presence_flags = sys::WTAP_HAS_TS | sys::WTAP_HAS_CAP_LEN;
             record.ts = sys::nstime_t {
                 secs: sys::time_t::try_from(time.as_secs()).unwrap_or(sys::time_t::MAX),
@@ -492,12 +580,32 @@ impl Session {
             record.rec_header.packet_header.caplen = length;
             record.rec_header.packet_header.len = length;
             record.rec_header.packet_header.interface_id = 0;
-            record.data.start = 0;
-            record.data.first_free = 0;
-            (self.api.ws_buffer_append)(&mut record.data, data.as_ptr(), length as usize);
-            self.run(sys::WTAP_FILE_TYPE_SUBTYPE_UNKNOWN, 0, null_mut())
+            let record: *mut sys::wtap_rec = record;
+            let buffer = self.frame_buffer();
+            (*buffer).start = 0;
+            (*buffer).first_free = 0;
+            (self.api.ws_buffer_append)(buffer, data.as_ptr(), data.len());
+            self.run(
+                record,
+                int(sys::WTAP_FILE_TYPE_SUBTYPE_UNKNOWN),
+                0,
+                null_mut(),
+            )
         }
         .unwrap_or_default()
+    }
+
+    /// Where a frame's bytes go: the record's buffer from 4.6, the
+    /// session's before.
+    fn frame_buffer(&mut self) -> *mut sys::Buffer {
+        #[cfg(wireshark_4_6)]
+        {
+            &raw mut self.record.data
+        }
+        #[cfg(not(wireshark_4_6))]
+        {
+            &raw mut *self.buffer
+        }
     }
 
     pub(crate) fn open_file(
@@ -529,7 +637,7 @@ impl Session {
                 sys::WTAP_TYPE_AUTO,
                 &mut err,
                 &mut detail,
-                false,
+                flag(false),
             )
         };
         if wtap.is_null() {
@@ -556,15 +664,9 @@ impl Session {
             };
             let (wtap, filter, file_type) = (file.wtap, file.filter, file.file_type);
             let (mut err, mut detail, mut offset) = (0, null_mut(), 0i64);
-            let record = &mut *self.record;
-            // SAFETY: the open file and the session's record.
-            let read = unsafe {
-                (self.api.wtap_rec_reset)(record);
-                record.data.start = 0;
-                record.data.first_free = 0;
-                (self.api.wtap_read)(wtap, record, &mut err, &mut detail, &mut offset)
-            };
-            if !read {
+            // SAFETY: the open file and the session's record and buffer.
+            let read = unsafe { self.read(wtap, &mut err, &mut detail, &mut offset) };
+            let Some(record) = read else {
                 self.close_file();
                 if err == 0 {
                     return Ok(None);
@@ -573,40 +675,107 @@ impl Session {
                 return Err(HostError::File(unsafe {
                     wtap_error(&self.api, err, detail)
                 }));
-            }
+            };
             // SAFETY: a record wiretap read, of the open file.
-            if let Some(dissected) = unsafe { self.run(file_type, offset, filter) } {
+            if let Some(dissected) = unsafe { self.run(record, file_type, offset, filter) } {
                 return Ok(Some(dissected));
             }
         }
     }
 
+    /// Reads the open file's next record: the record, `None` at the end or
+    /// on an error (in `err`).
+    ///
+    /// # Safety
+    ///
+    /// `wtap` is the open file; the out-slots are the caller's.
+    unsafe fn read(
+        &mut self,
+        wtap: *mut sys::wtap,
+        err: &mut c_int,
+        detail: &mut *mut c_char,
+        offset: &mut i64,
+    ) -> Option<*mut sys::wtap_rec> {
+        let buffer = self.frame_buffer();
+        let record: *mut sys::wtap_rec = &mut *self.record;
+        // SAFETY: the caller's contract; the record and buffer are the
+        // session's own.
+        unsafe {
+            #[cfg(wireshark_3_6)]
+            (self.api.wtap_rec_reset)(record);
+            (*buffer).start = 0;
+            (*buffer).first_free = 0;
+            #[cfg(wireshark_4_6)]
+            let read = (self.api.wtap_read)(wtap, record, err, detail, offset);
+            #[cfg(all(wireshark_3_2, not(wireshark_4_6)))]
+            let read = (self.api.wtap_read)(wtap, record, buffer, err, detail, offset);
+            #[cfg(not(wireshark_3_2))]
+            let read = (self.api.wtap_read)(wtap, err, detail, offset);
+            if !read.truthy() {
+                return None;
+            }
+            // 3.0 reads into the file's own record and bytes: copied here,
+            // where the dissection finds them as on later lines.
+            #[cfg(not(wireshark_3_2))]
+            {
+                let read = (self.api.wtap_get_rec)(wtap);
+                ptr::copy_nonoverlapping(read, record, 1);
+                let length = record_len(&*read);
+                (self.api.ws_buffer_append)(buffer, (self.api.wtap_get_buf_ptr)(wtap), length);
+            }
+            Some(record)
+        }
+    }
+
     fn compile(&self, filter: &str) -> Result<*mut sys::dfilter_t, HostError> {
         let source = c_string(filter, HostError::Filter)?;
-        let (mut compiled, mut error) = (null_mut(), null_mut::<sys::df_error_t>());
-        // SAFETY: a NUL-terminated filter; EPAN fills the out-slots.
-        let ok = unsafe {
-            sys::dfilter_compile_full(
-                source.as_ptr(),
-                &mut compiled,
-                &mut error,
-                sys::DF_EXPAND_MACROS | sys::DF_OPTIMIZE,
-                c"libwireshark-host".as_ptr(),
-            )
-        };
-        if ok {
-            return Ok(compiled);
-        }
-        let message = if error.is_null() {
-            String::from("does not compile")
-        } else {
-            // SAFETY: EPAN's error, read then freed.
-            unsafe {
-                let message = text((*error).msg);
-                sys::df_error_free(&mut error);
-                message
+        let mut compiled = null_mut();
+        // SAFETY: a NUL-terminated filter; EPAN fills the out-slots, and its
+        // message is read then freed.
+        let message = unsafe {
+            #[cfg(wireshark_4_2)]
+            {
+                let mut error = null_mut::<sys::df_error_t>();
+                let ok = sys::dfilter_compile_full(
+                    source.as_ptr(),
+                    &mut compiled,
+                    &mut error,
+                    sys::DF_EXPAND_MACROS | sys::DF_OPTIMIZE,
+                    c"libwireshark-host".as_ptr(),
+                );
+                if ok.truthy() {
+                    return Ok(compiled);
+                }
+                if error.is_null() {
+                    None
+                } else {
+                    let message = text((*error).msg);
+                    sys::df_error_free(&mut error);
+                    Some(message)
+                }
             }
-        };
+            #[cfg(not(wireshark_4_2))]
+            {
+                let mut error = null_mut();
+                #[cfg(wireshark_4_0)]
+                let ok = sys::dfilter_compile_real(
+                    source.as_ptr(),
+                    &mut compiled,
+                    &mut error,
+                    null_mut(),
+                    c"libwireshark-host".as_ptr(),
+                    flag(false),
+                    flag(true),
+                );
+                #[cfg(not(wireshark_4_0))]
+                let ok = sys::dfilter_compile(source.as_ptr(), &mut compiled, &mut error);
+                if ok.truthy() {
+                    return Ok(compiled);
+                }
+                take(&self.api, error)
+            }
+        }
+        .unwrap_or_else(|| String::from("does not compile"));
         Err(HostError::Filter(format!("{filter}: {message}")))
     }
 
@@ -625,9 +794,11 @@ impl Session {
     ///
     /// # Safety
     ///
-    /// The record holds a frame; `filter` is null or compiled.
+    /// `record` is the session's record holding a frame, its bytes in the
+    /// frame buffer; `filter` is null or compiled.
     unsafe fn run(
         &mut self,
+        record: *mut sys::wtap_rec,
         file_type: c_int,
         offset: i64,
         filter: *mut sys::dfilter_t,
@@ -641,13 +812,14 @@ impl Session {
             sys::frame_data_init(
                 &mut frame,
                 frames.count,
-                &*self.record,
+                record,
                 offset,
                 frames.cumulative_bytes,
             );
             if !filter.is_null() {
                 sys::epan_dissect_prime_with_dfilter(self.dissection, filter);
             }
+            #[cfg(wireshark_3_6)]
             sys::col_custom_prime_edt(self.dissection, &mut *self.columns);
             sys::frame_data_set_before_dissect(
                 &mut frame,
@@ -659,16 +831,39 @@ impl Session {
                 frames.reference_frame = ptr::read(&frame);
                 frames.reference = &frames.reference_frame;
             }
+            #[cfg(wireshark_4_6)]
             sys::epan_dissect_run_with_taps(
                 self.dissection,
                 file_type,
-                &mut *self.record,
+                record,
                 &mut frame,
                 &mut *self.columns,
             );
-            let passed = filter.is_null() || sys::dfilter_apply_edt(filter, self.dissection);
+            #[cfg(not(wireshark_4_6))]
+            {
+                // The frame's bytes, as tshark hands them over before 4.6;
+                // EPAN frees the buffer at its next reset.
+                let buffer = &*self.buffer;
+                let start = size(buffer.start);
+                let length = size(buffer.first_free).saturating_sub(start);
+                let tvb = sys::tvb_new_real_data(
+                    buffer.data.add(start),
+                    length.try_into().unwrap_or(0),
+                    length.try_into().unwrap_or(0),
+                );
+                sys::epan_dissect_run_with_taps(
+                    self.dissection,
+                    file_type,
+                    record,
+                    tvb,
+                    &mut frame,
+                    &mut *self.columns,
+                );
+            }
+            let passed =
+                filter.is_null() || sys::dfilter_apply_edt(filter, self.dissection).truthy();
             let dissected = passed.then(|| {
-                sys::epan_dissect_fill_in_columns(self.dissection, false, true);
+                sys::epan_dissect_fill_in_columns(self.dissection, flag(false), flag(true));
                 let dissected = Dissected {
                     frame: frames.count,
                     columns: columns(&self.columns),
@@ -695,6 +890,8 @@ impl Drop for Session {
             sys::epan_free(self.epan);
             sys::col_cleanup(&mut *self.columns);
             (self.api.wtap_rec_cleanup)(&mut *self.record);
+            #[cfg(not(wireshark_4_6))]
+            (self.api.ws_buffer_free)(&mut *self.buffer);
         }
         OPEN.store(false, Ordering::Release);
     }
@@ -708,6 +905,20 @@ unsafe fn free_filter(filter: *mut sys::dfilter_t) {
         // SAFETY: the caller's contract.
         unsafe { sys::dfilter_free(filter) };
     }
+}
+
+/// The bytes of the record 3.0's `wtap_read` read.
+#[cfg(not(wireshark_3_2))]
+fn record_len(record: &sys::wtap_rec) -> usize {
+    // SAFETY: the union member the record type names.
+    let length = unsafe {
+        if record.rec_type == sys::REC_TYPE_PACKET as _ {
+            record.rec_header.packet_header.caplen
+        } else {
+            record.rec_header.ft_specific_header.record_len
+        }
+    };
+    length as usize
 }
 
 /// `path` as wiretap takes it: UTF-8 on Windows, the bytes elsewhere.
@@ -798,14 +1009,22 @@ unsafe fn item(api: &Api, node: *mut sys::proto_node) -> Option<Node> {
         }
         let label = if (*field).rep.is_null() {
             let mut label = [0 as c_char; sys::ITEM_LABEL_LENGTH as usize];
+            #[cfg(wireshark_4_6)]
             sys::proto_item_fill_label(field, label.as_mut_ptr(), null_mut());
+            #[cfg(not(wireshark_4_6))]
+            sys::proto_item_fill_label(field, label.as_mut_ptr());
             text(label.as_ptr())
         } else {
             text((*(*field).rep).representation.as_ptr())
         };
+        // A pointer from 4.2, the value itself before.
+        #[cfg(wireshark_4_2)]
+        let fvalue = (*field).value;
+        #[cfg(not(wireshark_4_2))]
+        let fvalue = &raw mut (*field).value;
         let value = if header.type_ == sys::ftenum_FT_NONE
             || header.type_ == sys::ftenum_FT_PROTOCOL
-            || (*field).value.is_null()
+            || fvalue.is_null()
         {
             None
         } else {
@@ -813,7 +1032,7 @@ unsafe fn item(api: &Api, node: *mut sys::proto_node) -> Option<Node> {
                 api,
                 sys::fvalue_to_string_repr(
                     null_mut(),
-                    (*field).value,
+                    fvalue,
                     sys::ftrepr_FTREPR_DISPLAY,
                     header.display,
                 ),

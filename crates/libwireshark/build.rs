@@ -4,7 +4,9 @@
 fn main() {
     println!("cargo:rerun-if-env-changed=DEP_WIRESHARK_VERSION");
     println!("cargo:rustc-check-cfg=cfg(file_type_plugins)");
-    println!("cargo:rustc-check-cfg=cfg(host)");
+    for line in ["3_2", "3_6", "4_0", "4_2", "4_4", "4_6"] {
+        println!("cargo:rustc-check-cfg=cfg(wireshark_{line})");
+    }
     let version = std::env::var("DEP_WIRESHARK_VERSION")
         .expect("libwireshark-sys reports the release line it was built for");
     let mut parts = version
@@ -12,10 +14,22 @@ fn main() {
         .map(|part| part.parse::<u32>().unwrap_or(0));
     let line = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
     // A file reader's `struct wtap`, and records that carry their own data.
-    // ... and the program side of EPAN that `host` embeds.
     if line >= (4, 6) {
         println!("cargo:rustc-cfg=file_type_plugins");
-        println!("cargo:rustc-cfg=host");
+    }
+    // `wireshark_M_m`: built for release line M.m or later, where the
+    // program side of EPAN (`host`) changed shape.
+    for (at, name) in [
+        ((3, 2), "3_2"),
+        ((3, 6), "3_6"),
+        ((4, 0), "4_0"),
+        ((4, 2), "4_2"),
+        ((4, 4), "4_4"),
+        ((4, 6), "4_6"),
+    ] {
+        if line >= at {
+            println!("cargo:rustc-cfg=wireshark_{name}");
+        }
     }
     // The engine's test links libwireshark but runs only when asked: on MSVC
     // it loads on first call, so the test binaries start without Wireshark

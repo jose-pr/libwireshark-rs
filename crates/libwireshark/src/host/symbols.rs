@@ -7,45 +7,105 @@ use core::ffi::{c_char, c_int, c_uint, c_void};
 use libwireshark_sys as sys;
 use std::path::PathBuf;
 
-/// The functions, with the signatures Wireshark 4.6's headers declare.
+/// A `gboolean` before 4.4, a `bool` from it.
+#[cfg(wireshark_4_4)]
+pub(crate) type WtapBool = bool;
+/// A `gboolean` before 4.4, a `bool` from it.
+#[cfg(not(wireshark_4_4))]
+pub(crate) type WtapBool = c_int;
+
+/// The functions, with the signatures the release line's headers declare.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Api {
-    /// `ws_log_init(vcmdarg_err)`, given null: errors in the logging
-    /// environment variables go to stderr.
+    /// `ws_log_init(vcmdarg_err)` (4.6), `ws_log_init(progname, vcmdarg_err)`
+    /// (3.6 to 4.4), given a null `vcmdarg_err`: errors in the logging
+    /// environment variables go to stderr. Absent before 3.6.
+    #[cfg(wireshark_4_6)]
     pub(crate) ws_log_init: unsafe extern "C" fn(*const c_void),
+    #[cfg(all(wireshark_3_6, not(wireshark_4_6)))]
+    pub(crate) ws_log_init: unsafe extern "C" fn(*const c_char, *const c_void),
     pub(crate) init_process_policies: unsafe extern "C" fn(),
+    /// `configuration_init(arg0)` (4.6), `configuration_init(arg0,
+    /// namespace)` (4.0 to 4.4), `init_progfile_dir(arg0)` before.
+    #[cfg(any(wireshark_4_6, not(wireshark_4_0)))]
     pub(crate) configuration_init: unsafe extern "C" fn(*const c_char) -> *mut c_char,
+    #[cfg(all(wireshark_4_0, not(wireshark_4_6)))]
+    pub(crate) configuration_init:
+        unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_char,
     pub(crate) set_persconffile_dir: unsafe extern "C" fn(*const c_char),
-    /// `init_report_message(name, const struct report_message_routines *)`.
+    /// `init_report_message(name, const struct report_message_routines *)`
+    /// from 3.6; before, the five routines themselves.
+    #[cfg(wireshark_3_6)]
     pub(crate) init_report_message: unsafe extern "C" fn(*const c_char, *const c_void),
+    #[cfg(not(wireshark_3_6))]
+    pub(crate) init_report_message: unsafe extern "C" fn(
+        *const c_void,
+        *const c_void,
+        *const c_void,
+        *const c_void,
+        *const c_void,
+    ),
     pub(crate) timestamp_set_type: unsafe extern "C" fn(c_int),
     pub(crate) timestamp_set_precision: unsafe extern "C" fn(c_int),
     pub(crate) timestamp_set_seconds_type: unsafe extern "C" fn(c_int),
-    pub(crate) wtap_init: unsafe extern "C" fn(bool),
+    pub(crate) wtap_init: unsafe extern "C" fn(WtapBool),
     pub(crate) wtap_open_offline: unsafe extern "C" fn(
         *const c_char,
         c_uint,
         *mut c_int,
         *mut *mut c_char,
-        bool,
+        WtapBool,
     ) -> *mut sys::wtap,
+    /// `wtap_read`: into the caller's record (4.6), into its record and
+    /// buffer (3.2 to 4.4), or into the file's own (3.0).
+    #[cfg(wireshark_4_6)]
     pub(crate) wtap_read: unsafe extern "C" fn(
         *mut sys::wtap,
         *mut sys::wtap_rec,
         *mut c_int,
         *mut *mut c_char,
         *mut i64,
-    ) -> bool,
+    ) -> WtapBool,
+    #[cfg(all(wireshark_3_2, not(wireshark_4_6)))]
+    pub(crate) wtap_read: unsafe extern "C" fn(
+        *mut sys::wtap,
+        *mut sys::wtap_rec,
+        *mut sys::Buffer,
+        *mut c_int,
+        *mut *mut c_char,
+        *mut i64,
+    ) -> WtapBool,
+    #[cfg(not(wireshark_3_2))]
+    pub(crate) wtap_read:
+        unsafe extern "C" fn(*mut sys::wtap, *mut c_int, *mut *mut c_char, *mut i64) -> WtapBool,
+    /// 3.0: the record and the bytes `wtap_read` read.
+    #[cfg(not(wireshark_3_2))]
+    pub(crate) wtap_get_rec: unsafe extern "C" fn(*mut sys::wtap) -> *mut sys::wtap_rec,
+    #[cfg(not(wireshark_3_2))]
+    pub(crate) wtap_get_buf_ptr: unsafe extern "C" fn(*mut sys::wtap) -> *mut u8,
     pub(crate) wtap_close: unsafe extern "C" fn(*mut sys::wtap),
     pub(crate) wtap_file_type_subtype: unsafe extern "C" fn(*mut sys::wtap) -> c_int,
     pub(crate) wtap_strerror: unsafe extern "C" fn(c_int) -> *const c_char,
+    /// `wtap_rec_init(rec, space)` from 4.6, `wtap_rec_init(rec)` before.
+    #[cfg(wireshark_4_6)]
     pub(crate) wtap_rec_init: unsafe extern "C" fn(*mut sys::wtap_rec, usize),
+    #[cfg(not(wireshark_4_6))]
+    pub(crate) wtap_rec_init: unsafe extern "C" fn(*mut sys::wtap_rec),
+    /// From 3.6.
+    #[cfg(wireshark_3_6)]
     pub(crate) wtap_rec_reset: unsafe extern "C" fn(*mut sys::wtap_rec),
     pub(crate) wtap_rec_cleanup: unsafe extern "C" fn(*mut sys::wtap_rec),
+    /// From 4.6.
+    #[cfg(wireshark_4_6)]
     pub(crate) wtap_setup_packet_rec: unsafe extern "C" fn(*mut sys::wtap_rec, c_int),
+    /// Before 4.6, for the session's own buffer.
+    #[cfg(not(wireshark_4_6))]
+    pub(crate) ws_buffer_init: unsafe extern "C" fn(*mut sys::Buffer, usize),
+    #[cfg(not(wireshark_4_6))]
+    pub(crate) ws_buffer_free: unsafe extern "C" fn(*mut sys::Buffer),
     pub(crate) ws_buffer_append: unsafe extern "C" fn(*mut sys::Buffer, *const u8, usize),
     /// `g_strdup_vprintf(format, va_list)`: a `va_list` crosses as one
-    /// pointer-sized argument on every target the engine supports.
+    /// pointer-sized argument on every target the host supports.
     pub(crate) g_strdup_vprintf: unsafe extern "C" fn(*const c_char, *mut c_void) -> *mut c_char,
     pub(crate) g_free: unsafe extern "C" fn(*mut c_void),
 }
@@ -140,7 +200,8 @@ fn loaded(windows: &str, unix_prefix: &str) -> Result<libloading::Library, HostE
 fn glib() -> Result<libloading::Library, HostError> {
     #[cfg(windows)]
     {
-        loaded("glib-2.0-0.dll", "")
+        // Wireshark's own builds name it so from 3.6; before, MinGW's name.
+        loaded("glib-2.0-0.dll", "").or_else(|_| loaded("libglib-2.0-0.dll", ""))
     }
     #[cfg(unix)]
     {
@@ -184,12 +245,16 @@ impl Api {
         let wiretap = loaded("libwiretap.dll", "libwiretap.")?;
         let wsutil = loaded("libwsutil.dll", "libwsutil.")?;
         let glib = glib()?;
-        // SAFETY: each signature is the one Wireshark 4.6 declares.
+        // SAFETY: each signature is the one the release line declares.
         let api = unsafe {
             Self {
+                #[cfg(wireshark_3_6)]
                 ws_log_init: function(&wsutil, b"ws_log_init\0")?,
                 init_process_policies: function(&wsutil, b"init_process_policies\0")?,
+                #[cfg(wireshark_4_0)]
                 configuration_init: function(&wsutil, b"configuration_init\0")?,
+                #[cfg(not(wireshark_4_0))]
+                configuration_init: function(&wsutil, b"init_progfile_dir\0")?,
                 set_persconffile_dir: function(&wsutil, b"set_persconffile_dir\0")?,
                 init_report_message: function(&wsutil, b"init_report_message\0")?,
                 timestamp_set_type: function(&wireshark, b"timestamp_set_type\0")?,
@@ -198,13 +263,23 @@ impl Api {
                 wtap_init: function(&wiretap, b"wtap_init\0")?,
                 wtap_open_offline: function(&wiretap, b"wtap_open_offline\0")?,
                 wtap_read: function(&wiretap, b"wtap_read\0")?,
+                #[cfg(not(wireshark_3_2))]
+                wtap_get_rec: function(&wiretap, b"wtap_get_rec\0")?,
+                #[cfg(not(wireshark_3_2))]
+                wtap_get_buf_ptr: function(&wiretap, b"wtap_get_buf_ptr\0")?,
                 wtap_close: function(&wiretap, b"wtap_close\0")?,
                 wtap_file_type_subtype: function(&wiretap, b"wtap_file_type_subtype\0")?,
                 wtap_strerror: function(&wiretap, b"wtap_strerror\0")?,
                 wtap_rec_init: function(&wiretap, b"wtap_rec_init\0")?,
+                #[cfg(wireshark_3_6)]
                 wtap_rec_reset: function(&wiretap, b"wtap_rec_reset\0")?,
                 wtap_rec_cleanup: function(&wiretap, b"wtap_rec_cleanup\0")?,
+                #[cfg(wireshark_4_6)]
                 wtap_setup_packet_rec: function(&wiretap, b"wtap_setup_packet_rec\0")?,
+                #[cfg(not(wireshark_4_6))]
+                ws_buffer_init: function(&wsutil, b"ws_buffer_init\0")?,
+                #[cfg(not(wireshark_4_6))]
+                ws_buffer_free: function(&wsutil, b"ws_buffer_free\0")?,
                 ws_buffer_append: function(&wsutil, b"ws_buffer_append\0")?,
                 g_strdup_vprintf: function(&glib, b"g_strdup_vprintf\0")?,
                 g_free: function(&glib, b"g_free\0")?,

@@ -1,9 +1,8 @@
 //! Wireshark's dissection engine in this process, for a program rather than
 //! a plugin: dissect frames and read capture files with Wireshark's
 //! dissectors and the plugins it loads, into the protocol tree and the
-//! packet list's columns. Behind the `host` feature; it exists
-//! from Wireshark 4.6, and before that every call answers
-//! [`HostError::Unsupported`].
+//! packet list's columns. Behind the `host` feature, on every release line
+//! the crate builds for (3.0 to 4.6).
 //!
 //! ```no_run
 //! use core::time::Duration;
@@ -30,9 +29,7 @@
 //! time. Never open one inside Wireshark (from a plugin): it refuses.
 
 mod model;
-#[cfg(host)]
 mod session;
-#[cfg(host)]
 mod symbols;
 
 pub use model::{Column, Dissected, HostConfig, Node};
@@ -47,8 +44,6 @@ use std::path::Path;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HostError {
-    /// This build's release line has no host (it needs 4.6 or later).
-    Unsupported,
     /// A session is already open in this process, or Wireshark itself
     /// runs it.
     AlreadyOpen,
@@ -82,9 +77,6 @@ pub enum HostError {
 impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unsupported => {
-                f.write_str("hosting Wireshark needs a build for Wireshark 4.6 or later")
-            }
             Self::AlreadyOpen => {
                 f.write_str("a session is already open, or Wireshark itself runs this process")
             }
@@ -105,13 +97,12 @@ impl fmt::Display for HostError {
 
 impl core::error::Error for HostError {}
 
-/// Wireshark's dissection host, running in this process.
+/// Wireshark's dissection engine, hosted in this process.
 ///
 /// Wireshark's state is per process: one session at a time, and the
 /// plugins and preferences of the first [`open`](Self::open) stay for the
 /// process (a later open must give the same configuration).
 pub struct Host {
-    #[cfg(host)]
     session: session::Session,
 }
 
@@ -127,20 +118,11 @@ impl Host {
     /// # Errors
     ///
     /// [`HostError`]: another session is open, the configuration differs
-    /// from the first, a plugin or preference is refused, or this build has
-    /// no host.
+    /// from the first, or a plugin or preference is refused.
     pub fn open(config: &HostConfig) -> Result<Self, HostError> {
-        #[cfg(host)]
-        {
-            Ok(Self {
-                session: session::Session::open(config)?,
-            })
-        }
-        #[cfg(not(host))]
-        {
-            let _ = config;
-            Err(HostError::Unsupported)
-        }
+        Ok(Self {
+            session: session::Session::open(config)?,
+        })
     }
 
     /// Dissects one frame captured at `time` since the Unix epoch. Frames
@@ -148,22 +130,14 @@ impl Host {
     ///
     /// # Errors
     ///
-    /// None today; the result stays fallible for the engine's own failures.
+    /// None today; the result stays fallible for Wireshark's own failures.
     pub fn dissect(
         &mut self,
         data: &[u8],
         encapsulation: Encapsulation,
         time: Duration,
     ) -> Result<Dissected, HostError> {
-        #[cfg(host)]
-        {
-            Ok(self.session.dissect(data, encapsulation.to_raw(), time))
-        }
-        #[cfg(not(host))]
-        {
-            let _ = (data, encapsulation, time);
-            Err(HostError::Unsupported)
-        }
+        Ok(self.session.dissect(data, encapsulation.to_raw(), time))
     }
 
     /// Reads the capture file at `path`, dissecting the frames that match
@@ -194,15 +168,7 @@ impl Host {
         path: &Path,
         display_filter: Option<&str>,
     ) -> Result<(), HostError> {
-        #[cfg(host)]
-        {
-            self.session.open_file(path, display_filter)
-        }
-        #[cfg(not(host))]
-        {
-            let _ = (path, display_filter);
-            Err(HostError::Unsupported)
-        }
+        self.session.open_file(path, display_filter)
     }
 
     /// The open file's next matching frame: `None` at its end, after an
@@ -212,14 +178,7 @@ impl Host {
     ///
     /// [`HostError::File`] when the file cannot be read further.
     pub fn next_frame(&mut self) -> Result<Option<Dissected>, HostError> {
-        #[cfg(host)]
-        {
-            self.session.next()
-        }
-        #[cfg(not(host))]
-        {
-            Ok(None)
-        }
+        self.session.next()
     }
 }
 

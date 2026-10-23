@@ -39,13 +39,7 @@ fn a_host_dissects_frames_and_captures_with_the_plugins_it_loads() {
         config_dir: Some(profile.root().to_path_buf()),
         ..HostConfig::default()
     };
-    let host = match Host::open(&config) {
-        Err(HostError::Unsupported) => {
-            eprintln!("skipped: no host before Wireshark 4.6");
-            return;
-        }
-        result => result.expect("Wireshark starts"),
-    };
+    let host = Host::open(&config).expect("Wireshark starts");
     session(host, &config, &frames, &profile);
     assert_eq!(
         Host::open(&HostConfig::default()).err(),
