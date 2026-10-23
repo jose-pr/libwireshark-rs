@@ -228,6 +228,60 @@ impl Codec { pub fn new(name: &'static str,
 - Wireshark keeps what is registered for the process: owned text becomes
   `&'static str` with `String::leak`. No preferences yet.
 
+## Hosting Wireshark (`libwireshark::host`, feature `host`)
+
+For a program, never a plugin: Wireshark's dissection engine (EPAN with
+wiretap) in the calling process. Exists from 4.6 (`cfg(host)`); before,
+every call answers `HostError::Unsupported`.
+
+```rust
+pub struct HostConfig {                    // Clone, Default, PartialEq
+    pub plugins: Vec<PathBuf>,             // plugin libraries for this release line
+    pub skip_installed_plugins: bool,
+    pub config_dir: Option<PathBuf>,       // a profile; default the user's
+    pub preferences: BTreeMap<String, String>, // as tshark -o name:value
+}
+pub struct Host;                           // Send, !Sync; drop ends the session
+impl Host {
+    pub fn open(config: &HostConfig) -> Result<Host, HostError>;
+    pub fn dissect(&mut self, data: &[u8], encapsulation: Encapsulation, time: Duration)
+        -> Result<Dissected, HostError>;     // time: since the Unix epoch
+    pub fn read(&mut self, path: &Path, display_filter: Option<&str>) -> Result<Capture<'_>, HostError>;
+    pub fn open_file(&mut self, path: &Path, display_filter: Option<&str>) -> Result<(), HostError>;
+    pub fn next_frame(&mut self) -> Result<Option<Dissected>, HostError>; // read without the borrow
+}
+pub struct Capture<'a>;                    // Iterator<Item = Result<Dissected, HostError>>; an error ends it
+pub struct Dissected { pub frame: u32, pub columns: Vec<Column>, pub tree: Vec<Node> }
+impl Dissected { fn get(&self, abbrev) -> Option<&Node>; fn all(..) -> impl Iterator; fn column(&self, title) -> Option<&str> }
+pub struct Column { pub title: String, pub text: String }
+pub struct Node { abbrev, name, label, value: Option<String>, offset: i64, length: i64,
+                  hidden: bool, generated: bool, children: Vec<Node> } // text items: empty abbrev/name
+#[non_exhaustive] pub enum HostError {
+    Unsupported, AlreadyOpen, Configured, Symbols(String), Init(String),
+    Plugin { path, reason }, Preference { preference, reason }, Filter(String), File(String),
+}
+```
+
+- Wireshark starts once per process, at the first `open`, as tshark does:
+  logging, configuration, the listed plugins' `plugin_register` (their
+  `plugin_want_major/minor` must match), wiretap, EPAN (installed plugins
+  unless skipped), the profile's preferences, then `preferences`. A failed
+  start is final for the process.
+- A later `open` must give an equal `HostConfig` (`Configured`); one session
+  at a time (`AlreadyOpen`, also inside Wireshark itself, where EPAN runs).
+- `dissect` frames share conversations and count from 1; `read` starts a
+  fresh capture, keeps what the display filter passes, numbered as in the
+  file.
+- libwiretap, libwsutil and GLib functions are resolved from the libraries
+  libwireshark loaded. On Windows, Wireshark's data and plugin directories
+  are set (`WIRESHARK_DATA_DIR`, `WIRESHARK_PLUGIN_DIR`, when unset) to
+  libwireshark's directory, which must be on `PATH`. Wireshark's reports go
+  to stderr as `libwireshark-host: ...`.
+- A plugin both listed and installed registers twice and aborts the
+  process: `skip_installed_plugins`.
+- The module keeps process statics (the start, the open session): the
+  recorded exception to this crate's no-statics rule.
+
 ## Packets (`PacketView<'packet>`)
 
 Exists only inside `dissect`; not `Send`/`Sync`; exposes no pointers.

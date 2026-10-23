@@ -55,12 +55,12 @@ First release of the crates under these names.
   `wireshark_file_type` and `wireshark_codec`, served by the same host, with
   Python helper classes (`Tap`, `FilterFunction`, `FileType`, `Codec`) and
   example providers in Rust, C and Python.
-- `libwireshark-engine`: Wireshark's dissection engine in the caller's
-  process, for Wireshark 4.6 and later: dissect frames and read capture
-  files (with a display filter) using Wireshark's dissectors and the
-  plugins it is given, into the protocol tree and the packet list's
-  columns; with its `provider` feature, a guatiao provider of the
-  `wireshark_engine` kind (`libwireshark-api::engine`).
+- `libwireshark::host` (feature `host`): Wireshark's dissection engine
+  hosted in a program, for Wireshark 4.6 and later: dissect frames and read
+  capture files (with a display filter) using Wireshark's dissectors and
+  the plugins it is given, into the protocol tree and the packet list's
+  columns. `libwireshark-guatiao` serves it as the `wireshark_host` kind
+  (`libwireshark-api::host`), which the Python package's `Host` drives.
 - `PacketView::add_item` refuses a length its field's type does not take
   (`PacketFieldError::WrongLength`) instead of letting Wireshark throw; a
   TCP framing length that cannot be read hands the rest of the segment to

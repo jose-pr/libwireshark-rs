@@ -37,6 +37,10 @@ the [API documentation](https://docs.rs/libwireshark).
   provides when it loads.
 - `plugin!`: exports what Wireshark's loader reads, for any mix of the
   above.
+- `host` (feature `host`, Wireshark 4.6 on): the other way round,
+  Wireshark's dissection engine hosted in a program: dissect frames and
+  read capture files with Wireshark and the plugins it loads, into the
+  protocol tree and the packet list's columns.
 - The runtime sets the Protocol column and adds the protocol's own tree item,
   so `-Y <protocol>` filters work.
 
@@ -163,6 +167,7 @@ On macOS the directory is `<major>-<minor>`, and the copy must be named
 | `Codec`, `StreamFormat` | audio codecs |
 | `dynamic::{Registrations, Protocol, ProtocolSpec, DynamicDissector, Tap, FilterFunction, FileType, Codec, ...}` | what a plugin registers at run time |
 | `plugin!` | the plugin's exported entry points |
+| `host::{Host, HostConfig, Dissected, Node, Column, Capture, HostError}` | Wireshark hosted in a program (feature `host`) |
 | `sys` | the raw `libwireshark-sys` bindings |
 
 ## Compatibility

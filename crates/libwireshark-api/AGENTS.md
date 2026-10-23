@@ -53,7 +53,7 @@ pub trait Packet: Send {
 | `wireshark_capture_source` | 4254949812 |
 | `wireshark_codec` | 3823197131 |
 | `wireshark_decoder` | 223420870 |
-| `wireshark_engine` | 2496675255 |
+| `wireshark_host` | 2496675255 |
 | `wireshark_session` | 1680421174 |
 
 - `describe` is asked once, when the host loads the provider.
@@ -138,12 +138,12 @@ Models (each `to_map`/`from_map`): `TapDescription { name, tap }`,
 a provider answers are the host's to destroy; the capture source it is
 lent lives for the call.
 
-### The other direction: Wireshark as a provider (`engine`)
+### The other direction: Wireshark as a provider (`host`)
 
 ```rust
-#[guatiao::kind(name = "wireshark_engine")]
-pub trait Engine: Send + Sync {
-    fn open(&self, config: &Map) -> Result<Object<dyn Session>, ProviderError>; // EngineConfig
+#[guatiao::kind(name = "wireshark_host")]
+pub trait Host: Send + Sync {
+    fn open(&self, config: &Map) -> Result<Object<dyn Session>, ProviderError>; // HostConfig
 }
 #[guatiao::kind(object, name = "wireshark_session")]                    // owned by the opener
 pub trait Session: Send {
@@ -153,9 +153,9 @@ pub trait Session: Send {
 }
 ```
 
-`libwireshark-engine` provides these; a host opens a session to dissect
-with Wireshark itself. Models in `libwireshark_api::engine`:
-`EngineConfig { plugins, skip_installed_plugins, config_dir, preferences }`,
+`libwireshark-guatiao` provides these; a program opens a session to
+dissect with Wireshark itself. Models in `libwireshark_api::host`:
+`HostConfig { plugins, skip_installed_plugins, config_dir, preferences }`,
 `Dissected { frame, columns: [Column { title, text }], tree: [Node] }`,
 `Node { abbrev, name, label, value?, offset, length, hidden, generated,
 children }`, with `Dissected::{to_map, from_map, get, all}`.

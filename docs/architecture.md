@@ -52,7 +52,7 @@ through the plugin's static.
 
 ## Wireshark in another process's hands
 
-`libwireshark-engine` runs EPAN the way tshark does, for one release line
+`libwireshark::host` runs EPAN the way tshark does, for one release line
 (4.6 on, where a `wtap_rec` carries its own data): it registers the plugins
 it is given with their `plugin_register` before `wtap_init` and
 `epan_init`, as Wireshark's own loader would, applies the profile's
@@ -60,9 +60,11 @@ preferences and the caller's, then dissects each frame as tshark's single
 pass does and walks the tree into plain data. Functions of libwiretap,
 libwsutil and GLib, which the sys crate does not link, are resolved from
 the libraries libwireshark loaded. EPAN's state is the process's, so the
-engine starts once and holds one session at a time. With its `provider`
-feature the same library serves the `wireshark_engine` kind, which is how a
-host in another language opens it.
+host starts Wireshark once and holds one session at a time. The
+`libwireshark-guatiao` library serves it as the `wireshark_host` kind as
+well as being a plugin, which is how a program in another language opens
+it: the one file is loaded by Wireshark as a plugin, and by a guatiao host
+as a provider.
 
 ## A plugin at run time
 

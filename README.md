@@ -16,13 +16,12 @@ Wireshark, with no Wireshark SDK, C code or `unsafe`. See
 
 | Crate | What it is |
 | --- | --- |
-| [`libwireshark`](crates/libwireshark) | the plugin API: `Dissector`, `PacketView`, `plugin!`, and the `derive` feature |
+| [`libwireshark`](crates/libwireshark) | the plugin API: `Dissector`, `PacketView`, `plugin!`, the `derive` feature, and the `host` feature: Wireshark hosted in a program (4.6 on) |
 | [`libwireshark-derive`](crates/libwireshark-derive) | `#[derive(Header)]` and `#[derive(Preferences)]`, used through `libwireshark` |
 | [`libwireshark-sys`](crates/libwireshark-sys) | raw bindings, generated from bundled headers for Wireshark 3.0 to 4.6 |
 | [`cargo-wireshark`](crates/cargo-wireshark) | `cargo wireshark doctor`, and generating, fetching and publishing the header bundles |
 | [`libwireshark-guatiao`](crates/libwireshark-guatiao) | one plugin that loads dissectors written in Rust, C or Python as [guatiao](https://github.com/Boriken-Dev/guatiao) providers |
 | [`libwireshark-api`](crates/libwireshark-api) | what those providers implement: the kinds, a C header, and the Rust helpers (typed headers, preferences and expert findings) |
-| [`libwireshark-engine`](crates/libwireshark-engine) | Wireshark's dissection engine in your process (4.6 on): dissect frames and read captures with the plugins you load, into the protocol tree |
 | [`bindings/python`](bindings/python) | the `libwireshark` Python package: dissectors as typed classes, for the guatiao host |
 
 The [examples](examples) are plugins: `basic-dissector` (one protocol with

@@ -39,6 +39,14 @@ A provider is:
 
 Examples of each are in [`examples/guatiao`](../../examples/guatiao).
 
+## Hosting Wireshark
+
+The same library is a guatiao provider of `wireshark_host`
+(`libwireshark-api`): a guatiao host — the `libwireshark` Python package's
+`Host` — loads it to run Wireshark in its own process, through
+`libwireshark::host`, and may list it as a plugin too so that its providers
+dissect there.
+
 ## Diagnostics
 
 Problems — a library that failed to load, a source that refused a module,

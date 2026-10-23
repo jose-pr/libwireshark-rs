@@ -16,9 +16,10 @@ which loads providers and registers what they describe with Wireshark.
   the other kinds of plugin, with the objects they answer
   (`TapListener`, `CaptureReader`, `Decoder`) and the `CaptureSource` a
   reader is lent.
-- `engine::Engine` and `engine::Session` (`wireshark_engine`,
-  `wireshark_session`): the other direction, which `libwireshark-engine`
-  provides — a host opens Wireshark's engine and dissects with it.
+- `host::Host` and `host::Session` (`wireshark_host`,
+  `wireshark_session`): the other direction, which `libwireshark-guatiao`
+  provides — a program opens Wireshark in its own process and dissects
+  with it.
 
 A protocol is written in each language as `libwireshark`'s `Dissector` is
 in Rust: its **header** is a struct, laid out field by field, which the

@@ -149,15 +149,15 @@ class Decoder:
   to 16 bits; an exception in a `Decoder` method is logged
   (`logging`, the module's logger) and answers nothing.
 
-## `Engine`: Wireshark run from Python
+## `Host`: Wireshark hosted in Python
 
 ```python
-class Engine:                      # a context manager; close() ends the session
+class Host:                        # a context manager; close() ends the session
     def __init__(self, plugins: Iterable[PathLike] = (), *,
                  preferences: Mapping[str, object] | None = None,   # as tshark -o; bool -> TRUE/FALSE
                  config_dir: PathLike | None = None,                # profile; default the user's
                  skip_installed_plugins: bool = False,
-                 library: PathLike | None = None)                   # else LIBWIRESHARK_ENGINE
+                 library: PathLike | None = None)                   # else LIBWIRESHARK_HOST
     def dissect(self, data: bytes, encapsulation: int = Encapsulation.ETHERNET,
                 time: None | float | datetime = None) -> Dissected  # seconds since the epoch
     def read(self, path: PathLike, display_filter: str | None = None) -> Iterator[Dissected]
@@ -181,38 +181,38 @@ class Node:
     offset: int; length: int; hidden: bool; generated: bool; children: tuple[Node, ...]
 ```
 
-- It loads the `libwireshark-engine` library (built with its `provider`
-  feature, for the running Wireshark's release line, 4.6 on) through
+- It loads the `libwireshark-guatiao` library (the plugin itself, built
+  for the running Wireshark's release line, 4.6 on) through
   guatiao's registry, so guatiao's native library must be found
   (`GUATIAO_LIBRARY`, see guatiao's documentation) and, on Windows,
   Wireshark's directory must be on `PATH`.
-- Wireshark starts once per process, at the first `Engine`, as tshark
+- Wireshark starts once per process, at the first `Host`, as tshark
   starts: the listed plugins are registered before it (dissectors and file
   types, the `libwireshark-guatiao` host among them), installed ones after
-  unless skipped. A later `Engine` must give the same settings; one may be
-  open at a time (`EngineError` names the open one). The engine library,
-  once loaded, stays loaded.
+  unless skipped. A later `Host` must give the same settings; one may be
+  open at a time (`HostError` names the open one). The library, once
+  loaded, stays loaded.
 - `read` opens the file when called (errors raise then) and dissects as
   it is iterated; it starts a fresh capture (numbers and conversations
-  restart) and ends a read in progress. Calls are serialised per engine.
+  restart) and ends a read in progress. Calls are serialised per host.
 - A plugin both listed and installed registers its protocols twice, which
   aborts the process: pass `skip_installed_plugins=True`.
 
 ## Exceptions (`libwireshark.exceptions`)
 
 - `WiresharkError(Exception)`: the base.
-- `EngineError(WiresharkError)`: the engine library is missing or already
+- `HostError(WiresharkError)`: the library is missing or already
   loaded from elsewhere, Wireshark did not start, refused a plugin or a
   preference, a capture could not be read; the message is Wireshark's.
-- `DisplayFilterError(EngineError, ValueError)`: a display filter did not
+- `DisplayFilterError(HostError, ValueError)`: a display filter did not
   compile.
-- `ValueError`: a call on a closed engine, a time before the epoch.
+- `ValueError`: a call on a closed host, a time before the epoch.
 
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_ENGINE` | the engine library's path, when `Engine` gets no `library` |
+| `LIBWIRESHARK_HOST` | the `libwireshark-guatiao` library's path, when `Host` gets no `library` |
 | `GUATIAO_LIBRARY` | guatiao's native library (guatiao's own variable) |
 
 ## Other exports
@@ -226,6 +226,6 @@ class Node:
 - `FieldType`, `Base`, `ExpertGroup`, `Severity`: `str` enums spelled as
   the description map spells them.
 - `kinds.Dissector`, `kinds.Packet`: the kinds (`wireshark_dissector`,
-  FLOOR_HASH 1003939949; `wireshark_packet`, 2387250941); `kinds.Engine`,
-  `kinds.Session` (`wireshark_engine`, 2496675255; `wireshark_session`,
-  1680421174), which `Engine` drives.
+  FLOOR_HASH 1003939949; `wireshark_packet`, 2387250941); `kinds.Host`,
+  `kinds.Session` (`wireshark_host`, 2496675255; `wireshark_session`,
+  1680421174), which `Host` drives.

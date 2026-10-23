@@ -95,23 +95,23 @@ class Foo(provide.Provider, ProtocolDissector):
 
 ## Running Wireshark from Python
 
-`Engine` runs Wireshark's dissection engine in your process, with the
+`Host` runs Wireshark's dissection engine in your process, with the
 plugins you give it: Wireshark plugins built for its release line (4.6 on),
 the `libwireshark-guatiao` host and its providers among them.
 
 ```python
-from libwireshark import Engine
+from libwireshark import Host
 
-with Engine(plugins=["basic_dissector.dll"], preferences={"foo.port": 111}) as wireshark:
+with Host(plugins=["basic_dissector.dll"], preferences={"foo.port": 111}) as wireshark:
     frame = wireshark.dissect(data)            # an Ethernet frame
     print(frame["foo.version"], frame.columns["Info"])
     for frame in wireshark.read("capture.pcapng", display_filter="foo"):
         print(frame.frame, [node.abbrev for node in frame.tree])
 ```
 
-It needs the `libwireshark-engine` library, built with
-`cargo build -p libwireshark-engine --features provider` against the
-Wireshark it runs with, named by `LIBWIRESHARK_ENGINE` (or `library=`), and
+It needs the `libwireshark-guatiao` library (the same one Wireshark loads
+as a plugin), built against the Wireshark it runs with and named by
+`LIBWIRESHARK_HOST` (or `library=`), and
 guatiao's native library (`GUATIAO_LIBRARY`). On Windows, Wireshark's
 directory must be on `PATH`. Wireshark starts once per process.
 
@@ -121,15 +121,15 @@ directory must be on `PATH`. Wireshark starts once per process.
 | --- | --- |
 | `libwireshark` | `ProtocolDissector`, `Header`, `Preferences`, `Expert`, `Meta`, the field type aliases, bindings |
 | `libwireshark` | `Tap`, `TapListener`, `TapPacket`, `FilterFunction`, `FilterReturn`, `FileType`, `CaptureFile`, `CaptureReader`, `Record`, `Codec`, `Decoder`, `StreamFormat`: the other plugin kinds |
-| `libwireshark` | `Engine`, `Encapsulation`, `Dissected`, `Node`: Wireshark run from Python |
-| `libwireshark.exceptions` | `WiresharkError`, `EngineError`, `DisplayFilterError` |
-| `libwireshark.kinds` | the guatiao kinds `Dissector`, `Packet`, `Engine` and `Session` |
+| `libwireshark` | `Host`, `Encapsulation`, `Dissected`, `Node`: Wireshark hosted in Python |
+| `libwireshark.exceptions` | `WiresharkError`, `HostError`, `DisplayFilterError` |
+| `libwireshark.kinds` | the guatiao kinds, `Dissector` to `Decoder`, and `Host` and `Session` |
 
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
-| `LIBWIRESHARK_ENGINE` | the engine library's path, when `Engine` gets no `library` |
+| `LIBWIRESHARK_HOST` | the `libwireshark-guatiao` library's path, when `Host` gets no `library` |
 | `GUATIAO_LIBRARY` | guatiao's native library, read by guatiao |
 
 ## Development
