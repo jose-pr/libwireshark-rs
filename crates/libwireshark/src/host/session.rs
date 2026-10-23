@@ -173,7 +173,8 @@ fn start(config: &HostConfig) -> Result<Started, HostError> {
         );
         // tshark's defaults: times relative to the first frame.
         (api.timestamp_set_type)(0);
-        (api.timestamp_set_precision)(-1);
+        // `TS_PREC_AUTO`: -1 from 4.2, 0 before.
+        (api.timestamp_set_precision)(if cfg!(wireshark_4_2) { -1 } else { 0 });
         (api.timestamp_set_seconds_type)(0);
 
         let (mut major, mut minor, mut micro) = (0, 0, 0);
