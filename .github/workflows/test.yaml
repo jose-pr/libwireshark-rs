@@ -124,6 +124,32 @@ jobs:
           esac
           LIBWIRESHARK_HOST="$library" python -m pytest -q -rs bindings/python/tests/test_host.py
 
+  # Wireshark hosted in a program, run against the Wireshark of older
+  # distributions: 3.2 (Ubuntu 20.04), 3.4 (Debian 11), 3.6 (Ubuntu 22.04),
+  # 4.0 (Debian 12) and 4.4 (Debian 13); 4.2 and 4.6 run in the plugins job.
+  host-lines:
+    name: Host on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:20.04", "debian:bullseye", "ubuntu:22.04", "debian:bookworm", "debian:trixie"]
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install Wireshark and a toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends tshark libwireshark-dev libclang-dev clang build-essential pkg-config git curl ca-certificates
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - run: cargo run -p cargo-wireshark -- wireshark headers fetch
+      - run: cargo test -p libwireshark --all-features --test host -- --ignored
+
   # The runtime type-checks against every release line's bindings.
   release-lines:
     name: Release line ${{ matrix.version }}
