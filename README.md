@@ -4,7 +4,7 @@
 [![Rust version](https://img.shields.io/crates/msrv/libwireshark.svg)](https://crates.io/crates/libwireshark)
 [![PyPI](https://img.shields.io/pypi/v/libwireshark.svg?label=pypi)](https://pypi.org/project/libwireshark/)
 [![Python versions](https://img.shields.io/pypi/pyversions/libwireshark.svg)](https://pypi.org/project/libwireshark/)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: MPL-2.0 / GPL-2.0-or-later](https://img.shields.io/badge/license-MPL--2.0%20%2F%20GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs#license)
 [![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -153,4 +153,14 @@ order. The test workflow runs on demand or for a `ci-*` tag.
 
 ## License
 
-GPL-2.0-or-later, as Wireshark; see [LICENSE](LICENSE).
+**MPL-2.0**, as guatiao, for everything that does not link or embed
+Wireshark; **GPL-2.0-or-later**, as Wireshark, for what does.
+
+| License | What |
+| --- | --- |
+| [MPL-2.0](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE) | `libwireshark-api` (and its C header), `libwireshark-derive`, `cargo-wireshark`, the `libwireshark` Python package, the bridge's example providers (`examples/bridge`), the documentation |
+| [GPL-2.0-or-later](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE-GPL-2.0) | `libwireshark-sys` (its header bundles embed Wireshark's headers), `libwireshark`, `libwireshark-bridge` (a Wireshark plugin), the example plugins |
+
+A Wireshark plugin built with `libwireshark` is GPL-2.0-or-later, as any
+Wireshark plugin. A provider for the bridge links no Wireshark, so it may
+use any license, as may a program using only the Python package.

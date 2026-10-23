@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/crates/v/libwireshark-sys.svg)](https://crates.io/crates/libwireshark-sys)
 [![Rust version](https://img.shields.io/crates/msrv/libwireshark-sys.svg)](https://crates.io/crates/libwireshark-sys)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE-GPL-2.0)
 [![Docs](https://img.shields.io/docsrs/libwireshark-sys)](https://docs.rs/libwireshark-sys)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -68,4 +68,4 @@ See the repository README.
 
 GPL-2.0-or-later. The bundles embed Wireshark (GPL-2.0-or-later), GLib
 (LGPL-2.1-or-later) and libgcrypt/libgpg-error (LGPL-2.1-or-later) headers.
-See [LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).
+See [LICENSE-GPL-2.0](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE-GPL-2.0).

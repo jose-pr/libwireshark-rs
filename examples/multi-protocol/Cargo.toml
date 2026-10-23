@@ -3,7 +3,8 @@ name = "multi-protocol"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+# It links or embeds Wireshark, which is GPL-2.0-or-later.
+license = "GPL-2.0-or-later"
 publish = false
 
 [lib]

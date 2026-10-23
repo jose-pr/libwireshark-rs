@@ -9,7 +9,7 @@ authors = [{ name = "jose-pr" }]
 description = "Wireshark dissectors written in Python, loaded by the libwireshark-bridge plugin, and Wireshark hosted in a Python process"
 readme = "README.md"
 requires-python = ">=3.9"
-license = "GPL-2.0-or-later"
+license = "MPL-2.0"
 license-files = ["LICENSE"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",

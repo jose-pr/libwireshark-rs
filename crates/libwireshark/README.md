@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/crates/v/libwireshark.svg)](https://crates.io/crates/libwireshark)
 [![Rust version](https://img.shields.io/crates/msrv/libwireshark.svg)](https://crates.io/crates/libwireshark)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE-GPL-2.0)
 [![Docs](https://img.shields.io/docsrs/libwireshark)](https://docs.rs/libwireshark)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -199,4 +199,4 @@ publishes the crates in dependency order.
 ## License
 
 GPL-2.0-or-later, as Wireshark; see
-[LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).
+[LICENSE-GPL-2.0](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE-GPL-2.0).

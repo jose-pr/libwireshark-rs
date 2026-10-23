@@ -54,4 +54,5 @@ a provider whose description does not read — are written to stderr, as
 `libwireshark-bridge: ...`. Set `LIBWIRESHARK_BRIDGE_LOG` to anything
 to see what loaded as well.
 
-License: GPL-2.0-or-later.
+License: GPL-2.0-or-later, as Wireshark, which it links. The providers it
+loads link no Wireshark and may use any license.

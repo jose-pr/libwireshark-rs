@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/crates/v/cargo-wireshark.svg)](https://crates.io/crates/cargo-wireshark)
 [![Rust version](https://img.shields.io/crates/msrv/cargo-wireshark.svg)](https://crates.io/crates/cargo-wireshark)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
 [![Docs](https://img.shields.io/docsrs/cargo-wireshark)](https://docs.rs/cargo-wireshark)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -72,5 +72,5 @@ cargo test -p cargo-wireshark
 
 ## License
 
-GPL-2.0-or-later; see
+MPL-2.0; see
 [LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).

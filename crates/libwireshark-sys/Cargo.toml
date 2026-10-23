@@ -4,7 +4,8 @@ description = "Raw bindings to Wireshark's libwireshark (EPAN), generated from b
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+# It links or embeds Wireshark, which is GPL-2.0-or-later.
+license = "GPL-2.0-or-later"
 repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true

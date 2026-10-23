@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/pypi/v/libwireshark.svg)](https://pypi.org/project/libwireshark/)
 [![Python versions](https://img.shields.io/pypi/pyversions/libwireshark.svg)](https://pypi.org/project/libwireshark/)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://jose-pr.github.io/libwireshark-rs/python/)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -146,4 +146,4 @@ Not published yet: it depends on a guatiao revision that is not released.
 
 ## License
 
-GPL-2.0-or-later: see [LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).
+MPL-2.0, as guatiao: see [LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE). The package links no Wireshark; the `libwireshark-bridge` library `Host` loads is GPL-2.0-or-later, as Wireshark.

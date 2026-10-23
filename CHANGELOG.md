@@ -7,7 +7,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-First release of the crates under these names.
+First release of the crates under these names. `libwireshark-sys`,
+`libwireshark` and `libwireshark-bridge` are GPL-2.0-or-later, as
+Wireshark; `libwireshark-api`, `libwireshark-derive`, `cargo-wireshark` and
+the `libwireshark` Python package are MPL-2.0.
 
 ### Added
 

@@ -149,4 +149,5 @@ Fill the tables in `include/libwireshark_api.h`; the description and the
 bindings can be literal trees (`GUATIAO_VALUE_MAP_LIT` and friends), and
 `dissect` reads the decoded header from the map it is given.
 
-License: GPL-2.0-or-later.
+License: MPL-2.0, as guatiao: a provider built against these kinds links no
+Wireshark, and may use any license.

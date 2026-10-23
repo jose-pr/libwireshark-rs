@@ -22,7 +22,7 @@ edition = "2024"
 # Let chains and `core::error::Error` set the floor; CI runs this toolchain.
 rust-version = "1.89"
 # A plugin links libwireshark, which is GPL-2.0-or-later.
-license = "GPL-2.0-or-later"
+license = "MPL-2.0"
 repository = "https://github.com/jose-pr/libwireshark-rs"
 homepage = "https://github.com/jose-pr/libwireshark-rs"
 keywords = ["wireshark", "dissector", "plugin", "pcap", "ffi"]

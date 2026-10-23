@@ -112,3 +112,11 @@ with Host(plugins=["foo.dll"]) as wireshark:
   [C header](https://github.com/jose-pr/libwireshark-rs/blob/master/crates/libwireshark-api/include/libwireshark_api.h).
 - [Architecture](architecture.md) and [FFI safety](ffi-safety.md): the internals.
 - [Changelog](changelog.md).
+
+## License
+
+MPL-2.0, as guatiao, for everything that does not link or embed Wireshark
+(`libwireshark-api`, `libwireshark-derive`, `cargo-wireshark`, the Python
+package, the bridge's example providers); GPL-2.0-or-later, as Wireshark,
+for `libwireshark-sys`, `libwireshark`, `libwireshark-bridge` and the example
+plugins. A provider for the bridge links no Wireshark and may use any license.

@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/crates/v/libwireshark-derive.svg)](https://crates.io/crates/libwireshark-derive)
 [![Rust version](https://img.shields.io/crates/msrv/libwireshark-derive.svg)](https://crates.io/crates/libwireshark-derive)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE)
 [![Docs](https://img.shields.io/docsrs/libwireshark-derive)](https://docs.rs/libwireshark-derive)
 [![CI](https://img.shields.io/github/actions/workflow/status/jose-pr/libwireshark-rs/test.yaml)](https://github.com/jose-pr/libwireshark-rs/actions/workflows/test.yaml)
 
@@ -35,5 +35,5 @@ cargo test -p libwireshark-derive
 
 ## License
 
-GPL-2.0-or-later; see
+MPL-2.0; see
 [LICENSE](https://github.com/jose-pr/libwireshark-rs/blob/master/LICENSE).
