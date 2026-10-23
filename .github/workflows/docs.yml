@@ -95,8 +95,9 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     # Absent outside a call, so a push or a dispatch deploys; a caller that
-    # passes `deploy: false` only proves the site builds.
-    if: ${{ inputs.deploy != false }}
+    # passes `deploy: false` only proves the site builds. Compared as text:
+    # an absent input is null, which equals false in an expression.
+    if: ${{ format('{0}', inputs.deploy) != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
